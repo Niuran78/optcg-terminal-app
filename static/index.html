@@ -4,496 +4,444 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>OPTCG Market Terminal</title>
-  <link rel="stylesheet" href="/static/style.css" />
-  <!-- Lightweight Charts (TradingView) for sparklines/charts -->
-  <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+  <meta name="description" content="One Piece TCG market intelligence — arbitrage scanner, sealed tracker, EV calculator" />
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-<div class="app-shell">
 
-  <!-- Ticker Bar -->
-  <div class="ticker-bar" id="tickerBar">
-    <div class="ticker-track" id="tickerTrack">
-      <span class="ticker-item">
-        <span class="ticker-name">Loading market data...</span>
-      </span>
-    </div>
+<!-- ============================================================
+     NAVIGATION
+     ============================================================ -->
+<nav class="nav" role="navigation" aria-label="Main navigation">
+
+  <!-- Logo -->
+  <a class="nav-logo" href="/static/index.html" aria-label="OPTCG Market Terminal home">
+    <svg class="nav-logo-icon" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+      <rect x="2" y="2" width="24" height="24" rx="5" stroke="currentColor" stroke-width="1.5"/>
+      <path d="M8 14 L14 8 L20 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M8 19 L14 13 L20 19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.45"/>
+      <circle cx="14" cy="14" r="2" fill="currentColor"/>
+    </svg>
+    <span class="nav-logo-text">OPTCG <span>TERMINAL</span></span>
+  </a>
+
+  <!-- Desktop Tabs -->
+  <div class="nav-tabs" role="tablist">
+    <button class="nav-tab active" data-tab="arbitrage" role="tab" aria-selected="true">
+      <span class="nav-tab-icon" aria-hidden="true">⚡</span>
+      Arbitrage Scanner
+    </button>
+    <button class="nav-tab" data-tab="sealed" role="tab" aria-selected="false">
+      <span class="nav-tab-icon" aria-hidden="true">📦</span>
+      Sealed Tracker
+    </button>
+    <button class="nav-tab" data-tab="ev" role="tab" aria-selected="false">
+      <span class="nav-tab-icon" aria-hidden="true">📊</span>
+      EV Calculator
+    </button>
+    <button class="nav-tab" data-tab="overview" role="tab" aria-selected="false">
+      <span class="nav-tab-icon" aria-hidden="true">📈</span>
+      Market Overview
+    </button>
   </div>
 
-  <!-- Top Navigation -->
-  <nav class="topnav">
-    <div class="topnav-logo">
-      <!-- SVG Logo -->
-      <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="OPTCG Terminal">
-        <rect width="28" height="28" rx="5" fill="#00e5c0" fill-opacity="0.12"/>
-        <path d="M6 14C6 9.582 9.582 6 14 6s8 3.582 8 8-3.582 8-8 8" stroke="#00e5c0" stroke-width="1.8" stroke-linecap="round"/>
-        <path d="M14 10v4l3 2" stroke="#00e5c0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-        <circle cx="14" cy="14" r="1.5" fill="#00e5c0"/>
-        <path d="M6 14h3" stroke="#00e5c0" stroke-width="1.8" stroke-linecap="round"/>
-      </svg>
-      <div>
-        <div class="logo-text">OPTCG Terminal</div>
-        <div class="logo-subtitle">Market Intelligence</div>
+  <!-- Right controls (currency, status, user) -->
+  <div id="nav-right" class="nav-right">
+    <!-- Rendered by app.js via updateNavUserState() -->
+    <div class="status-pill"><span class="status-dot"></span>15MIN</div>
+    <a href="/static/login.html" class="btn-signin">Sign In</a>
+    <a href="/static/login.html#register" class="btn-elite">ELITE ⚡</a>
+  </div>
+</nav>
+
+<!-- ============================================================
+     TICKER BAR
+     ============================================================ -->
+<div class="ticker-bar" aria-hidden="true">
+  <span class="ticker-label">TOP SIGNALS</span>
+  <div id="ticker-track" class="ticker-track">
+    <!-- Populated by renderTicker() -->
+    <div class="ticker-item">
+      <span class="ticker-item-name">Loading market data…</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     MAIN CONTENT
+     ============================================================ -->
+<main class="app-main" id="app-main">
+
+  <!-- ===========================================================
+       TAB 1: ARBITRAGE SCANNER
+       =========================================================== -->
+  <section class="tab-panel active" id="tab-arbitrage" role="tabpanel" aria-labelledby="tab-btn-arbitrage">
+
+    <!-- Stat Cards -->
+    <div class="stat-grid" id="arb-stat-grid">
+      <div class="stat-card">
+        <span class="stat-label">Total Opportunities</span>
+        <span class="stat-value" id="stat-total">—</span>
+        <span class="stat-sub">after filters</span>
+      </div>
+      <div class="stat-card accent">
+        <span class="stat-label">Best Profit</span>
+        <span class="stat-value" id="stat-best-profit">—</span>
+        <span class="stat-sub">single card</span>
+      </div>
+      <div class="stat-card positive">
+        <span class="stat-label">Buy EU Signals</span>
+        <span class="stat-value" id="stat-buy-eu">—</span>
+        <span class="stat-sub">cheaper in EU market</span>
+      </div>
+      <div class="stat-card blue">
+        <span class="stat-label">Buy US Signals</span>
+        <span class="stat-value" id="stat-buy-us">—</span>
+        <span class="stat-sub">cheaper in US market</span>
       </div>
     </div>
 
-    <!-- Desktop Tabs -->
-    <div class="topnav-tabs">
-      <button class="nav-tab active" data-tab="arbitrage">
-        ⚡ Arbitrage Scanner
-      </button>
-      <button class="nav-tab" data-tab="sealed">
-        📦 Sealed Tracker
-      </button>
-      <button class="nav-tab" data-tab="ev">
-        🧮 EV Calculator <span class="lock-icon" id="evLockIcon">🔒</span>
-      </button>
-      <button class="nav-tab" data-tab="overview">
-        📊 Market Overview
-      </button>
+    <!-- Filter Bar -->
+    <div class="filter-bar" role="search" aria-label="Arbitrage filters">
+
+      <!-- Region -->
+      <div class="filter-group">
+        <span class="filter-label">Region</span>
+        <button class="pill-btn active" data-arb-region="all">🌍 All</button>
+        <button class="pill-btn" data-arb-region="JP">🇯🇵 JP</button>
+        <button class="pill-btn" data-arb-region="EN">🇺🇸 EN</button>
+      </div>
+
+      <div class="filter-sep" aria-hidden="true"></div>
+
+      <!-- Set -->
+      <div class="filter-group">
+        <span class="filter-label">Set</span>
+        <select class="filter-select" id="filter-set" aria-label="Filter by set">
+          <option value="all">All Sets</option>
+        </select>
+      </div>
+
+      <div class="filter-sep" aria-hidden="true"></div>
+
+      <!-- Rarity -->
+      <div class="filter-group">
+        <span class="filter-label">Rarity</span>
+        <button class="pill-btn active" data-arb-rarity="all">All</button>
+        <button class="pill-btn" data-arb-rarity="sec">⭐ SEC</button>
+        <button class="pill-btn" data-arb-rarity="manga">🎨 Manga/SP</button>
+        <button class="pill-btn" data-arb-rarity="regular">Regular</button>
+      </div>
+
+      <div class="filter-sep" aria-hidden="true"></div>
+
+      <!-- Signal -->
+      <div class="filter-group">
+        <span class="filter-label">Signal</span>
+        <button class="pill-btn active" data-arb-signal="all">All</button>
+        <button class="pill-btn" data-arb-signal="BUY_EU">BUY EU</button>
+        <button class="pill-btn" data-arb-signal="BUY_US">BUY US</button>
+        <button class="pill-btn" data-arb-signal="WATCH">WATCH</button>
+      </div>
+
+      <div class="filter-sep" aria-hidden="true"></div>
+
+      <!-- Search -->
+      <label class="search-input-wrap">
+        <span class="search-icon" aria-hidden="true">🔍</span>
+        <input
+          type="search"
+          class="search-input"
+          id="arb-search"
+          placeholder="Search cards, sets, codes…"
+          aria-label="Search cards"
+          autocomplete="off"
+        />
+      </label>
+
     </div>
 
-    <div class="topnav-right">
-      <!-- Currency Switcher -->
-      <div class="currency-switch">
-        <button class="currency-btn active" data-currency="EUR">EUR</button>
-        <button class="currency-btn" data-currency="CHF">CHF</button>
-        <button class="currency-btn" data-currency="USD">USD</button>
-      </div>
-
-      <!-- Live Badge -->
-      <div class="live-badge">
-        <span class="live-dot"></span>
-        <span id="dataFreshness">LIVE</span>
-      </div>
-
-      <!-- User Badge -->
-      <div class="user-badge" id="userBadge" onclick="handleUserBadgeClick()">
-        <span id="userEmail">Sign In</span>
-        <span class="tier-badge free" id="tierBadge">FREE</span>
-      </div>
-    </div>
-  </nav>
-
-  <!-- Main Content -->
-  <main class="main-content">
-
-    <!-- ═══════════════════════════════════════════════════════
-         TAB 1: ARBITRAGE SCANNER
-         ═══════════════════════════════════════════════════ -->
-    <div class="tab-panel active" id="tab-arbitrage">
-      <div class="section-header">
-        <div>
-          <div class="section-title">Arbitrage Scanner</div>
-          <div class="section-subtitle" id="arbSubtitle">
-            Scanning EU ↔ US price gaps across JP and EN markets
-          </div>
-        </div>
-        <div class="section-controls">
-          <div class="search-wrap">
-            <span class="search-icon">⌕</span>
-            <input class="search-input" id="arbSearch" type="text" placeholder="Filter by name..." />
-          </div>
-          <button class="btn btn-secondary btn-sm" onclick="refreshArbitrage()">
-            ↻ Refresh
-          </button>
-          <button class="btn btn-upgrade btn-sm" id="arbUpgradeBtn" onclick="openUpgradeModal()">
-            Upgrade to Pro
-          </button>
-        </div>
-      </div>
-
-      <!-- Stat Row -->
-      <div class="stat-grid" id="arbStats">
-        <div class="stat-card">
-          <div class="stat-label">Total Opportunities</div>
-          <div class="stat-value accent" id="statTotalOpps">—</div>
-          <div class="stat-sub">across all scanned sets</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Best Profit (<span id="statProfitCurrency">EUR</span>)</div>
-          <div class="stat-value" id="statBestProfit">—</div>
-          <div class="stat-sub" id="statBestName">—</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">BUY EU Signals</div>
-          <div class="stat-value accent" id="statBuyEU">—</div>
-          <div class="stat-sub">buy EU → sell US</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">BUY US Signals</div>
-          <div class="stat-value" id="statBuyUS">—</div>
-          <div class="stat-sub">buy US → sell EU</div>
-        </div>
-      </div>
-
-      <!-- Filter Bar -->
-      <div class="filter-bar">
-        <div class="filter-group">
-          <span class="filter-label">Region</span>
-          <button class="filter-btn active" data-arb-region="all">🌍 All</button>
-          <button class="filter-btn" data-arb-region="JP">🇯🇵 JP</button>
-          <button class="filter-btn" data-arb-region="EN">🇺🇸 EN</button>
-        </div>
-        <div class="filter-sep"></div>
-        <div class="filter-group">
-          <span class="filter-label">Rarity</span>
-          <button class="filter-btn active" data-arb-rarity="all">All</button>
-          <button class="filter-btn" data-arb-rarity="sec">⭐ SEC</button>
-          <button class="filter-btn" data-arb-rarity="manga">🎨 Manga/SP</button>
-          <button class="filter-btn" data-arb-rarity="regular">🃏 Regular</button>
-        </div>
-        <div class="filter-sep"></div>
-        <div class="filter-group">
-          <span class="filter-label">Signal</span>
-          <button class="filter-btn active" data-arb-signal="all">All</button>
-          <button class="filter-btn" data-arb-signal="BUY_EU">BUY EU</button>
-          <button class="filter-btn" data-arb-signal="BUY_US">BUY US</button>
-          <button class="filter-btn" data-arb-signal="WATCH">WATCH</button>
-        </div>
-      </div>
-
-      <!-- Free Tier Notice -->
-      <div class="error-banner hidden" id="arbFreeLimitBanner">
-        <span>⚠️</span>
-        <span>Free tier shows the top 10 results from the latest 3 sets. Profit figures are hidden.
-          <a href="#" onclick="openUpgradeModal()">Upgrade to Pro</a> for full access.</span>
-      </div>
-
-      <!-- Table -->
-      <div class="data-table-wrap">
-        <table class="data-table" id="arbTable">
+    <!-- Data Table -->
+    <div class="table-wrap" id="arb-table-wrap">
+      <div class="table-scroll">
+        <table class="data-table" id="arb-table" aria-label="Arbitrage opportunities">
           <thead>
             <tr>
-              <th data-sort="name">Product / Card <span class="sort-arrow">↕</span></th>
-              <th>Set <span class="sort-arrow">↕</span></th>
-              <th>Region</th>
-              <th data-sort="cardmarket_price" class="sorted">EU Price <span class="sort-arrow">↓</span></th>
-              <th data-sort="tcgplayer_price">US Price <span class="sort-arrow">↕</span></th>
-              <th data-sort="profit_eur">Profit (€) <span class="sort-arrow">↕</span></th>
-              <th>Signal</th>
-              <th class="hide-mobile">Buy On</th>
-
+              <th data-col="name">PRODUCT/CARD <span class="sort-icon">↕</span></th>
+              <th data-col="set_name">SET <span class="sort-icon">↕</span></th>
+              <th data-col="_region">REGION <span class="sort-icon">↕</span></th>
+              <th data-col="eu_price" style="text-align:right">EU PRICE <span class="sort-icon">↕</span></th>
+              <th data-col="us_price"  style="text-align:right">US PRICE <span class="sort-icon">↕</span></th>
+              <th data-col="profit_eur"       style="text-align:right">PROFIT <span class="sort-icon">▼</span></th>
+              <th data-col="profit_pct"       style="text-align:right">% <span class="sort-icon">↕</span></th>
+              <th data-col="signal">SIGNAL <span class="sort-icon">↕</span></th>
+              <th style="cursor:default">BUY ON</th>
             </tr>
           </thead>
-          <tbody id="arbTableBody">
-            <tr>
-              <td colspan="8">
-                <div class="loading-state">
-                  <span class="loading-spinner"></span>
-                  Loading arbitrage data...
-                </div>
-              </td>
-            </tr>
+          <tbody id="arb-tbody">
+            <!-- Skeleton rows while loading -->
+            <tr><td colspan="9"><div class="skeleton skeleton-row"></div></td></tr>
+            <tr><td colspan="9"><div class="skeleton skeleton-row"></div></td></tr>
+            <tr><td colspan="9"><div class="skeleton skeleton-row"></div></td></tr>
+            <tr><td colspan="9"><div class="skeleton skeleton-row"></div></td></tr>
+            <tr><td colspan="9"><div class="skeleton skeleton-row"></div></td></tr>
+            <tr><td colspan="9"><div class="skeleton skeleton-row"></div></td></tr>
+            <tr><td colspan="9"><div class="skeleton skeleton-row"></div></td></tr>
+            <tr><td colspan="9"><div class="skeleton skeleton-row"></div></td></tr>
           </tbody>
         </table>
       </div>
-    </div>
 
-    <!-- ═══════════════════════════════════════════════════════
-         TAB 2: SEALED TRACKER
-         ═══════════════════════════════════════════════════ -->
-    <div class="tab-panel" id="tab-sealed">
-      <div class="section-header">
-        <div>
-          <div class="section-title">Sealed Product Tracker</div>
-          <div class="section-subtitle">Booster boxes, starter decks, and sets — current market prices</div>
-        </div>
-        <div class="section-controls">
-          <span style="font-size:11px; color:var(--text-dim); font-style:italic">🌍 All regions included</span>
-          <button class="btn btn-secondary btn-sm" onclick="refreshSealed()">↻ Refresh</button>
+      <!-- Pro lock overlay (hidden for paid users) -->
+      <div id="arb-pro-wrap" style="display:none; position:relative;">
+        <div class="pro-lock-overlay">
+          <div class="pro-lock-card">
+            <h3>Unlock All Results</h3>
+            <p>Upgrade to access 6,000+ cards with full profit data</p>
+            <a href="/api/billing/checkout" class="btn-upgrade">⚡ Upgrade to Elite</a>
+          </div>
         </div>
       </div>
 
-      <!-- Sealed Tracker Controls -->
-      <div class="filter-bar" id="sealedFilterBar">
-        <div class="filter-group">
-          <span class="filter-label">Set</span>
-          <select class="filter-select" id="sealedSetFilter">
-            <option value="all">All Sets</option>
+      <!-- Table footer (pagination / count) -->
+      <div id="arb-tfoot"></div>
+    </div>
+
+  </section>
+
+  <!-- ===========================================================
+       TAB 2: SEALED TRACKER
+       =========================================================== -->
+  <section class="tab-panel" id="tab-sealed" role="tabpanel">
+
+    <!-- Filter Bar -->
+    <div class="filter-bar" role="search" aria-label="Sealed product filters">
+
+      <!-- Set -->
+      <div class="filter-group">
+        <span class="filter-label">Set</span>
+        <select class="filter-select" id="sealed-filter-set" aria-label="Filter by set">
+          <option value="all">All Sets</option>
+        </select>
+      </div>
+
+      <div class="filter-sep" aria-hidden="true"></div>
+
+      <!-- Type -->
+      <div class="filter-group">
+        <span class="filter-label">Type</span>
+        <button class="pill-btn active" data-sealed-type="all">All</button>
+        <button class="pill-btn" data-sealed-type="case">📦 Cases</button>
+        <button class="pill-btn" data-sealed-type="box">🎴 Booster Box</button>
+        <button class="pill-btn" data-sealed-type="booster">🃏 Booster</button>
+      </div>
+
+      <div class="filter-sep" aria-hidden="true"></div>
+
+      <!-- Region -->
+      <div class="filter-group">
+        <span class="filter-label">Region</span>
+        <button class="pill-btn active" data-sealed-region="all">🌍 All</button>
+        <button class="pill-btn" data-sealed-region="JP">🇯🇵 JP</button>
+        <button class="pill-btn" data-sealed-region="EN">🇺🇸 EN</button>
+      </div>
+
+      <div class="filter-sep" aria-hidden="true"></div>
+
+      <!-- Sort -->
+      <div class="filter-group">
+        <span class="filter-label">Sort</span>
+        <button class="pill-btn active" data-sealed-sort="price">💰 Price</button>
+        <button class="pill-btn" data-sealed-sort="trend">📈 Trend</button>
+        <button class="pill-btn" data-sealed-sort="set">📋 Set</button>
+      </div>
+
+    </div>
+
+    <!-- Product Grid -->
+    <div id="sealed-grid" class="product-grid">
+      <!-- Skeleton cards -->
+      <div class="skeleton skeleton-card"></div>
+      <div class="skeleton skeleton-card"></div>
+      <div class="skeleton skeleton-card"></div>
+      <div class="skeleton skeleton-card"></div>
+      <div class="skeleton skeleton-card"></div>
+      <div class="skeleton skeleton-card"></div>
+      <div class="skeleton skeleton-card"></div>
+      <div class="skeleton skeleton-card"></div>
+    </div>
+
+  </section>
+
+  <!-- ===========================================================
+       TAB 3: EV CALCULATOR
+       =========================================================== -->
+  <section class="tab-panel" id="tab-ev" role="tabpanel">
+
+    <div class="section-header">
+      <span class="section-title">Expected Value Calculator</span>
+    </div>
+
+    <div class="ev-layout">
+
+      <!-- Left: Controls -->
+      <div class="ev-panel">
+        <h2>Configuration</h2>
+
+        <div class="form-group">
+          <label class="form-label" for="ev-set">Set</label>
+          <select class="form-select" id="ev-set" aria-label="Select set for EV calculation">
+            <option value="">Select a set…</option>
           </select>
         </div>
-        <div class="filter-sep"></div>
-        <div class="filter-group">
-          <span class="filter-label">Type</span>
-          <button class="filter-btn active" data-sealed-type="all">All</button>
-          <button class="filter-btn" data-sealed-type="case">📦 Cases</button>
-          <button class="filter-btn" data-sealed-type="boosterbox">🎴 Booster Box</button>
-          <button class="filter-btn" data-sealed-type="booster">🃏 Booster</button>
-        </div>
-        <div class="filter-sep"></div>
-        <div class="filter-group">
-          <span class="filter-label">Region</span>
-          <button class="filter-btn active" data-sealed-region="all">🌍 All</button>
-          <button class="filter-btn" data-sealed-region="JP">🇯🇵 JP</button>
-          <button class="filter-btn" data-sealed-region="EN">🇺🇸 EN</button>
-        </div>
-        <div class="filter-sep"></div>
-        <div class="filter-group">
-          <span class="filter-label">Sort</span>
-          <button class="filter-btn active" data-sealed-sort="price">💰 Price</button>
-          <button class="filter-btn" data-sealed-sort="trend">📈 Trend</button>
-          <button class="filter-btn" data-sealed-sort="set">🗂 Set</button>
-        </div>
-      </div>
 
-      <!-- Pro Gate Wrapper -->
-      <div id="sealedContent">
-        <div class="product-grid" id="sealedGrid">
-          <div style="grid-column:1/-1">
-            <div class="loading-state">
-              <span class="loading-spinner"></span>
-              Loading sealed products...
-            </div>
+        <div class="form-group">
+          <label class="form-label">Language / Format</label>
+          <div class="lang-toggle" role="group" aria-label="Box language">
+            <button class="lang-btn active" data-ev-lang="JP">🇯🇵 JP (10 packs)</button>
+            <button class="lang-btn" data-ev-lang="EN">🇺🇸 EN (24 packs)</button>
           </div>
-        </div>
-      </div>
-
-      <!-- Pro Upgrade CTA (shown for free users) -->
-      <div class="pro-gate hidden" id="sealedProGate">
-        <div style="height: 300px; opacity:0.2; pointer-events:none;" id="sealedBlurPreview"></div>
-        <div class="pro-gate-overlay">
-          <div style="font-size:24px">📦</div>
-          <div class="pro-gate-title">Full Sealed Tracker</div>
-          <div class="pro-gate-subtitle">
-            Get access to all sets, sparkline charts, 30-day price history,
-            and JP + EN coverage.
-          </div>
-          <button class="btn btn-upgrade" onclick="openUpgradeModal()">Upgrade to Pro — CHF 19/mo</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- ═══════════════════════════════════════════════════════
-         TAB 3: EV CALCULATOR
-         ═══════════════════════════════════════════════════ -->
-    <div class="tab-panel" id="tab-ev">
-      <div class="section-header">
-        <div>
-          <div class="section-title">EV Calculator</div>
-          <div class="section-subtitle">Expected Value per booster box based on live card prices</div>
-        </div>
-      </div>
-
-      <!-- Pro Gate -->
-      <div class="pro-gate" id="evContent">
-        <!-- EV Panel (shown when Pro) -->
-        <div class="ev-panel" id="evPanel">
-          <div class="ev-form">
-            <h3 style="font-size:15px; margin-bottom:var(--space-5); color:var(--text)">Calculate Box EV</h3>
-
-            <div class="form-group">
-              <label class="form-label">Set</label>
-              <select class="form-select" id="evSetSelect">
-                <option value="">Loading sets...</option>
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Language</label>
-              <select class="form-select" id="evLangSelect">
-                <option value="JP">🇯🇵 Japanese (10 packs/box)</option>
-                <option value="EN">🇺🇸 English (24 packs/box)</option>
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Box Cost (€) — leave blank to use market price</label>
-              <input class="form-input" id="evBoxCost" type="number" min="0" step="0.01"
-                     placeholder="Auto-detect from market" />
-            </div>
-
-            <button class="btn btn-primary w-full" onclick="calculateEV()">
-              Calculate EV
-            </button>
-
-            <div class="mt-4 text-dim" style="font-size:11px; line-height:1.6">
-              Pull rates based on community data. JP box = 10 packs, EN box = 24 packs.
-              Prices from EU market (EUR).
-            </div>
-          </div>
-
-          <!-- EV Result Panel -->
-          <div class="ev-result" id="evResultPanel">
-            <div class="empty-state" id="evEmptyState">
-              <div class="empty-state-icon">🧮</div>
-              <div class="empty-state-title">Select a set to calculate EV</div>
-              <div class="empty-state-sub">Uses live card prices from EU market</div>
-            </div>
-
-            <div class="hidden" id="evResultContent">
-              <div class="ev-verdict" id="evVerdictBox">
-                <div>
-                  <div class="ev-verdict-text" id="evVerdictText">CALCULATING...</div>
-                  <div style="font-size:12px; margin-top:4px; opacity:0.7" id="evVerdictSub"></div>
-                </div>
-              </div>
-
-              <div class="ev-breakdown" id="evBreakdown">
-                <!-- Populated by JS -->
-              </div>
-            </div>
-          </div>
+          <span class="password-hint" id="ev-packs-hint" style="margin-top:6px;display:block">10 packs per box</span>
         </div>
 
-        <!-- Pro Gate Overlay (shown when free) -->
-        <div class="pro-gate-overlay hidden" id="evProGate">
-          <div style="font-size:32px">🧮</div>
-          <div class="pro-gate-title">EV Calculator</div>
-          <div class="pro-gate-subtitle">
-            Calculate the expected value of any booster box using live card prices.
-            Know whether to open or hold before you buy.
-          </div>
-          <button class="btn btn-upgrade" onclick="openUpgradeModal()">Upgrade to Pro — CHF 19/mo</button>
-          <div style="font-size:11px; color:var(--text-dim)">JP & EN boxes supported</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ═══════════════════════════════════════════════════════
-         TAB 4: MARKET OVERVIEW
-         ═══════════════════════════════════════════════════ -->
-    <div class="tab-panel" id="tab-overview">
-      <div class="section-header">
-        <div>
-          <div class="section-title">Market Overview</div>
-          <div class="section-subtitle">Top movers, set performance, and market summary</div>
-        </div>
-        <button class="btn btn-secondary btn-sm" onclick="refreshOverview()">↻ Refresh</button>
-      </div>
-
-      <div class="stat-grid" id="overviewStats">
-        <div class="stat-card">
-          <div class="stat-label">Sets Tracked</div>
-          <div class="stat-value" id="ovSetsTracked">—</div>
-          <div class="stat-sub">JP + EN combined</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Top Signal</div>
-          <div class="stat-value accent" id="ovTopSignal">—</div>
-          <div class="stat-sub">highest confidence opportunity</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Recent Sets</div>
-          <div class="stat-value" id="ovRecentSets">—</div>
-          <div class="stat-sub">latest releases</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Data Last Updated</div>
-          <div class="stat-value mono" id="ovLastUpdate" style="font-size:14px">—</div>
-          <div class="stat-sub">Free tier: 24h cache</div>
-        </div>
-      </div>
-
-      <div class="overview-grid">
-        <!-- Top Movers -->
-        <div>
-          <div class="movers-list">
-            <div class="movers-header">🔥 Top Arbitrage Movers</div>
-            <div id="topMoversList">
-              <div class="loading-state">
-                <span class="loading-spinner"></span>
-                Loading market data...
-              </div>
-            </div>
-          </div>
+        <div class="form-group">
+          <label class="form-label" for="ev-box-cost">Box Cost (EUR)</label>
+          <input
+            class="form-input"
+            id="ev-box-cost"
+            type="number"
+            min="0"
+            step="0.01"
+            value="100"
+            placeholder="e.g. 100"
+            aria-label="Box cost in EUR"
+          />
         </div>
 
-        <!-- Recent Sets -->
-        <div>
-          <div class="movers-list">
-            <div class="movers-header">🆕 Recent Sets</div>
-            <div id="recentSetsList">
-              <div class="loading-state">
-                <span class="loading-spinner"></span>
-                Loading sets...
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-  </main>
-</div>
-
-<!-- Mobile Tab Bar -->
-<div class="mobile-tabs">
-  <button class="mobile-tab-btn active" data-tab="arbitrage">
-    <span class="mobile-tab-icon">⚡</span>
-    <span>Arb</span>
-  </button>
-  <button class="mobile-tab-btn" data-tab="sealed">
-    <span class="mobile-tab-icon">📦</span>
-    <span>Sealed</span>
-  </button>
-  <button class="mobile-tab-btn" data-tab="ev">
-    <span class="mobile-tab-icon">🧮</span>
-    <span>EV</span>
-  </button>
-  <button class="mobile-tab-btn" data-tab="overview">
-    <span class="mobile-tab-icon">📊</span>
-    <span>Market</span>
-  </button>
-</div>
-
-<!-- Toast Container -->
-<div class="toast-container" id="toastContainer"></div>
-
-<!-- Upgrade Modal -->
-<div class="modal-backdrop" id="upgradeModal">
-  <div class="modal" style="position:relative">
-    <button class="modal-close" onclick="closeUpgradeModal()">✕</button>
-    <h2 style="font-size:22px; margin-bottom:6px">Upgrade Your Terminal</h2>
-    <p style="color:var(--text-muted); font-size:13px; margin-bottom:var(--space-5)">
-      Unlock full market intelligence — all sets, real-time data, EV calculator, and more.
-    </p>
-
-    <div class="plans-grid">
-      <div class="plan-card highlighted">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:var(--space-3)">
-          <div class="plan-name">Pro</div>
-          <span style="font-family:var(--font-mono); font-size:10px; background:rgba(0,229,192,0.15); color:var(--accent); padding:2px 6px; border-radius:3px">EARLY BIRD</span>
-        </div>
-        <div class="plan-price">
-          CHF 19<span class="plan-price-label">/month</span>
-        </div>
-        <ul class="plan-features">
-          <li>All sets (JP + EN)</li>
-          <li>Real-time data (15-min refresh)</li>
-          <li>Full arbitrage scanner + profit</li>
-          <li>Sealed product tracker + charts</li>
-          <li>EV Calculator</li>
-          <li>Price history (30 days)</li>
-        </ul>
-        <button class="btn btn-primary w-full" onclick="startCheckout('pro')">
-          Start Pro →
+        <button class="btn-calculate" id="btn-calculate">
+          Calculate EV
         </button>
       </div>
-      <div class="plan-card">
-        <div class="plan-name" style="margin-bottom:var(--space-3)">Elite</div>
-        <div class="plan-price">
-          CHF 69<span class="plan-price-label">/month</span>
+
+      <!-- Right: Results -->
+      <div>
+        <div id="ev-results" class="ev-results">
+          <!-- Empty state before calculation -->
+          <div class="ev-panel" style="background:var(--surface)">
+            <div class="empty-state" style="padding:40px 20px">
+              <span class="empty-icon">📊</span>
+              <span class="empty-title">Select a set and calculate</span>
+              <span class="empty-sub">EV results will appear here</span>
+            </div>
+          </div>
         </div>
-        <ul class="plan-features">
-          <li>Everything in Pro</li>
-          <li>1-year price history</li>
-          <li>Email price alerts</li>
-          <li>API access (coming soon)</li>
-          <li>Priority support</li>
-        </ul>
-        <button class="btn btn-secondary w-full" onclick="startCheckout('elite')">
-          Start Elite →
-        </button>
+      </div>
+
+    </div>
+
+  </section>
+
+  <!-- ===========================================================
+       TAB 4: MARKET OVERVIEW
+       =========================================================== -->
+  <section class="tab-panel" id="tab-overview" role="tabpanel">
+
+    <!-- Top Stat Cards -->
+    <div class="stat-grid">
+      <div class="stat-card accent">
+        <span class="stat-label">Sets Tracked</span>
+        <span class="stat-value" id="ov-sets">49</span>
+        <span class="stat-sub">across JP &amp; EN</span>
+      </div>
+      <div class="stat-card positive">
+        <span class="stat-label">Top Signal</span>
+        <span class="stat-value" id="ov-top-signal" style="font-size:18px">—</span>
+        <span class="stat-sub">dominant opportunity</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Most Recent Set</span>
+        <span class="stat-value" id="ov-recent" style="font-size:16px;line-height:1.3">—</span>
+        <span class="stat-sub">latest release</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Data Updated</span>
+        <span class="stat-value" id="ov-updated" style="font-size:18px">—</span>
+        <span class="stat-sub">every 15 minutes</span>
       </div>
     </div>
 
-    <div style="margin-top:var(--space-4); text-align:center; font-size:11px; color:var(--text-dim)">
-      Cancel anytime • CHF pricing • Stripe secure checkout
-    </div>
-  </div>
-</div>
+    <!-- Two-column layout -->
+    <div class="overview-grid">
 
-<script src="/static/app.js"></script>
+      <!-- Top 5 Arbitrage Movers -->
+      <div class="overview-panel">
+        <div class="overview-panel-header">⚡ Top 5 Arbitrage Movers</div>
+        <ul class="overview-list" id="ov-movers" aria-label="Top arbitrage opportunities">
+          <li class="overview-list-item">
+            <span class="empty-sub">Loading…</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Recent Sets -->
+      <div class="overview-panel">
+        <div class="overview-panel-header">🗓 Recent Sets</div>
+        <ul class="overview-list" id="ov-sets-list" aria-label="Recent card sets">
+          <li class="overview-list-item">
+            <span class="empty-sub">Loading…</span>
+          </li>
+        </ul>
+      </div>
+
+    </div>
+
+  </section>
+
+</main>
+
+<!-- ============================================================
+     MOBILE NAV (bottom bar)
+     ============================================================ -->
+<nav class="mobile-nav" aria-label="Mobile navigation" style="display:none">
+  <button class="mobile-nav-btn active" data-tab="arbitrage">
+    <span class="mobile-nav-btn-icon" aria-hidden="true">⚡</span>
+    Arb
+  </button>
+  <button class="mobile-nav-btn" data-tab="sealed">
+    <span class="mobile-nav-btn-icon" aria-hidden="true">📦</span>
+    Sealed
+  </button>
+  <button class="mobile-nav-btn" data-tab="ev">
+    <span class="mobile-nav-btn-icon" aria-hidden="true">📊</span>
+    EV
+  </button>
+  <button class="mobile-nav-btn" data-tab="overview">
+    <span class="mobile-nav-btn-icon" aria-hidden="true">📈</span>
+    Market
+  </button>
+</nav>
+
+<!-- Toast container -->
+<div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+<!-- ============================================================
+     MOBILE NAV VISIBILITY — show on small screens
+     ============================================================ -->
+<script>
+  (function() {
+    function checkMobile() {
+      const mobileNav = document.querySelector('.mobile-nav');
+      if (!mobileNav) return;
+      mobileNav.style.display = window.innerWidth <= 768 ? 'flex' : 'none';
+    }
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+  })();
+</script>
+
+<!-- Scripts -->
+<script src="auth.js"></script>
+<script src="app.js"></script>
+
 </body>
 </html>
