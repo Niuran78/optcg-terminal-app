@@ -62,8 +62,8 @@ def _extract_price(item: dict, source: str) -> Optional[float]:
     if source == "cardmarket":
         cm = prices.get("cardmarket", {})
         if isinstance(cm, dict):
-            # Try lowest_near_mint first, then 7d_average, then 30d_average
-            for key in ["lowest_near_mint", "7d_average", "30d_average"]:
+            # Try lowest_near_mint first, then lowest, then 7d_average, then 30d_average
+            for key in ["lowest_near_mint", "lowest", "7d_average", "30d_average"]:
                 v = cm.get(key)
                 if v is not None:
                     try:
@@ -161,31 +161,8 @@ async def get_sets(tier: str = "free") -> list[dict]:
 
 
 def _detect_language(name: str, code: str, ep: dict) -> str:
-    """Detect if a set is Japanese or English."""
-    name_lower = name.lower()
-    code_upper = code.upper() if code else ""
-    lang_field = ep.get("language", ep.get("lang", "")).upper()
-
-    if lang_field in ("JP", "JPN", "JA", "JAP", "JAPANESE"):
-        return "JP"
-    if lang_field in ("EN", "ENG", "ENGLISH"):
-        return "EN"
-
-    jp_indicators = ["japanese", " jp", "(jp)", "[jp]", "st-", "op-"]
-    for ind in jp_indicators:
-        if ind in name_lower:
-            return "JP"
-
-    if code_upper.startswith(("ST", "OP")) and not code_upper.startswith("OP0"):
-        pass  # Could be either
-
-    en_indicators = ["english", " en", "(en)", "[en]"]
-    for ind in en_indicators:
-        if ind in name_lower:
-            return "EN"
-
-    # Default: check if code pattern matches typical JP sets
-    return "JP" if ep.get("lang", "").upper() in ("JP", "JPN") else "EN"
+    """The API does not distinguish JP vs EN — all sets are mixed. Return ALL."""
+    return "ALL"
 
 
 async def get_cards(set_id: str, tier: str = "free") -> list[dict]:

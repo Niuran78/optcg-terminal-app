@@ -10,10 +10,8 @@ const State = {
   arbData: [],          // Current arbitrage results
   sealedData: [],       // Current sealed products
   arbType: 'card',      // 'product' | 'card'
-  arbLang: 'all',
   arbSignal: 'all',
   arbSort: { col: 'profit_eur', dir: 'desc' },
-  sealedLang: 'all',
   lastRefresh: null,
 };
 
@@ -210,16 +208,6 @@ function setupFilters() {
     });
   });
 
-  // Arbitrage language filter
-  document.querySelectorAll('[data-arb-lang]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('[data-arb-lang]').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      State.arbLang = btn.dataset.arbLang;
-      renderArbTable(State.arbData);
-    });
-  });
-
   // Arbitrage signal filter
   document.querySelectorAll('[data-arb-signal]').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -230,15 +218,6 @@ function setupFilters() {
     });
   });
 
-  // Sealed language filter
-  document.querySelectorAll('[data-sealed-lang]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('[data-sealed-lang]').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      State.sealedLang = btn.dataset.sealedLang;
-      renderSealedGrid(State.sealedData);
-    });
-  });
 }
 
 // ─── Sort Headers ─────────────────────────────────────────────
@@ -269,21 +248,22 @@ async function loadArbitrageData() {
       item_type: State.arbType,
       limit: 200,
     });
-    if (State.arbLang && State.arbLang !== 'all') {
-      params.set('language', State.arbLang);
-    }
 
     const data = await apiCall(`/api/arbitrage/scanner?${params}`);
     State.arbData = data.opportunities || [];
     State.lastRefresh = new Date();
 
-    // Update free tier banner
+    // Update free tier banner — only show if API says tier_limited AND user is not pro/elite
     const banner = document.getElementById('arbFreeLimitBanner');
-    if (data.tier_limited) {
+    const isPaidUser = State.user && (State.user.tier === 'pro' || State.user.tier === 'elite');
+    if (data.tier_limited && !isPaidUser) {
       banner?.classList.remove('hidden');
       document.getElementById('arbUpgradeBtn')?.classList.remove('hidden');
     } else {
       banner?.classList.add('hidden');
+      if (isPaidUser) {
+        document.getElementById('arbUpgradeBtn')?.classList.add('hidden');
+      }
     }
 
     updateArbStats();
@@ -347,11 +327,6 @@ function updateArbStats() {
 function filterArbData(data) {
   let filtered = [...data];
 
-  // Language filter
-  if (State.arbLang && State.arbLang !== 'all') {
-    filtered = filtered.filter(d => (d.set_language || '').toUpperCase() === State.arbLang.toUpperCase());
-  }
-
   // Signal filter
   if (State.arbSignal && State.arbSignal !== 'all') {
     filtered = filtered.filter(d => d.signal === State.arbSignal);
@@ -405,9 +380,8 @@ function renderArbTable(data) {
       NEUTRAL: '— NEUTRAL',
     };
 
-    const lang = item.set_language || 'EN';
-    const langFlag = lang === 'JP' ? '🇯🇵' : '🇺🇸';
-    const langLabel = `<span class="lang-tag ${lang}">${lang}</span>`;
+    const lang = item.set_language || 'ALL';
+    const langLabel = lang !== 'ALL' ? `<span class="lang-tag ${lang}">${lang}</span>` : '';
 
     const profitEUR = item.profit_eur;
     const profitPct = item.profit_pct;
@@ -439,7 +413,7 @@ function renderArbTable(data) {
         <td>
           <div style="font-size:12px; font-weight:500">${escHtml(item.set_name || '—')}</div>
         </td>
-        <td>${langFlag} ${langLabel}</td>
+        <td>${langLabel}</td>
         <td class="mono">${item.cardmarket_price !== null ? fmt(item.cardmarket_price) : '—'}</td>
         <td class="mono">${item.tcgplayer_price !== null ? fmt(item.tcgplayer_price) : '—'}</td>
         <td>${profitHTML}</td>
@@ -494,17 +468,14 @@ function refreshSealed() {
 
 function renderSealedGrid(data) {
   const grid = document.getElementById('sealedGrid');
-  let filtered = [...data];
-
-  if (State.sealedLang && State.sealedLang !== 'all') {
-    filtered = filtered.filter(p => (p.set_language || '').toUpperCase() === State.sealedLang.toUpperCase());
-  }
+  const filtered = [...data];
 
   if (filtered.length === 0) {
     grid.innerHTML = `<div style="grid-column:1/-1">
       <div class="empty-state">
         <div class="empty-state-icon">📦</div>
         <div class="empty-state-title">No sealed products found</div>
+        <div class="empty-state-sub">Try refreshing or check back later</div>
       </div>
     </div>`;
     return;
@@ -514,37 +485,45 @@ function renderSealedGrid(data) {
     const name = p.name || p.product_name || 'Unknown Product';
     const cm = p._cardmarket_price;
     const tcp = p._tcgplayer_price;
-    const lang = p.set_language || 'EN';
-    const langFlag = lang === 'JP' ? '🇯🇵' : '🇺🇸';
+    const cm30d = p.cm_30d_average;
+    const cm7d = p.cm_7d_average;
+    const trend = p.trend; // 'up', 'down', or null
+    const trendArrow = trend === 'up' ? '↑' : trend === 'down' ? '↓' : '—';
+    const trendClass = trend === 'up' ? 'price-positive' : trend === 'down' ? 'price-negative' : '';
+    const imgUrl = p.image_url;
+    const cmUrl = p.cardmarket_url;
 
     return `
       <div class="product-card">
+        ${imgUrl ? `<div style="text-align:center; margin-bottom:var(--space-2)">
+          <img src="${escAttr(imgUrl)}" alt="${escAttr(name)}" style="max-height:80px; max-width:100%; border-radius:4px; object-fit:contain;" onerror="this.style.display='none'" />
+        </div>` : ''}
         <div class="product-card-header">
           <div class="product-card-name">${escHtml(name)}</div>
-          <span class="lang-tag ${lang}">${lang}</span>
         </div>
         <div style="font-size:11px; color:var(--text-dim); margin-bottom:var(--space-2)">
-          ${langFlag} ${escHtml(p.set_name || '')}
+          📦 ${escHtml(p.set_name || '')}
         </div>
         <div class="product-card-prices">
           <div class="product-price-item">
             <div class="product-price-source">🇪🇺 Cardmarket</div>
             <div class="product-price-value">${cm ? fmt(cm) : '—'}</div>
           </div>
-          <div style="color:var(--border-light); font-size:18px">↔</div>
+          ${tcp ? `<div style="color:var(--border-light); font-size:18px">↔</div>
           <div class="product-price-item">
             <div class="product-price-source">🇺🇸 TCGPlayer</div>
-            <div class="product-price-value">${tcp ? fmt(tcp) : '—'}</div>
-          </div>
+            <div class="product-price-value">${fmt(tcp)}</div>
+          </div>` : ''}
         </div>
-        ${!canAccess('pro') ? `
-          <div style="margin-top:var(--space-2); padding:var(--space-2); background:var(--bg-elevated);
-               border-radius:var(--r-sm); font-size:11px; color:var(--text-dim); text-align:center">
-            <a href="#" onclick="openUpgradeModal(); return false;" style="color:var(--accent)">
-              Pro: price charts + history
-            </a>
-          </div>` : `
-          <div class="sparkline-container" id="sparkline-${escHtml(p.id || '')}"></div>`}
+        <div style="display:flex; gap:var(--space-3); margin-top:var(--space-2); font-size:11px; color:var(--text-dim)">
+          ${cm30d !== null && cm30d !== undefined ? `<span>30d avg: ${fmt(cm30d)}</span>` : ''}
+          ${cm7d !== null && cm7d !== undefined ? `<span>7d avg: ${fmt(cm7d)}</span>` : ''}
+          ${trend ? `<span class="${trendClass}" style="font-weight:600">${trendArrow} 7d trend</span>` : ''}
+        </div>
+        <div style="margin-top:var(--space-2); display:flex; gap:var(--space-2); flex-wrap:wrap">
+          ${cmUrl ? `<a href="${escAttr(cmUrl)}" target="_blank" rel="noopener" style="font-size:11px; color:var(--accent); text-decoration:none">🔗 Cardmarket</a>` : ''}
+          ${!canAccess('pro') ? `<a href="#" onclick="openUpgradeModal(); return false;" style="font-size:11px; color:var(--text-dim)">Pro: price charts</a>` : ''}
+        </div>
       </div>
     `;
   }).join('');

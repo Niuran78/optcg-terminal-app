@@ -12,15 +12,15 @@ router = APIRouter(prefix="/api/sealed", tags=["sealed"])
 
 @router.get("/products")
 async def list_sealed_products(
-    language: str = Query(None, description="Filter by language: JP or EN"),
     set_id: str = Query(None, description="Filter by set ID"),
     sort: str = Query("price_highest", description="Sort order"),
     user: UserInfo = Depends(get_current_user),
 ):
     """
-    List all sealed products with current prices.
+    List all sealed products with current Cardmarket prices.
     Free: latest 3 sets.
     Pro/Elite: all sets.
+    Note: The API does not distinguish JP vs EN; all regions are included.
     """
     async with aiosqlite.connect(DATABASE_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -28,9 +28,6 @@ async def list_sealed_products(
         all_sets = await cursor.fetchall()
 
     sets_list = [dict(row) for row in all_sets]
-
-    if language:
-        sets_list = [s for s in sets_list if s.get("language", "").upper() == language.upper()]
 
     if set_id:
         sets_list = [s for s in sets_list if s.get("api_id") == set_id]
@@ -45,12 +42,47 @@ async def list_sealed_products(
         sid = set_info["api_id"]
         try:
             products = await opcg_api.get_products(sid, tier=user.tier)
+            enriched = []
             for p in products:
+                cm_price = p.get("_cardmarket_price")
+                tcp_price = p.get("_tcgplayer_price")
+                # Extract Cardmarket sub-prices for trend display
+                prices = p.get("prices", {}) or {}
+                cm_data = prices.get("cardmarket", {}) if isinstance(prices, dict) else {}
+                cm_30d = None
+                cm_7d = None
+                if isinstance(cm_data, dict):
+                    cm_30d = cm_data.get("30d_average")
+                    cm_7d = cm_data.get("7d_average")
+                    if cm_30d is not None:
+                        try:
+                            cm_30d = float(cm_30d)
+                        except (ValueError, TypeError):
+                            cm_30d = None
+                    if cm_7d is not None:
+                        try:
+                            cm_7d = float(cm_7d)
+                        except (ValueError, TypeError):
+                            cm_7d = None
+
+                # Trend: compare 7d avg vs 30d avg
+                trend = None
+                if cm_7d is not None and cm_30d is not None and cm_30d > 0:
+                    trend = "up" if cm_7d > cm_30d else "down"
+
                 p["set_id"] = sid
                 p["set_name"] = set_info.get("name", "")
-                p["set_language"] = set_info.get("language", "EN")
+                p["set_language"] = "ALL"
                 p["set_code"] = set_info.get("code", "")
-            return products
+                p["cm_30d_average"] = cm_30d
+                p["cm_7d_average"] = cm_7d
+                p["trend"] = trend
+                # Include image URL from API data
+                p["image_url"] = p.get("image") or p.get("image_url") or p.get("img") or None
+                # Include Cardmarket link if available
+                p["cardmarket_url"] = p.get("cardmarket_url") or p.get("cardmarket_link") or None
+                enriched.append(p)
+            return enriched
         except Exception:
             return []
 
@@ -103,12 +135,13 @@ async def get_product_history(
 
 @router.get("/tracker")
 async def sealed_tracker(
-    language: str = Query(None, description="Filter by language: JP or EN"),
+    set_id: str = Query(None, description="Filter by set ID"),
     user: UserInfo = Depends(require_pro),
 ):
     """
     Enhanced sealed product tracker with price change data.
     Requires Pro or Elite.
+    Note: The API does not distinguish JP vs EN; all regions are included.
     """
     async with aiosqlite.connect(DATABASE_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -116,8 +149,8 @@ async def sealed_tracker(
         all_sets = await cursor.fetchall()
 
     sets_list = [dict(row) for row in all_sets]
-    if language:
-        sets_list = [s for s in sets_list if s.get("language", "").upper() == language.upper()]
+    if set_id:
+        sets_list = [s for s in sets_list if s.get("api_id") == set_id]
 
     results = []
     for set_info in sets_list:
