@@ -32,9 +32,11 @@ async def list_sealed_products(
     if set_id:
         sets_list = [s for s in sets_list if s.get("api_id") == set_id]
 
-    # Free tier: latest 3 sets
+    # Free tier: latest 3 sets, Pro/Elite: latest 15 sets (API rate limit)
     if not user.can_access("pro"):
         sets_list = sets_list[:3]
+    else:
+        sets_list = sets_list[:15]  # Limit to avoid API rate exhaustion
 
     all_products = []
 
