@@ -165,6 +165,29 @@ def _detect_language(name: str, code: str, ep: dict) -> str:
     return "ALL"
 
 
+def _classify_region(cm_price: Optional[float], tcp_price: Optional[float]) -> str:
+    """Classify card region based on available marketplace price data.
+
+    Cardmarket = primarily JP/EU market.
+    TCGPlayer  = primarily US/EN market.
+
+    Returns:
+        "BOTH" — prices on both markets
+        "JP"   — Cardmarket price only
+        "EN"   — TCGPlayer price only
+        "JP"   — no data (default fallback)
+    """
+    has_cm = cm_price is not None
+    has_tcp = tcp_price is not None
+    if has_cm and has_tcp:
+        return "BOTH"
+    if has_cm:
+        return "JP"
+    if has_tcp:
+        return "EN"
+    return "JP"
+
+
 async def get_cards(set_id: str, tier: str = "free") -> list[dict]:
     """Fetch cards for a set from API or cache."""
     threshold = _cache_age_threshold(tier)
@@ -181,6 +204,7 @@ async def get_cards(set_id: str, tier: str = "free") -> list[dict]:
                 item = json.loads(row["card_data_json"])
                 item["_cardmarket_price"] = row["cardmarket_price"]
                 item["_tcgplayer_price"] = row["tcgplayer_price"]
+                item["_region"] = _classify_region(row["cardmarket_price"], row["tcgplayer_price"])
                 result.append(item)
             return result
 
@@ -245,6 +269,7 @@ async def get_cards(set_id: str, tier: str = "free") -> list[dict]:
         tcp_price = _extract_price(card, "tcgplayer")
         card["_cardmarket_price"] = cm_price
         card["_tcgplayer_price"] = tcp_price
+        card["_region"] = _classify_region(cm_price, tcp_price)
         result.append(card)
     return result
 

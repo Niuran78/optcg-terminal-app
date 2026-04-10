@@ -86,7 +86,7 @@
         <div>
           <div class="section-title">Arbitrage Scanner</div>
           <div class="section-subtitle" id="arbSubtitle">
-            Scanning EU (Cardmarket) ↔ US (TCGPlayer) price gaps
+            Scanning EU ↔ US price gaps across JP and EN markets
           </div>
         </div>
         <div class="section-controls">
@@ -118,22 +118,22 @@
         <div class="stat-card">
           <div class="stat-label">BUY EU Signals</div>
           <div class="stat-value accent" id="statBuyEU">—</div>
-          <div class="stat-sub">buy Cardmarket → sell TCGPlayer</div>
+          <div class="stat-sub">buy EU → sell US</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">BUY US Signals</div>
           <div class="stat-value" id="statBuyUS">—</div>
-          <div class="stat-sub">buy TCGPlayer → sell Cardmarket</div>
+          <div class="stat-sub">buy US → sell EU</div>
         </div>
       </div>
 
       <!-- Filter Bar -->
       <div class="filter-bar">
         <div class="filter-group">
-          <span class="filter-label">Marketplace</span>
-          <button class="filter-btn active" data-arb-market="both">⚡ Both</button>
-          <button class="filter-btn" data-arb-market="cardmarket">🇪🇺 Cardmarket</button>
-          <button class="filter-btn" data-arb-market="tcgplayer">🇺🇸 TCGPlayer</button>
+          <span class="filter-label">Region</span>
+          <button class="filter-btn active" data-arb-region="all">🌍 All</button>
+          <button class="filter-btn" data-arb-region="JP">🇯🇵 JP</button>
+          <button class="filter-btn" data-arb-region="EN">🇺🇸 EN</button>
         </div>
         <div class="filter-sep"></div>
         <div class="filter-group">
@@ -167,12 +167,13 @@
             <tr>
               <th data-sort="name">Product / Card <span class="sort-arrow">↕</span></th>
               <th>Set <span class="sort-arrow">↕</span></th>
-              <th>Lang</th>
-              <th data-sort="cardmarket_price" class="sorted">CM Price <span class="sort-arrow">↓</span></th>
-              <th data-sort="tcgplayer_price">TCG Price <span class="sort-arrow">↕</span></th>
+              <th>Region</th>
+              <th data-sort="cardmarket_price" class="sorted">EU Price <span class="sort-arrow">↓</span></th>
+              <th data-sort="tcgplayer_price">US Price <span class="sort-arrow">↕</span></th>
               <th data-sort="profit_eur">Profit (€) <span class="sort-arrow">↕</span></th>
               <th>Signal</th>
               <th class="hide-mobile">Buy On</th>
+
             </tr>
           </thead>
           <tbody id="arbTableBody">

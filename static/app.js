@@ -9,7 +9,7 @@ const State = {
   currency: 'EUR',      // Current display currency
   arbData: [],          // Current arbitrage results
   sealedData: [],       // Current sealed products
-  arbMarket: 'both',    // 'both' | 'cardmarket' | 'tcgplayer'
+  arbRegion: 'all',     // 'all' | 'JP' | 'EN'
   arbRarity: 'all',     // 'all' | 'sec' | 'manga' | 'regular'
   arbSignal: 'all',
   arbSort: { col: 'profit_eur', dir: 'desc' },
@@ -203,12 +203,12 @@ function setupSearch() {
 
 // ─── Filters ─────────────────────────────────────────────────
 function setupFilters() {
-  // Marketplace filter
-  document.querySelectorAll('[data-arb-market]').forEach(btn => {
+  // Region filter
+  document.querySelectorAll('[data-arb-region]').forEach(btn => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('[data-arb-market]').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('[data-arb-region]').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      State.arbMarket = btn.dataset.arbMarket;
+      State.arbRegion = btn.dataset.arbRegion;
       renderArbTable(State.arbData);
     });
   });
@@ -324,7 +324,7 @@ function setArbLoading(loading) {
       <tr><td colspan="8">
         <div class="loading-state">
           <span class="loading-spinner"></span>
-          Scanning singles across Cardmarket &amp; TCGPlayer...
+          Scanning singles across EU &amp; US markets...
         </div>
       </td></tr>`;
   }
@@ -363,18 +363,13 @@ function updateArbStats() {
 function filterArbData(data) {
   let filtered = [...data];
 
-  // Marketplace filter
-  if (State.arbMarket === 'cardmarket') {
-    filtered = filtered.filter(d => d.cardmarket_price !== null && d.cardmarket_price !== undefined);
-  } else if (State.arbMarket === 'tcgplayer') {
-    filtered = filtered.filter(d => d.tcgplayer_price !== null && d.tcgplayer_price !== undefined);
-  } else {
-    // 'both' — only items with prices on both markets (true arbitrage)
-    filtered = filtered.filter(d =>
-      (d.cardmarket_price !== null && d.cardmarket_price !== undefined) &&
-      (d.tcgplayer_price !== null && d.tcgplayer_price !== undefined)
-    );
+  // Region filter based on _region field
+  if (State.arbRegion === 'JP') {
+    filtered = filtered.filter(d => d._region === 'JP' || d._region === 'BOTH');
+  } else if (State.arbRegion === 'EN') {
+    filtered = filtered.filter(d => d._region === 'EN' || d._region === 'BOTH');
   }
+  // 'all' — show everything
 
   // Rarity filter
   if (State.arbRarity === 'sec') {
@@ -450,16 +445,13 @@ function renderArbTable(data) {
       NEUTRAL: '— NEUTRAL',
     };
 
-    // Marketplace availability indicators
-    const hasCM = item.cardmarket_price !== null && item.cardmarket_price !== undefined;
-    const hasTCG = item.tcgplayer_price !== null && item.tcgplayer_price !== undefined;
-    const marketLabel = hasCM && hasTCG
-      ? `<span style="font-size:10px; color:var(--accent)">CM+TCG</span>`
-      : hasCM
-        ? `<span style="font-size:10px; color:var(--text-dim)">CM only</span>`
-        : hasTCG
-          ? `<span style="font-size:10px; color:var(--text-dim)">TCG only</span>`
-          : `<span style="font-size:10px; color:var(--text-dim)">—</span>`;
+    // Region flag display
+    const region = item._region || 'JP';
+    const regionLabel = region === 'BOTH'
+      ? `<span style="font-size:14px" title="JP + EN">🇯🇵🇺🇸</span>`
+      : region === 'EN'
+        ? `<span style="font-size:14px" title="EN">🇺🇸</span>`
+        : `<span style="font-size:14px" title="JP">🇯🇵</span>`;
 
     const profitEUR = item.profit_eur;
     const profitPct = item.profit_pct;
@@ -475,7 +467,7 @@ function renderArbTable(data) {
     }
 
     const buyOnHTML = item.buy_market
-      ? `<span style="font-size:11px; color:var(--text-muted)">${item.buy_market === 'cardmarket' ? '🇪🇺 Cardmarket' : '🇺🇸 TCGPlayer'}</span>`
+      ? `<span style="font-size:11px; color:var(--text-muted)">${item.buy_market === 'cardmarket' ? '🇪🇺 Buy EU' : '🇺🇸 Buy US'}</span>`
       : '—';
 
     return `
@@ -491,7 +483,7 @@ function renderArbTable(data) {
         <td>
           <div style="font-size:12px; font-weight:500">${escHtml(item.set_name || '—')}</div>
         </td>
-        <td>${marketLabel}</td>
+        <td>${regionLabel}</td>
         <td class="mono">${item.cardmarket_price !== null ? fmt(item.cardmarket_price) : '—'}</td>
         <td class="mono">${item.tcgplayer_price !== null ? fmt(item.tcgplayer_price) : '—'}</td>
         <td>${profitHTML}</td>
@@ -628,12 +620,12 @@ function renderSealedGrid(data) {
         </div>
         <div class="product-card-prices">
           <div class="product-price-item">
-            <div class="product-price-source">🇪🇺 Cardmarket</div>
+            <div class="product-price-source">🇪🇺 EU Price</div>
             <div class="product-price-value">${cm ? fmt(cm) : '—'}</div>
           </div>
           ${tcp ? `<div style="color:var(--border-light); font-size:18px">↔</div>
           <div class="product-price-item">
-            <div class="product-price-source">🇺🇸 TCGPlayer</div>
+            <div class="product-price-source">🇺🇸 US Price</div>
             <div class="product-price-value">${fmt(tcp)}</div>
           </div>` : ''}
         </div>
@@ -643,7 +635,7 @@ function renderSealedGrid(data) {
           ${trend ? `<span class="${trendClass}" style="font-weight:600">${trendArrow} 7d trend</span>` : ''}
         </div>
         <div style="margin-top:var(--space-2); display:flex; gap:var(--space-2); flex-wrap:wrap">
-          ${cmUrl ? `<a href="${escAttr(cmUrl)}" target="_blank" rel="noopener" style="font-size:11px; color:var(--accent); text-decoration:none">🔗 Cardmarket</a>` : ''}
+          ${cmUrl ? `<a href="${escAttr(cmUrl)}" target="_blank" rel="noopener" style="font-size:11px; color:var(--accent); text-decoration:none">🔗 View listing</a>` : ''}
           ${!canAccess('pro') ? `<a href="#" onclick="openUpgradeModal(); return false;" style="font-size:11px; color:var(--text-dim)">Pro: price charts</a>` : ''}
         </div>
       </div>

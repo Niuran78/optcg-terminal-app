@@ -433,11 +433,16 @@ a:hover { opacity: 0.8; }
   position: sticky;
   top: 52px;
   z-index: 10;
+  background: #111614;
 }
 
 .data-table thead tr {
-  background: var(--bg-surface2);
+  background: #111614;
   border-bottom: 1px solid var(--border);
+}
+
+.data-table thead th {
+  background: #111614;
 }
 
 .data-table th {
