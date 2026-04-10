@@ -339,6 +339,7 @@ function updateArbStats() {
     const profit = best.profit_eur;
     document.getElementById('statBestProfit').textContent = profit ? fmt(profit) : 'Pro only';
     document.getElementById('statBestProfit').className = `stat-value ${profit > 0 ? 'accent' : ''}`;
+    document.getElementById('statProfitCurrency').textContent = State.currency;
     document.getElementById('statBestName').textContent = (best.name || 'Unknown').substring(0, 30);
   }
 }
