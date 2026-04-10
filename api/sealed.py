@@ -32,11 +32,9 @@ async def list_sealed_products(
     if set_id:
         sets_list = [s for s in sets_list if s.get("api_id") == set_id]
 
-    # Free tier: latest 3 sets, Pro/Elite: latest 15 sets (API rate limit)
+    # Free tier: latest 3 sets, Pro/Elite: all sets (data pre-seeded in cache)
     if not user.can_access("pro"):
         sets_list = sets_list[:3]
-    else:
-        sets_list = sets_list[:15]  # Limit to avoid API rate exhaustion
 
     all_products = []
 
@@ -89,7 +87,8 @@ async def list_sealed_products(
         except Exception:
             return []
 
-    batch_size = 5
+    # Larger batch size is fine — get_products() reads from cache first (fast)
+    batch_size = 10
     for i in range(0, len(sets_list), batch_size):
         batch = sets_list[i:i + batch_size]
         batch_results = await asyncio.gather(*[fetch_products(s) for s in batch])

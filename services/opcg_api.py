@@ -1,4 +1,5 @@
 """One Piece Card Game API adapter via RapidAPI with SQLite caching."""
+import asyncio
 import json
 import os
 import logging
@@ -40,17 +41,25 @@ def _headers() -> dict:
 
 def _extract_price(item: dict, source: str) -> Optional[float]:
     """Extract price from API response item for a given source.
-    
-    API response structure:
+
+    Cards:
+        prices.cardmarket.lowest_near_mint or prices.cardmarket.7d_average
+    Products:
+        prices.cardmarket.lowest or prices.cardmarket.30d_average
+    TCGPlayer:
+        prices.tcg_player.market_price
+
+    API response structure example:
     "prices": {
         "cardmarket": {
             "currency": "EUR",
             "lowest_near_mint": 16500,
+            "lowest": 15000,
             "30d_average": 8011.11,
             "7d_average": 8585.71
         },
         "tcg_player": {
-            "currency": "EUR",
+            "currency": "USD",
             "market_price": 6892.48
         }
     }
@@ -58,11 +67,12 @@ def _extract_price(item: dict, source: str) -> Optional[float]:
     prices = item.get("prices", {}) or {}
     if not isinstance(prices, dict):
         return None
-    
+
     if source == "cardmarket":
         cm = prices.get("cardmarket", {})
         if isinstance(cm, dict):
-            # Try lowest_near_mint first, then lowest, then 7d_average, then 30d_average
+            # Try lowest_near_mint first (cards), then lowest (products),
+            # then 7d_average, then 30d_average
             for key in ["lowest_near_mint", "lowest", "7d_average", "30d_average"]:
                 v = cm.get(key)
                 if v is not None:
@@ -73,7 +83,7 @@ def _extract_price(item: dict, source: str) -> Optional[float]:
         # If cm is a number directly
         if isinstance(cm, (int, float)):
             return float(cm)
-    
+
     elif source == "tcgplayer":
         # API uses "tcg_player" (with underscore)
         for k in ["tcg_player", "tcgplayer", "tcgPlayer"]:
@@ -87,8 +97,40 @@ def _extract_price(item: dict, source: str) -> Optional[float]:
                         pass
             elif isinstance(tcg, (int, float)):
                 return float(tcg)
-    
+
     return None
+
+
+def _classify_region(cm_price: Optional[float], tcp_price: Optional[float]) -> str:
+    """Classify card region based on available marketplace price data.
+
+    Cardmarket = primarily JP/EU market.
+    TCGPlayer  = primarily US/EN market.
+
+    Returns:
+        "BOTH" — prices on both markets
+        "JP"   — Cardmarket price only
+        "EN"   — TCGPlayer price only
+        "BOTH" — no data (default fallback)
+    """
+    has_cm = cm_price is not None and cm_price > 0
+    has_tcp = tcp_price is not None and tcp_price > 0
+    if has_cm and has_tcp:
+        return "BOTH"
+    if has_cm:
+        return "JP"
+    if has_tcp:
+        return "EN"
+    return "BOTH"  # Default
+
+
+def _card_from_cache(row) -> dict:
+    """Build a card dict from a cache row, attaching price and region fields."""
+    item = json.loads(row["card_data_json"])
+    item["_cardmarket_price"] = row["cardmarket_price"]
+    item["_tcgplayer_price"] = row["tcgplayer_price"]
+    item["_region"] = _classify_region(row["cardmarket_price"], row["tcgplayer_price"])
+    return item
 
 
 async def get_sets(tier: str = "free") -> list[dict]:
@@ -165,31 +207,8 @@ def _detect_language(name: str, code: str, ep: dict) -> str:
     return "ALL"
 
 
-def _classify_region(cm_price: Optional[float], tcp_price: Optional[float]) -> str:
-    """Classify card region based on available marketplace price data.
-
-    Cardmarket = primarily JP/EU market.
-    TCGPlayer  = primarily US/EN market.
-
-    Returns:
-        "BOTH" — prices on both markets
-        "JP"   — Cardmarket price only
-        "EN"   — TCGPlayer price only
-        "JP"   — no data (default fallback)
-    """
-    has_cm = cm_price is not None
-    has_tcp = tcp_price is not None
-    if has_cm and has_tcp:
-        return "BOTH"
-    if has_cm:
-        return "JP"
-    if has_tcp:
-        return "EN"
-    return "JP"
-
-
 async def get_cards(set_id: str, tier: str = "free") -> list[dict]:
-    """Fetch cards for a set from API or cache."""
+    """Fetch ALL cards for a set from API or cache, with full pagination."""
     threshold = _cache_age_threshold(tier)
     async with aiosqlite.connect(DATABASE_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -208,37 +227,42 @@ async def get_cards(set_id: str, tier: str = "free") -> list[dict]:
                 result.append(item)
             return result
 
-    # Fetch from API
+    # Fetch ALL pages from API
+    all_cards = []
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(
-                f"{BASE_URL}/episodes/{set_id}/cards",
-                params={"sort": "price_highest"},
-                headers=_headers()
-            )
-            resp.raise_for_status()
-            data = resp.json()
+            page = 1
+            while True:
+                resp = await client.get(
+                    f"{BASE_URL}/episodes/{set_id}/cards",
+                    params={"page": page, "sort": "price_highest"},
+                    headers=_headers()
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                page_items = data.get("data", []) if isinstance(data, dict) else data
+                all_cards.extend(page_items)
+
+                # Check pagination
+                paging = data.get("paging", {}) if isinstance(data, dict) else {}
+                total_pages = paging.get("total", 1)
+                if page >= total_pages:
+                    break
+                page += 1
+                await asyncio.sleep(0.1)  # Small delay to be nice to API
     except Exception as e:
         logger.error(f"API error fetching cards for set {set_id}: {e}")
+        # Return stale cache
         async with aiosqlite.connect(DATABASE_PATH) as db:
             db.row_factory = aiosqlite.Row
-            cursor = await db.execute(
-                "SELECT * FROM cards_cache WHERE set_api_id=?", (set_id,)
-            )
+            cursor = await db.execute("SELECT * FROM cards_cache WHERE set_api_id=?", (set_id,))
             stale = await cursor.fetchall()
-            result = []
-            for row in stale:
-                item = json.loads(row["card_data_json"])
-                item["_cardmarket_price"] = row["cardmarket_price"]
-                item["_tcgplayer_price"] = row["tcgplayer_price"]
-                result.append(item)
-            return result
+            return [_card_from_cache(row) for row in stale]
 
-    cards = data if isinstance(data, list) else data.get("data", data.get("cards", []))
-
+    # Store in cache
     async with aiosqlite.connect(DATABASE_PATH) as db:
         now = datetime.utcnow().isoformat()
-        for card in cards:
+        for card in all_cards:
             card_api_id = str(card.get("id", card.get("_id", card.get("code", ""))))
             cm_price = _extract_price(card, "cardmarket")
             tcp_price = _extract_price(card, "tcgplayer")
@@ -262,9 +286,9 @@ async def get_cards(set_id: str, tier: str = "free") -> list[dict]:
 
         await db.commit()
 
-    # Return with prices attached
+    # Return with extracted prices and region
     result = []
-    for card in cards:
+    for card in all_cards:
         cm_price = _extract_price(card, "cardmarket")
         tcp_price = _extract_price(card, "tcgplayer")
         card["_cardmarket_price"] = cm_price
@@ -275,7 +299,7 @@ async def get_cards(set_id: str, tier: str = "free") -> list[dict]:
 
 
 async def get_products(set_id: str, tier: str = "free") -> list[dict]:
-    """Fetch sealed products for a set from API or cache."""
+    """Fetch ALL sealed products for a set from API or cache, with full pagination."""
     threshold = _cache_age_threshold(tier)
     async with aiosqlite.connect(DATABASE_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -293,18 +317,32 @@ async def get_products(set_id: str, tier: str = "free") -> list[dict]:
                 result.append(item)
             return result
 
-    # Fetch from API
+    # Fetch ALL pages from API
+    all_products = []
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(
-                f"{BASE_URL}/episodes/{set_id}/products",
-                params={"sort": "price_highest"},
-                headers=_headers()
-            )
-            resp.raise_for_status()
-            data = resp.json()
+            page = 1
+            while True:
+                resp = await client.get(
+                    f"{BASE_URL}/episodes/{set_id}/products",
+                    params={"page": page, "sort": "price_highest"},
+                    headers=_headers()
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                page_items = data.get("data", []) if isinstance(data, dict) else data
+                all_products.extend(page_items)
+
+                # Check pagination
+                paging = data.get("paging", {}) if isinstance(data, dict) else {}
+                total_pages = paging.get("total", 1)
+                if page >= total_pages:
+                    break
+                page += 1
+                await asyncio.sleep(0.1)  # Small delay to be nice to API
     except Exception as e:
         logger.error(f"API error fetching products for set {set_id}: {e}")
+        # Return stale cache
         async with aiosqlite.connect(DATABASE_PATH) as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
@@ -319,11 +357,10 @@ async def get_products(set_id: str, tier: str = "free") -> list[dict]:
                 result.append(item)
             return result
 
-    products = data if isinstance(data, list) else data.get("data", data.get("products", []))
-
+    # Store in cache
     async with aiosqlite.connect(DATABASE_PATH) as db:
         now = datetime.utcnow().isoformat()
-        for product in products:
+        for product in all_products:
             prod_api_id = str(product.get("id", product.get("_id", product.get("code", ""))))
             cm_price = _extract_price(product, "cardmarket")
             tcp_price = _extract_price(product, "tcgplayer")
@@ -347,7 +384,7 @@ async def get_products(set_id: str, tier: str = "free") -> list[dict]:
         await db.commit()
 
     result = []
-    for product in products:
+    for product in all_products:
         cm_price = _extract_price(product, "cardmarket")
         tcp_price = _extract_price(product, "tcgplayer")
         product["_cardmarket_price"] = cm_price

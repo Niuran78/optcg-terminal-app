@@ -1,4 +1,5 @@
 """OPTCG Market Terminal — FastAPI Application Entry Point."""
+import asyncio
 import os
 import logging
 from contextlib import asynccontextmanager
@@ -28,19 +29,49 @@ logging.basicConfig(
 logger = logging.getLogger("optcg")
 
 
+async def seed_all_data():
+    """Background task to seed all card and product data."""
+    from services import opcg_api
+    logger.info("Starting full data seed...")
+    try:
+        sets = await opcg_api.get_sets(tier="elite")
+    except Exception as e:
+        logger.error(f"Data seed: could not load sets: {e}")
+        return
+    total_cards = 0
+    total_products = 0
+    for s in sets:
+        try:
+            cards = await opcg_api.get_cards(s["api_id"], tier="elite")
+            total_cards += len(cards)
+            products = await opcg_api.get_products(s["api_id"], tier="elite")
+            total_products += len(products)
+            logger.info(f"  {s.get('code', s['api_id'])}: {len(cards)} cards, {len(products)} products")
+            await asyncio.sleep(0.5)  # Pace the requests
+        except Exception as e:
+            logger.error(f"  {s.get('code', s['api_id'])}: seed error: {e}")
+    logger.info(
+        f"Data seed complete: {total_cards} cards, {total_products} products "
+        f"across {len(sets)} sets"
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown lifecycle."""
     logger.info("Starting OPTCG Market Terminal...")
     await init_db()
 
-    # Seed sets from API on startup (non-blocking)
+    # Seed sets from API on startup
     try:
         from services import opcg_api
         sets = await opcg_api.get_sets(tier="free")
         logger.info(f"Loaded {len(sets)} sets from API/cache.")
     except Exception as e:
         logger.warning(f"Could not seed sets on startup: {e}")
+
+    # Kick off full background data seed (non-blocking)
+    asyncio.create_task(seed_all_data())
 
     yield
     logger.info("OPTCG Market Terminal shutting down.")
