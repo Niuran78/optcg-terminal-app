@@ -43,7 +43,7 @@ def _extract_price(item: dict, source: str) -> Optional[float]:
     """Extract price from API response item for a given source.
 
     Cards:
-        prices.cardmarket.lowest_near_mint or prices.cardmarket.7d_average
+        prices.cardmarket.7d_average (preferred, most realistic)
     Products:
         prices.cardmarket.lowest or prices.cardmarket.30d_average
     TCGPlayer:
@@ -71,9 +71,9 @@ def _extract_price(item: dict, source: str) -> Optional[float]:
     if source == "cardmarket":
         cm = prices.get("cardmarket", {})
         if isinstance(cm, dict):
-            # Try lowest_near_mint first (cards), then lowest (products),
-            # then 7d_average, then 30d_average
-            for key in ["lowest_near_mint", "lowest", "7d_average", "30d_average"]:
+            # Prefer 7d_average (most realistic market price), then 30d_average,
+            # then lowest_near_mint/lowest (can be skewed by single listings)
+            for key in ["7d_average", "30d_average", "lowest_near_mint", "lowest"]:
                 v = cm.get(key)
                 if v is not None:
                     try:
