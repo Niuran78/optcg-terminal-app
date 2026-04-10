@@ -202,6 +202,11 @@ def analyze_items(items: list[dict], item_type: str = "card") -> list[dict]:
         rarity = item.get("rarity", item.get("card_rarity", ""))
         image = item.get("image", item.get("img", item.get("image_url", "")))
 
+        # Extract marketplace links
+        links = item.get("links", {}) or {}
+        cm_url = links.get("cardmarket", "")
+        tcg_url = links.get("tcgplayer", "")
+
         results.append({
             "id": str(item.get("id", item.get("_id", code))),
             "name": name,
@@ -210,6 +215,8 @@ def analyze_items(items: list[dict], item_type: str = "card") -> list[dict]:
             "image": image,
             "item_type": item_type,
             "_region": item.get("_region", "BOTH"),
+            "cardmarket_url": cm_url,
+            "tcgplayer_url": tcg_url,
             **arb.to_dict(),
         })
 

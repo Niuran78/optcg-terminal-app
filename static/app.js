@@ -276,8 +276,8 @@ function renderArbRow(card) {
     </td>
     <td>${esc(card.set_name || '—')}</td>
     <td>${renderRegionFlag(card._region)}</td>
-    <td class="cell-price">${euPrice}</td>
-    <td class="cell-price">${usPrice}</td>
+    <td class="cell-price">${card.cardmarket_url ? `<a href="${esc(card.cardmarket_url)}" target="_blank" rel="noopener" class="price-link">${euPrice}</a>` : euPrice}</td>
+    <td class="cell-price">${card.tcgplayer_url ? `<a href="${esc(card.tcgplayer_url)}" target="_blank" rel="noopener" class="price-link">${usPrice}</a>` : usPrice}</td>
     <td class="cell-profit ${profitCls}">${fmt(profit)}</td>
     <td class="cell-pct ${pctCls}">${fmtPct(profitPct)}</td>
     <td>${renderSignalBadge(card.signal)}</td>

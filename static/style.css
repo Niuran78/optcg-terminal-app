@@ -1608,3 +1608,15 @@ input, select, textarea {
   .stat-value { font-size: 20px; }
   .product-grid { grid-template-columns: 1fr; }
 }
+
+/* Price links — clickable prices that lead to marketplace */
+.price-link {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px dotted var(--border);
+  transition: color 0.15s, border-color 0.15s;
+}
+.price-link:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
