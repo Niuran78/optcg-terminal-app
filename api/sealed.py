@@ -74,7 +74,8 @@ async def list_sealed_products(
 
                 p["set_id"] = sid
                 p["set_name"] = set_info.get("name", "")
-                p["set_language"] = "ALL"
+                # Sealed products on this API are Cardmarket-only = JP/EU market
+                p["set_language"] = "JP" if not tcp_price else "BOTH"
                 p["set_code"] = set_info.get("code", "")
                 p["cm_30d_average"] = cm_30d
                 p["cm_7d_average"] = cm_7d

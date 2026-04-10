@@ -16,6 +16,7 @@ const State = {
   sealedSort: 'price',  // 'price' | 'trend' | 'set'
   sealedSetFilter: 'all',
   sealedTypeFilter: 'all', // 'all' | 'case' | 'boosterbox' | 'booster'
+  sealedRegionFilter: 'all', // 'all' | 'JP' | 'EN'
   lastRefresh: null,
 };
 
@@ -262,6 +263,16 @@ function setupSealedFilters() {
       document.querySelectorAll('[data-sealed-type]').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       State.sealedTypeFilter = btn.dataset.sealedType;
+      renderSealedGrid(State.sealedData);
+    });
+  });
+
+  // Region filter buttons
+  document.querySelectorAll('[data-sealed-region]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-sealed-region]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      State.sealedRegionFilter = btn.dataset.sealedRegion;
       renderSealedGrid(State.sealedData);
     });
   });
@@ -602,6 +613,19 @@ function filterSealedData(data) {
     });
   }
 
+  // Region filter
+  if (State.sealedRegionFilter && State.sealedRegionFilter !== 'all') {
+    filtered = filtered.filter(p => {
+      const region = p.set_language || 'JP';
+      if (State.sealedRegionFilter === 'JP') {
+        return region === 'JP' || region === 'BOTH' || region === 'ALL';
+      } else if (State.sealedRegionFilter === 'EN') {
+        return region === 'EN' || region === 'BOTH';
+      }
+      return true;
+    });
+  }
+
   // Sort
   if (State.sealedSort === 'price') {
     filtered.sort((a, b) => (b._cardmarket_price || 0) - (a._cardmarket_price || 0));
@@ -646,6 +670,8 @@ function renderSealedGrid(data) {
     const setLogoUrl = p.set_logo_url || (setCode
       ? `https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/one-piece/${setCode}/${setCode}_en_logo.png`
       : null);
+    const region = p.set_language || 'JP';
+    const regionFlag = region === 'JP' ? '🇯🇵' : region === 'EN' ? '🇺🇸' : region === 'BOTH' ? '🇯🇵🇺🇸' : '🌍';
 
     return `
       <div class="product-card">
@@ -656,8 +682,8 @@ function renderSealedGrid(data) {
         <div class="product-card-header">
           <div class="product-card-name">${escHtml(name)}</div>
         </div>
-        <div style="font-size:11px; color:var(--text-dim); margin-bottom:var(--space-2)">
-          📦 ${escHtml(p.set_name || '')}${setCode ? ` <span style="opacity:0.6">(${escHtml(setCode)})</span>` : ''}
+        <div style="font-size:11px; color:var(--text-dim); margin-bottom:var(--space-2); display:flex; align-items:center; gap:6px;">
+          <span>${regionFlag}</span> 📦 ${escHtml(p.set_name || '')}${setCode ? ` <span style="opacity:0.6">(${escHtml(setCode)})</span>` : ''}
         </div>
         <div class="product-card-prices">
           <div class="product-price-item">
