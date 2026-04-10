@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign In — OPTCG Market Terminal</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <style>
+    /* Login page specific overrides */
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background: var(--bg-base);
+      padding: var(--space-4);
+    }
+
+    /* Background grid pattern */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(0,229,192,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,229,192,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .auth-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-xl);
+      padding: var(--space-8);
+      width: 100%;
+      max-width: 420px;
+      position: relative;
+      z-index: 1;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.4);
+    }
+
+    .auth-header {
+      text-align: center;
+      margin-bottom: var(--space-8);
+    }
+
+    .auth-logo {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-3);
+      margin-bottom: var(--space-4);
+    }
+
+    .auth-logo svg {
+      width: 36px;
+      height: 36px;
+    }
+
+    .auth-logo-text {
+      font-family: var(--font-mono);
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .auth-title {
+      font-size: 24px;
+      font-weight: 800;
+      color: var(--text);
+      letter-spacing: -0.02em;
+      margin-bottom: 6px;
+    }
+
+    .auth-subtitle {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    /* Tab switcher */
+    .auth-tabs {
+      display: flex;
+      background: var(--bg-elevated);
+      border-radius: var(--r-md);
+      padding: 3px;
+      margin-bottom: var(--space-6);
+      border: 1px solid var(--border);
+    }
+
+    .auth-tab {
+      flex: 1;
+      padding: var(--space-2);
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: var(--r-sm);
+      border: none;
+      background: none;
+      color: var(--text-dim);
+      cursor: pointer;
+      transition: all var(--t-fast);
+    }
+
+    .auth-tab.active {
+      background: var(--accent);
+      color: var(--bg-base);
+    }
+
+    /* Form styles */
+    .auth-form {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-4);
+    }
+
+    .field-group {
+      position: relative;
+    }
+
+    .field-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-label);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 6px;
+    }
+
+    .field-input {
+      width: 100%;
+      padding: 10px var(--space-4);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--r-md);
+      color: var(--text);
+      font-size: 14px;
+      font-family: var(--font-head);
+      outline: none;
+      transition: border-color var(--t-fast), box-shadow var(--t-fast);
+    }
+
+    .field-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+
+    .field-input::placeholder { color: var(--text-dim); }
+
+    .field-input.error { border-color: var(--negative); }
+
+    .field-error {
+      font-size: 11px;
+      color: var(--negative);
+      margin-top: 4px;
+      display: none;
+    }
+
+    .field-error.visible { display: block; }
+
+    /* Submit button */
+    .auth-submit {
+      width: 100%;
+      padding: 11px;
+      background: var(--accent);
+      color: var(--bg-base);
+      border: none;
+      border-radius: var(--r-md);
+      font-size: 14px;
+      font-weight: 700;
+      font-family: var(--font-head);
+      cursor: pointer;
+      transition: all var(--t-fast);
+      position: relative;
+    }
+
+    .auth-submit:hover {
+      background: var(--accent-dim);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 20px var(--accent-glow);
+    }
+
+    .auth-submit:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .auth-submit .spinner {
+      display: none;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(10,10,11,0.3);
+      border-top-color: var(--bg-base);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      position: absolute;
+      right: var(--space-4);
+      top: 50%;
+      transform: translateY(-50%);
+    }
+
+    .auth-submit.loading .spinner { display: block; }
+
+    /* Divider */
+    .auth-divider {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+
+    .auth-divider::before,
+    .auth-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* Global error */
+    .auth-error {
+      padding: var(--space-3) var(--space-4);
+      background: var(--negative-bg);
+      border: 1px solid rgba(229, 92, 92, 0.2);
+      border-radius: var(--r-md);
+      font-size: 13px;
+      color: var(--negative);
+      display: none;
+    }
+
+    .auth-error.visible { display: block; }
+
+    /* Footer */
+    .auth-footer {
+      margin-top: var(--space-6);
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+
+    .auth-footer a { color: var(--accent); }
+
+    /* Features preview */
+    .auth-features {
+      margin-top: var(--space-6);
+      padding-top: var(--space-6);
+      border-top: 1px solid var(--border);
+    }
+
+    .features-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-dim);
+      margin-bottom: var(--space-3);
+    }
+
+    .features-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+    }
+
+    .feature-item {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .feature-item::before {
+      content: '✓';
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 11px;
+    }
+
+    /* Password strength */
+    .pw-strength {
+      height: 3px;
+      background: var(--border);
+      border-radius: 2px;
+      margin-top: 6px;
+      overflow: hidden;
+    }
+
+    .pw-strength-bar {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.3s, background 0.3s;
+      width: 0%;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="auth-card">
+    <div class="auth-header">
+      <div class="auth-logo">
+        <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="36" height="36" rx="7" fill="#00e5c0" fill-opacity="0.12"/>
+          <path d="M8 18C8 12.477 12.477 8 18 8s10 4.477 10 10-4.477 10-10 10" stroke="#00e5c0" stroke-width="2" stroke-linecap="round"/>
+          <path d="M18 12v6l3.5 2.5" stroke="#00e5c0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="18" cy="18" r="2" fill="#00e5c0"/>
+          <path d="M8 18h4" stroke="#00e5c0" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <span class="auth-logo-text">OPTCG Terminal</span>
+      </div>
+      <div class="auth-title" id="authTitle">Welcome back</div>
+      <div class="auth-subtitle" id="authSubtitle">Sign in to access your market terminal</div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="tabLogin" onclick="switchAuthMode('login')">Sign In</button>
+      <button class="auth-tab" id="tabRegister" onclick="switchAuthMode('register')">Create Account</button>
+    </div>
+
+    <!-- Global Error -->
+    <div class="auth-error" id="authError"></div>
+
+    <!-- Login Form -->
+    <form class="auth-form" id="loginForm" onsubmit="handleLogin(event)">
+      <div class="field-group">
+        <label class="field-label" for="loginEmail">Email Address</label>
+        <input class="field-input" id="loginEmail" type="email"
+               placeholder="your@email.com" autocomplete="email" required />
+        <div class="field-error" id="loginEmailErr"></div>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label" for="loginPassword">Password</label>
+        <input class="field-input" id="loginPassword" type="password"
+               placeholder="••••••••" autocomplete="current-password" required />
+        <div class="field-error" id="loginPasswordErr"></div>
+      </div>
+
+      <button type="submit" class="auth-submit" id="loginSubmit">
+        Sign In
+        <span class="spinner"></span>
+      </button>
+    </form>
+
+    <!-- Register Form -->
+    <form class="auth-form hidden" id="registerForm" onsubmit="handleRegister(event)">
+      <div class="field-group">
+        <label class="field-label" for="regEmail">Email Address</label>
+        <input class="field-input" id="regEmail" type="email"
+               placeholder="your@email.com" autocomplete="email" required />
+        <div class="field-error" id="regEmailErr"></div>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label" for="regPassword">Password</label>
+        <input class="field-input" id="regPassword" type="password"
+               placeholder="Min. 8 characters" autocomplete="new-password"
+               minlength="8" required
+               oninput="updatePasswordStrength(this.value)" />
+        <div class="pw-strength">
+          <div class="pw-strength-bar" id="pwStrengthBar"></div>
+        </div>
+        <div class="field-error" id="regPasswordErr"></div>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label" for="regPasswordConfirm">Confirm Password</label>
+        <input class="field-input" id="regPasswordConfirm" type="password"
+               placeholder="Repeat password" autocomplete="new-password" required />
+        <div class="field-error" id="regPasswordConfirmErr"></div>
+      </div>
+
+      <button type="submit" class="auth-submit" id="registerSubmit">
+        Create Free Account
+        <span class="spinner"></span>
+      </button>
+
+      <div style="font-size:11px; color:var(--text-dim); text-align:center; line-height:1.6">
+        Free tier includes arbitrage signals for the 3 latest sets.
+        Upgrade to Pro anytime.
+      </div>
+    </form>
+
+    <!-- Features preview (shown on register tab) -->
+    <div class="auth-features hidden" id="authFeatures">
+      <div class="features-label">Free account includes</div>
+      <div class="features-list">
+        <div class="feature-item">Arbitrage signals (BUY EU / BUY US / NEUTRAL)</div>
+        <div class="feature-item">Latest 3 sets (JP + EN)</div>
+        <div class="feature-item">Sealed product prices</div>
+        <div class="feature-item">Market overview dashboard</div>
+      </div>
+    </div>
+
+    <div class="auth-footer">
+      <a href="/">&larr; Back to Terminal</a>
+    </div>
+  </div>
+
+  <script src="/static/auth.js"></script>
+</body>
+</html>
