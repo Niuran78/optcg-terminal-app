@@ -130,13 +130,18 @@
       <!-- Filter Bar -->
       <div class="filter-bar">
         <div class="filter-group">
-          <span class="filter-label">Type</span>
-          <button class="filter-btn active" data-arb-type="product">📦 Sealed</button>
-          <button class="filter-btn" data-arb-type="card">🃏 Cards</button>
+          <span class="filter-label">Marketplace</span>
+          <button class="filter-btn active" data-arb-market="both">⚡ Both</button>
+          <button class="filter-btn" data-arb-market="cardmarket">🇪🇺 Cardmarket</button>
+          <button class="filter-btn" data-arb-market="tcgplayer">🇺🇸 TCGPlayer</button>
         </div>
         <div class="filter-sep"></div>
         <div class="filter-group">
-          <span class="filter-label" style="color:var(--text-dim); font-style:italic">🌍 All regions included (Cardmarket EU + TCGPlayer US)</span>
+          <span class="filter-label">Rarity</span>
+          <button class="filter-btn active" data-arb-rarity="all">All</button>
+          <button class="filter-btn" data-arb-rarity="sec">⭐ SEC</button>
+          <button class="filter-btn" data-arb-rarity="manga">🎨 Manga/SP</button>
+          <button class="filter-btn" data-arb-rarity="regular">🃏 Regular</button>
         </div>
         <div class="filter-sep"></div>
         <div class="filter-group">
@@ -196,6 +201,23 @@
         <div class="section-controls">
           <span style="font-size:11px; color:var(--text-dim); font-style:italic">🌍 All regions included</span>
           <button class="btn btn-secondary btn-sm" onclick="refreshSealed()">↻ Refresh</button>
+        </div>
+      </div>
+
+      <!-- Sealed Tracker Controls -->
+      <div class="filter-bar" id="sealedFilterBar">
+        <div class="filter-group">
+          <span class="filter-label">Set</span>
+          <select class="filter-select" id="sealedSetFilter">
+            <option value="all">All Sets</option>
+          </select>
+        </div>
+        <div class="filter-sep"></div>
+        <div class="filter-group">
+          <span class="filter-label">Sort</span>
+          <button class="filter-btn active" data-sealed-sort="price">💰 Price</button>
+          <button class="filter-btn" data-sealed-sort="trend">📈 Trend</button>
+          <button class="filter-btn" data-sealed-sort="set">🗂 Set</button>
         </div>
       </div>
 

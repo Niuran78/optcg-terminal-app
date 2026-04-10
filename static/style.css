@@ -400,6 +400,22 @@ a:hover { opacity: 0.8; }
   background: var(--border);
 }
 
+.filter-select {
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  outline: none;
+  transition: border-color var(--t-fast);
+  max-width: 160px;
+}
+.filter-select:hover { border-color: var(--accent); color: var(--text); }
+.filter-select:focus { border-color: var(--accent); }
+
 /* ─── Data Table ─────────────────────────────────────────────── */
 .data-table-wrap {
   background: var(--bg-surface);

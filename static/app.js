@@ -9,9 +9,12 @@ const State = {
   currency: 'EUR',      // Current display currency
   arbData: [],          // Current arbitrage results
   sealedData: [],       // Current sealed products
-  arbType: 'card',      // 'product' | 'card'
+  arbMarket: 'both',    // 'both' | 'cardmarket' | 'tcgplayer'
+  arbRarity: 'all',     // 'all' | 'sec' | 'manga' | 'regular'
   arbSignal: 'all',
   arbSort: { col: 'profit_eur', dir: 'desc' },
+  sealedSort: 'price',  // 'price' | 'trend' | 'set'
+  sealedSetFilter: 'all',
   lastRefresh: null,
 };
 
@@ -26,6 +29,8 @@ document.addEventListener('DOMContentLoaded', () => {
   setupCurrencySwitcher();
   setupSearch();
   setupSortHeaders();
+
+  setupSealedFilters();
 
   // Load initial data
   loadArbitrageData();
@@ -198,13 +203,23 @@ function setupSearch() {
 
 // ─── Filters ─────────────────────────────────────────────────
 function setupFilters() {
-  // Arbitrage type filter
-  document.querySelectorAll('[data-arb-type]').forEach(btn => {
+  // Marketplace filter
+  document.querySelectorAll('[data-arb-market]').forEach(btn => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('[data-arb-type]').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('[data-arb-market]').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      State.arbType = btn.dataset.arbType;
-      loadArbitrageData();
+      State.arbMarket = btn.dataset.arbMarket;
+      renderArbTable(State.arbData);
+    });
+  });
+
+  // Rarity filter
+  document.querySelectorAll('[data-arb-rarity]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-arb-rarity]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      State.arbRarity = btn.dataset.arbRarity;
+      renderArbTable(State.arbData);
     });
   });
 
@@ -217,7 +232,28 @@ function setupFilters() {
       renderArbTable(State.arbData);
     });
   });
+}
 
+// ─── Sealed Tracker Filters ───────────────────────────────────
+function setupSealedFilters() {
+  // Sort buttons
+  document.querySelectorAll('[data-sealed-sort]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-sealed-sort]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      State.sealedSort = btn.dataset.sealedSort;
+      renderSealedGrid(State.sealedData);
+    });
+  });
+
+  // Set filter dropdown
+  const setFilter = document.getElementById('sealedSetFilter');
+  if (setFilter) {
+    setFilter.addEventListener('change', () => {
+      State.sealedSetFilter = setFilter.value;
+      renderSealedGrid(State.sealedData);
+    });
+  }
 }
 
 // ─── Sort Headers ─────────────────────────────────────────────
@@ -245,7 +281,7 @@ async function loadArbitrageData() {
   setArbLoading(true);
   try {
     const params = new URLSearchParams({
-      item_type: State.arbType,
+      item_type: 'card',
       limit: 200,
     });
 
@@ -288,7 +324,7 @@ function setArbLoading(loading) {
       <tr><td colspan="8">
         <div class="loading-state">
           <span class="loading-spinner"></span>
-          Scanning ${State.arbType === 'product' ? 'sealed products' : 'singles'}...
+          Scanning singles across Cardmarket &amp; TCGPlayer...
         </div>
       </td></tr>`;
   }
@@ -326,6 +362,40 @@ function updateArbStats() {
 
 function filterArbData(data) {
   let filtered = [...data];
+
+  // Marketplace filter
+  if (State.arbMarket === 'cardmarket') {
+    filtered = filtered.filter(d => d.cardmarket_price !== null && d.cardmarket_price !== undefined);
+  } else if (State.arbMarket === 'tcgplayer') {
+    filtered = filtered.filter(d => d.tcgplayer_price !== null && d.tcgplayer_price !== undefined);
+  } else {
+    // 'both' — only items with prices on both markets (true arbitrage)
+    filtered = filtered.filter(d =>
+      (d.cardmarket_price !== null && d.cardmarket_price !== undefined) &&
+      (d.tcgplayer_price !== null && d.tcgplayer_price !== undefined)
+    );
+  }
+
+  // Rarity filter
+  if (State.arbRarity === 'sec') {
+    filtered = filtered.filter(d => {
+      const r = (d.rarity || '').toUpperCase();
+      return r.includes('LEADER') || r.includes('SECRET') || r.includes('SEC');
+    });
+  } else if (State.arbRarity === 'manga') {
+    filtered = filtered.filter(d => {
+      const r = (d.rarity || '').toUpperCase();
+      const n = (d.name || '').toUpperCase();
+      return r.includes('MANGA') || r.includes('SP') || n.includes('MANGA') || n.includes(' SP');
+    });
+  } else if (State.arbRarity === 'regular') {
+    filtered = filtered.filter(d => {
+      const r = (d.rarity || '').toUpperCase();
+      const n = (d.name || '').toUpperCase();
+      return !r.includes('LEADER') && !r.includes('SECRET') && !r.includes('SEC') &&
+             !r.includes('MANGA') && !r.includes('SP') && !n.includes('MANGA') && !n.includes(' SP');
+    });
+  }
 
   // Signal filter
   if (State.arbSignal && State.arbSignal !== 'all') {
@@ -380,8 +450,16 @@ function renderArbTable(data) {
       NEUTRAL: '— NEUTRAL',
     };
 
-    const lang = item.set_language || 'ALL';
-    const langLabel = lang !== 'ALL' ? `<span class="lang-tag ${lang}">${lang}</span>` : '';
+    // Marketplace availability indicators
+    const hasCM = item.cardmarket_price !== null && item.cardmarket_price !== undefined;
+    const hasTCG = item.tcgplayer_price !== null && item.tcgplayer_price !== undefined;
+    const marketLabel = hasCM && hasTCG
+      ? `<span style="font-size:10px; color:var(--accent)">CM+TCG</span>`
+      : hasCM
+        ? `<span style="font-size:10px; color:var(--text-dim)">CM only</span>`
+        : hasTCG
+          ? `<span style="font-size:10px; color:var(--text-dim)">TCG only</span>`
+          : `<span style="font-size:10px; color:var(--text-dim)">—</span>`;
 
     const profitEUR = item.profit_eur;
     const profitPct = item.profit_pct;
@@ -413,7 +491,7 @@ function renderArbTable(data) {
         <td>
           <div style="font-size:12px; font-weight:500">${escHtml(item.set_name || '—')}</div>
         </td>
-        <td>${langLabel}</td>
+        <td>${marketLabel}</td>
         <td class="mono">${item.cardmarket_price !== null ? fmt(item.cardmarket_price) : '—'}</td>
         <td class="mono">${item.tcgplayer_price !== null ? fmt(item.tcgplayer_price) : '—'}</td>
         <td>${profitHTML}</td>
@@ -448,6 +526,7 @@ async function loadSealedData() {
   try {
     const data = await apiCall('/api/sealed/products?sort=price_highest');
     State.sealedData = data.products || [];
+    populateSealedSetFilter(State.sealedData);
     renderSealedGrid(State.sealedData);
   } catch (e) {
     document.getElementById('sealedGrid').innerHTML = `
@@ -461,14 +540,51 @@ async function loadSealedData() {
   }
 }
 
+function populateSealedSetFilter(data) {
+  const select = document.getElementById('sealedSetFilter');
+  if (!select) return;
+  // Collect unique set names
+  const sets = [...new Set(data.map(p => p.set_name || '').filter(Boolean))].sort();
+  select.innerHTML = '<option value="all">All Sets</option>' +
+    sets.map(s => `<option value="${escAttr(s)}">${escHtml(s)}</option>`).join('');
+  // Restore current selection if still valid
+  if (State.sealedSetFilter !== 'all' && sets.includes(State.sealedSetFilter)) {
+    select.value = State.sealedSetFilter;
+  } else {
+    State.sealedSetFilter = 'all';
+    select.value = 'all';
+  }
+}
+
 function refreshSealed() {
   State.sealedData = [];
   loadSealedData();
 }
 
+function filterSealedData(data) {
+  let filtered = [...data];
+
+  // Set filter
+  if (State.sealedSetFilter && State.sealedSetFilter !== 'all') {
+    filtered = filtered.filter(p => (p.set_name || '') === State.sealedSetFilter);
+  }
+
+  // Sort
+  if (State.sealedSort === 'price') {
+    filtered.sort((a, b) => (b._cardmarket_price || 0) - (a._cardmarket_price || 0));
+  } else if (State.sealedSort === 'trend') {
+    const trendOrder = { up: 2, down: 1, null: 0, undefined: 0 };
+    filtered.sort((a, b) => (trendOrder[b.trend] || 0) - (trendOrder[a.trend] || 0));
+  } else if (State.sealedSort === 'set') {
+    filtered.sort((a, b) => (a.set_name || '').localeCompare(b.set_name || ''));
+  }
+
+  return filtered;
+}
+
 function renderSealedGrid(data) {
   const grid = document.getElementById('sealedGrid');
-  const filtered = [...data];
+  const filtered = filterSealedData(data);
 
   if (filtered.length === 0) {
     grid.innerHTML = `<div style="grid-column:1/-1">
@@ -492,17 +608,23 @@ function renderSealedGrid(data) {
     const trendClass = trend === 'up' ? 'price-positive' : trend === 'down' ? 'price-negative' : '';
     const imgUrl = p.image_url;
     const cmUrl = p.cardmarket_url;
+    // Set logo: use set_logo_url if available, or derive from set code
+    const setCode = (p.set_code || p.set_id || '').toUpperCase();
+    const setLogoUrl = p.set_logo_url || (setCode
+      ? `https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/one-piece/${setCode}/${setCode}_en_logo.png`
+      : null);
 
     return `
       <div class="product-card">
-        ${imgUrl ? `<div style="text-align:center; margin-bottom:var(--space-2)">
-          <img src="${escAttr(imgUrl)}" alt="${escAttr(name)}" style="max-height:80px; max-width:100%; border-radius:4px; object-fit:contain;" onerror="this.style.display='none'" />
-        </div>` : ''}
+        <div style="display:flex; align-items:flex-start; gap:var(--space-3); margin-bottom:var(--space-2)">
+          ${setLogoUrl ? `<img src="${escAttr(setLogoUrl)}" alt="${escAttr(setCode)}" style="height:32px; max-width:64px; object-fit:contain; opacity:0.85; flex-shrink:0;" onerror="this.style.display='none'" />` : ''}
+          ${imgUrl ? `<img src="${escAttr(imgUrl)}" alt="${escAttr(name)}" style="height:60px; max-width:50px; border-radius:4px; object-fit:contain; flex-shrink:0;" onerror="this.style.display='none'" />` : ''}
+        </div>
         <div class="product-card-header">
           <div class="product-card-name">${escHtml(name)}</div>
         </div>
         <div style="font-size:11px; color:var(--text-dim); margin-bottom:var(--space-2)">
-          📦 ${escHtml(p.set_name || '')}
+          📦 ${escHtml(p.set_name || '')}${setCode ? ` <span style="opacity:0.6">(${escHtml(setCode)})</span>` : ''}
         </div>
         <div class="product-card-prices">
           <div class="product-price-item">

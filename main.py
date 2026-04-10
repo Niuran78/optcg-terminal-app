@@ -19,6 +19,7 @@ from api.arbitrage import router as arbitrage_router
 from api.sealed import router as sealed_router
 from api.ev import router as ev_router
 from api.stripe_billing import router as billing_router
+from api.scraper import router as scraper_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -69,6 +70,7 @@ app.include_router(arbitrage_router)
 app.include_router(sealed_router)
 app.include_router(ev_router)
 app.include_router(billing_router)
+app.include_router(scraper_router)
 
 
 # Health check

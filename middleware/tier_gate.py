@@ -123,3 +123,21 @@ async def require_auth(user: UserInfo = Depends(get_current_user)) -> UserInfo:
             }
         )
     return user
+
+
+def require_tier(tier: str):
+    """Factory that returns a FastAPI dependency requiring the specified tier.
+    Usage: user: UserInfo = Depends(require_tier('pro'))
+    """
+    async def _require_tier(user: UserInfo = Depends(get_current_user)) -> UserInfo:
+        if not user.can_access(tier):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "error": f"{tier.upper()}_REQUIRED",
+                    "message": f"This feature requires a {tier.capitalize()} or higher subscription.",
+                    "upgrade_url": "/login.html#upgrade",
+                }
+            )
+        return user
+    return _require_tier
