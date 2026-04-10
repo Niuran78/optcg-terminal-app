@@ -15,6 +15,7 @@ const State = {
   arbSort: { col: 'profit_eur', dir: 'desc' },
   sealedSort: 'price',  // 'price' | 'trend' | 'set'
   sealedSetFilter: 'all',
+  sealedTypeFilter: 'all', // 'all' | 'case' | 'boosterbox' | 'booster'
   lastRefresh: null,
 };
 
@@ -254,6 +255,16 @@ function setupSealedFilters() {
       renderSealedGrid(State.sealedData);
     });
   }
+
+  // Type filter buttons
+  document.querySelectorAll('[data-sealed-type]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-sealed-type]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      State.sealedTypeFilter = btn.dataset.sealedType;
+      renderSealedGrid(State.sealedData);
+    });
+  });
 }
 
 // ─── Sort Headers ─────────────────────────────────────────────
@@ -342,10 +353,18 @@ function showArbError(msg) {
 }
 
 function updateArbStats() {
-  const data = State.arbData;
+  // Called on initial load — uses unfiltered data
+  updateArbStatsFiltered(State.arbData);
+}
+
+function updateArbStatsFiltered(data) {
   const buyEU = data.filter(d => d.signal === 'BUY_EU').length;
   const buyUS = data.filter(d => d.signal === 'BUY_US').length;
-  const best = data[0];
+  // Best profit: find item with highest profit_eur among filtered items that have a value
+  const withProfit = data.filter(d => d.profit_eur !== null && d.profit_eur !== undefined);
+  const best = withProfit.length > 0
+    ? withProfit.reduce((a, b) => (b.profit_eur > a.profit_eur ? b : a))
+    : data[0];
 
   document.getElementById('statTotalOpps').textContent = data.length;
   document.getElementById('statBuyEU').textContent = buyEU;
@@ -357,6 +376,10 @@ function updateArbStats() {
     document.getElementById('statBestProfit').className = `stat-value ${profit > 0 ? 'accent' : ''}`;
     document.getElementById('statProfitCurrency').textContent = State.currency;
     document.getElementById('statBestName').textContent = (best.name || 'Unknown').substring(0, 30);
+  } else {
+    document.getElementById('statBestProfit').textContent = '—';
+    document.getElementById('statBestName').textContent = '—';
+    document.getElementById('statProfitCurrency').textContent = State.currency;
   }
 }
 
@@ -424,6 +447,9 @@ function renderArbTable(data) {
   const filtered = filterArbData(data);
   const tbody = document.getElementById('arbTableBody');
 
+  // Update stat cards based on FILTERED data
+  updateArbStatsFiltered(filtered);
+
   if (filtered.length === 0) {
     tbody.innerHTML = `
       <tr><td colspan="8">
@@ -467,7 +493,7 @@ function renderArbTable(data) {
     }
 
     const buyOnHTML = item.buy_market
-      ? `<span style="font-size:11px; color:var(--text-muted)">${item.buy_market === 'cardmarket' ? '🇪🇺 Buy EU' : '🇺🇸 Buy US'}</span>`
+      ? `<span style="font-size:11px; color:var(--text-muted)">${item.buy_market === 'cardmarket' || item.buy_market === 'eu' ? '🇪🇺 Buy EU' : '🇺🇸 Buy US'}</span>`
       : '—';
 
     return `
@@ -484,8 +510,8 @@ function renderArbTable(data) {
           <div style="font-size:12px; font-weight:500">${escHtml(item.set_name || '—')}</div>
         </td>
         <td>${regionLabel}</td>
-        <td class="mono">${item.cardmarket_price !== null ? fmt(item.cardmarket_price) : '—'}</td>
-        <td class="mono">${item.tcgplayer_price !== null ? fmt(item.tcgplayer_price) : '—'}</td>
+        <td class="mono">${item.cardmarket_price !== null && item.cardmarket_price !== undefined ? fmt(item.cardmarket_price) : '—'}</td>
+        <td class="mono">${item.tcgplayer_price !== null && item.tcgplayer_price !== undefined ? fmt(item.tcgplayer_price) : '—'}</td>
         <td>${profitHTML}</td>
         <td>
           <span class="signal-badge ${signalClass}">
@@ -559,6 +585,21 @@ function filterSealedData(data) {
   // Set filter
   if (State.sealedSetFilter && State.sealedSetFilter !== 'all') {
     filtered = filtered.filter(p => (p.set_name || '') === State.sealedSetFilter);
+  }
+
+  // Type filter
+  if (State.sealedTypeFilter && State.sealedTypeFilter !== 'all') {
+    filtered = filtered.filter(p => {
+      const name = (p.name || p.product_name || '').toLowerCase();
+      if (State.sealedTypeFilter === 'case') {
+        return name.includes('case');
+      } else if (State.sealedTypeFilter === 'boosterbox') {
+        return name.includes('booster box') && !name.includes('case');
+      } else if (State.sealedTypeFilter === 'booster') {
+        return name.includes('booster') && !name.includes('box') && !name.includes('case');
+      }
+      return true;
+    });
   }
 
   // Sort
@@ -763,15 +804,36 @@ async function loadOverview() {
   try {
     const data = await apiCall('/api/market/overview');
 
-    // Stats
-    document.getElementById('ovSetsTracked').textContent = data.stats?.sets_tracked || '—';
-    document.getElementById('ovTopSignal').textContent = data.stats?.top_signal || '—';
+    // Stats — use all-sets count from sets endpoint if available, else fall back
+    const allSetsCount = data.stats?.total_sets || data.stats?.sets_tracked || '—';
+    document.getElementById('ovSetsTracked').textContent = allSetsCount;
+
+    // TOP SIGNAL — compute from arbitrage data if loaded
+    let topSignal = data.stats?.top_signal || 'NEUTRAL';
+    if (State.arbData && State.arbData.length > 0) {
+      const buyEUCount = State.arbData.filter(d => d.signal === 'BUY_EU').length;
+      const buyUSCount = State.arbData.filter(d => d.signal === 'BUY_US').length;
+      if (buyEUCount > buyUSCount) topSignal = 'BUY_EU';
+      else if (buyUSCount > buyEUCount) topSignal = 'BUY_US';
+      else if (buyEUCount > 0) topSignal = 'BUY_EU';
+      else topSignal = 'NEUTRAL';
+    }
+    document.getElementById('ovTopSignal').textContent = topSignal;
     document.getElementById('ovRecentSets').textContent = (data.recent_sets || []).length;
     document.getElementById('ovLastUpdate').textContent = new Date().toLocaleTimeString();
 
     // Top movers
     const moversList = document.getElementById('topMoversList');
-    const movers = data.top_movers || [];
+    // Use loaded arbitrage data for top movers if available, else fall back to API data
+    let movers = [];
+    if (State.arbData && State.arbData.length > 0) {
+      movers = State.arbData
+        .filter(d => d.profit_eur !== null && d.profit_eur !== undefined)
+        .sort((a, b) => (b.profit_eur || 0) - (a.profit_eur || 0))
+        .slice(0, 5);
+    } else {
+      movers = data.top_movers || [];
+    }
     if (movers.length === 0) {
       moversList.innerHTML = `<div class="empty-state" style="padding:var(--space-5)">
         <div class="empty-state-sub">No movers data available</div></div>`;
@@ -781,11 +843,11 @@ async function loadOverview() {
           <div>
             <div class="mover-name">${escHtml(m.name || '—')}</div>
             <div class="mover-set">
-              ${m.set_language === 'JP' ? '🇯🇵' : '🇺🇸'} ${escHtml(m.set_name || '')}
+              ${(m.set_language || m._region) === 'JP' ? '🇯🇵' : '🇺🇸'} ${escHtml(m.set_name || '')}
             </div>
           </div>
           <div style="text-align:right">
-            <div class="mover-price">${m.cardmarket_price ? fmt(m.cardmarket_price) : '—'}</div>
+            <div class="mover-price">${(m.cardmarket_price || m.eu_price) ? fmt(m.cardmarket_price || m.eu_price) : '—'}</div>
             <span class="signal-badge ${m.signal || 'NEUTRAL'}" style="font-size:10px; padding:2px 5px">
               ${m.signal || '—'}
             </span>
@@ -807,10 +869,10 @@ async function loadOverview() {
             <div class="mover-name">
               ${s.language === 'JP' ? '🇯🇵' : '🇺🇸'} ${escHtml(s.name || s.api_id)}
             </div>
-            <div class="mover-set">${escHtml(s.code || '')} · ${escHtml(s.release_date || 'Unknown release')}</div>
+            <div class="mover-set">${escHtml(s.api_id || s.code || '')} · ${escHtml(s.release_date || 'Unknown release')}</div>
           </div>
           <div>
-            <span class="lang-tag ${s.language || 'EN'}">${s.language || 'EN'}</span>
+            <span class="lang-tag ${s.language || 'EN'}">${escHtml(s.api_id || s.language || 'EN')}</span>
           </div>
         </div>
       `).join('');

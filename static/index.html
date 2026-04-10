@@ -215,6 +215,14 @@
         </div>
         <div class="filter-sep"></div>
         <div class="filter-group">
+          <span class="filter-label">Type</span>
+          <button class="filter-btn active" data-sealed-type="all">All</button>
+          <button class="filter-btn" data-sealed-type="case">📦 Cases</button>
+          <button class="filter-btn" data-sealed-type="boosterbox">🎴 Booster Box</button>
+          <button class="filter-btn" data-sealed-type="booster">🃏 Booster</button>
+        </div>
+        <div class="filter-sep"></div>
+        <div class="filter-group">
           <span class="filter-label">Sort</span>
           <button class="filter-btn active" data-sealed-sort="price">💰 Price</button>
           <button class="filter-btn" data-sealed-sort="trend">📈 Trend</button>
@@ -294,7 +302,7 @@
 
             <div class="mt-4 text-dim" style="font-size:11px; line-height:1.6">
               Pull rates based on community data. JP box = 10 packs, EN box = 24 packs.
-              Prices from Cardmarket (EUR).
+              Prices from EU market (EUR).
             </div>
           </div>
 
@@ -303,7 +311,7 @@
             <div class="empty-state" id="evEmptyState">
               <div class="empty-state-icon">🧮</div>
               <div class="empty-state-title">Select a set to calculate EV</div>
-              <div class="empty-state-sub">Uses live card prices from Cardmarket</div>
+              <div class="empty-state-sub">Uses live card prices from EU market</div>
             </div>
 
             <div class="hidden" id="evResultContent">

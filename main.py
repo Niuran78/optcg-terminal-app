@@ -83,16 +83,19 @@ async def health():
 @app.get("/api/market/overview")
 async def market_overview():
     """Quick market overview — top movers and summary stats."""
-    from middleware.tier_gate import get_current_user, UserInfo
     from services import opcg_api
     from services.arbitrage_engine import analyze_items
     import aiosqlite
     from db.init import DATABASE_PATH
 
+    # Fetch ALL sets for total count
+    all_sets = await opcg_api.get_sets(tier="elite")
+    total_sets = len(all_sets)
+
     async with aiosqlite.connect(DATABASE_PATH) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            "SELECT * FROM sets ORDER BY release_date DESC LIMIT 3"
+            "SELECT * FROM sets ORDER BY release_date DESC LIMIT 10"
         )
         recent_sets = await cursor.fetchall()
 
@@ -116,7 +119,8 @@ async def market_overview():
         "recent_sets": recent_sets,
         "top_movers": top_movers[:10],
         "stats": {
-            "sets_tracked": len(recent_sets),
+            "sets_tracked": total_sets,
+            "total_sets": total_sets,
             "top_signal": top_movers[0].get("signal") if top_movers else "NEUTRAL",
         }
     }
