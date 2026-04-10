@@ -153,3 +153,33 @@ async def me(user: UserInfo = Depends(get_current_user)):
         "created_at": row["created_at"],
         "subscription": dict(sub) if sub else None,
     }
+
+
+# ─── Admin Endpoint ───────────────────────────────────────────────────────────
+
+ADMIN_SECRET = os.getenv("ADMIN_SECRET", "optcg_admin_2026_blockreaction")
+
+class AdminTierRequest(BaseModel):
+    email: EmailStr
+    tier: str  # free, pro, elite
+    admin_secret: str
+
+@router.post("/admin/set-tier")
+async def admin_set_tier(body: AdminTierRequest):
+    """Admin endpoint to manually set a user's tier."""
+    if body.admin_secret != ADMIN_SECRET:
+        raise HTTPException(403, "Invalid admin secret.")
+    if body.tier not in ("free", "pro", "elite"):
+        raise HTTPException(400, "Tier must be free, pro, or elite.")
+
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT id, email, tier FROM users WHERE email=?", (body.email,))
+        row = await cursor.fetchone()
+        if row is None:
+            raise HTTPException(404, "User not found.")
+
+        await db.execute("UPDATE users SET tier=? WHERE email=?", (body.tier, body.email))
+        await db.commit()
+
+    return {"message": f"User {body.email} tier updated to {body.tier}"}
