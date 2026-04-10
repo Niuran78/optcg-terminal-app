@@ -209,6 +209,7 @@ def analyze_items(items: list[dict], item_type: str = "card") -> list[dict]:
             "rarity": rarity,
             "image": image,
             "item_type": item_type,
+            "_region": item.get("_region", "BOTH"),
             **arb.to_dict(),
         })
 
