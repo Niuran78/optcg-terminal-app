@@ -202,10 +202,14 @@ def analyze_items(items: list[dict], item_type: str = "card") -> list[dict]:
         rarity = item.get("rarity", item.get("card_rarity", ""))
         image = item.get("image", item.get("img", item.get("image_url", "")))
 
-        # Extract marketplace links
+        # Build direct marketplace search links
+        # Use original tcggo links if available, otherwise build search URLs
         links = item.get("links", {}) or {}
-        cm_url = links.get("cardmarket", "")
-        tcg_url = links.get("tcgplayer", "")
+        card_name_enc = name.replace(" ", "+")
+        ep_name = (item.get("episode", {}) or {}).get("name", "")
+        ep_enc = ep_name.replace(" ", "+")
+        cm_url = links.get("cardmarket", f"https://www.cardmarket.com/en/OnePiece/Products/Search?searchString={card_name_enc}+{ep_enc}")
+        tcg_url = links.get("tcgplayer", f"https://www.tcgplayer.com/search/one-piece-card-game/product?q={card_name_enc}")
 
         results.append({
             "id": str(item.get("id", item.get("_id", code))),
