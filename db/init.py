@@ -23,13 +23,25 @@ def _make_ssl_context():
 async def get_pool() -> asyncpg.Pool:
     global _pool
     if _pool is None:
+        dsn = DATABASE_URL
+        # Supabase requires SSL on port 5432.
+        # asyncpg 0.30 changed SSL negotiation (direct SSL by default).
+        # Force classic "postgres" negotiation for Supabase compatibility.
+        ssl_ctx = _make_ssl_context()
+        kwargs = dict(dsn=dsn, min_size=2, max_size=10, ssl=ssl_ctx)
+
+        # asyncpg >= 0.30 supports sslnegotiation param
+        import inspect
+        if 'sslnegotiation' in inspect.signature(asyncpg.connect).parameters:
+            kwargs['sslnegotiation'] = 'postgres'
+
+        logger.info("Connecting to PostgreSQL (SSL + postgres negotiation)...")
         try:
-            _pool = await asyncpg.create_pool(
-                DATABASE_URL, min_size=2, max_size=10, ssl=_make_ssl_context()
-            )
+            _pool = await asyncpg.create_pool(**kwargs)
+            logger.info("PostgreSQL pool created successfully.")
         except Exception as e:
-            logger.warning(f"SSL pool creation failed ({e}), retrying without SSL...")
-            _pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=10)
+            logger.error(f"Pool creation failed: {e}")
+            raise
     return _pool
 
 
