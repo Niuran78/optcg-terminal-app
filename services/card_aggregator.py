@@ -603,3 +603,11 @@ async def seed_all_unified():
         logger.info(f"seed_all_unified: captured {snapshot_count} daily price snapshots")
     except Exception as e:
         logger.warning(f"seed_all_unified: daily snapshot failed: {e}")
+
+    # Check price alerts against updated prices
+    try:
+        from api.alerts import check_alerts_after_update
+        triggered = await check_alerts_after_update()
+        logger.info(f"seed_all_unified: {triggered} price alert(s) triggered")
+    except Exception as e:
+        logger.warning(f"seed_all_unified: alert check failed: {e}")

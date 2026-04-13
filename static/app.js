@@ -551,7 +551,14 @@ function renderBrowserTable(data) {
         <td>
           <span class="${spreadClass(spread)}">${spread != null ? fmt.pct(spread) : '<span class="spread-neutral">—</span>'}</span>
         </td>
-        <td>${signalBadge(signal)}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:4px;">
+            ${signalBadge(signal)}
+            <button class="btn-alert-bell" title="Set price alert" onclick="event.stopPropagation();openAlertMini(${i})" aria-label="Set price alert">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1.5a3.5 3.5 0 00-3.5 3.5c0 2.1-.7 3.3-1.3 4a.5.5 0 00.4.75h8.8a.5.5 0 00.4-.75c-.6-.7-1.3-1.9-1.3-4A3.5 3.5 0 007 1.5z" stroke="currentColor" stroke-width="1.1"/><path d="M5.5 10.5a1.5 1.5 0 003 0" stroke="currentColor" stroke-width="1.1"/></svg>
+            </button>
+          </div>
+        </td>
       </tr>
     `;
   });
@@ -1246,6 +1253,9 @@ async function loadPortfolioData() {
     renderPortfolioSummary(summaryRes);
     renderPortfolioItems(State.portfolio.items);
 
+    // Load alerts list
+    loadAlertsList();
+
     // Export button visibility
     const exportBtn = $('export-csv-btn');
     if (exportBtn) {
@@ -1520,6 +1530,145 @@ window.exportPortfolioCSV = exportPortfolioCSV;
 
 
 /* ══════════════════════════════════════════════════════════════════
+   PRICE ALERTS
+   ══════════════════════════════════════════════════════════════════ */
+
+let _alertCardIdx = null;
+
+function openAlertMini(idx) {
+  const card = State.browser.cards[idx];
+  if (!card) return;
+
+  if (!State.user || !State.token) {
+    showToast('Sign in to set price alerts', 'warning');
+    return;
+  }
+
+  _alertCardIdx = idx;
+  const modal = $('alert-mini-modal');
+  modal.style.display = '';
+  modal.setAttribute('aria-hidden', 'false');
+
+  const currentPrice = card.eu_cardmarket_7d_avg ?? card.en_tcgplayer_market;
+  $('alert-card-info').innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;">
+      ${cardThumb(card.image_url, card.name)}
+      <div>
+        <div style="font-weight:600;">${escHtml(card.name)}</div>
+        <div style="color:var(--muted);font-size:12px;">${escHtml(card.card_id)} &middot; ${escHtml(card.set_code || '')}</div>
+        <div style="margin-top:4px;font-size:13px;">Current: ${currentPrice != null ? fmt.eur(currentPrice) : '—'}</div>
+      </div>
+    </div>
+  `;
+
+  // Default target: current price - 10% for "below", + 10% for "above"
+  const dir = $('alert-direction').value;
+  if (currentPrice != null) {
+    const factor = dir === 'below' ? 0.9 : 1.1;
+    $('alert-target').value = (currentPrice * factor).toFixed(2);
+  } else {
+    $('alert-target').value = '';
+  }
+}
+window.openAlertMini = openAlertMini;
+
+function closeAlertMini() {
+  const modal = $('alert-mini-modal');
+  if (!modal) return;
+  modal.style.display = 'none';
+  modal.setAttribute('aria-hidden', 'true');
+  _alertCardIdx = null;
+}
+window.closeAlertMini = closeAlertMini;
+
+async function confirmCreateAlert() {
+  if (_alertCardIdx == null) return;
+  const card = State.browser.cards[_alertCardIdx];
+  if (!card) return;
+
+  const target = parseFloat($('alert-target').value);
+  if (isNaN(target) || target <= 0) {
+    showToast('Enter a valid target price', 'warning');
+    return;
+  }
+
+  try {
+    await apiFetchMut('/api/alerts', 'POST', {
+      card_id: card.card_id,
+      variant: card.variant || 'Normal',
+      target_price: target,
+      direction: $('alert-direction').value,
+      currency: 'EUR',
+    });
+    showToast(`Alert set: ${card.name} ${$('alert-direction').value} €${target.toFixed(2)}`, 'success');
+    closeAlertMini();
+  } catch (err) {
+    showToast('Alert failed: ' + err.message, 'error');
+  }
+}
+window.confirmCreateAlert = confirmCreateAlert;
+
+// Alerts list in portfolio tab
+async function loadAlertsList() {
+  const container = $('alerts-list');
+  if (!container) return;
+  if (!State.user || !State.token) {
+    container.innerHTML = '<div style="color:var(--muted);font-size:13px;">Sign in to see your alerts.</div>';
+    return;
+  }
+
+  try {
+    const data = await apiFetch('/api/alerts');
+    const alerts = data.alerts || [];
+    if (!alerts.length) {
+      container.innerHTML = '<div style="color:var(--muted);font-size:13px;">No alerts set. Use the bell icon in the Card Browser to create one.</div>';
+      return;
+    }
+
+    container.innerHTML = `<div class="alerts-grid">${alerts.map(a => {
+      const statusClass = a.is_active ? 'alert-active' : 'alert-triggered';
+      const statusLabel = a.is_active ? 'Active' : `Triggered at €${Number(a.triggered_price).toFixed(2)}`;
+      const dirIcon = a.direction === 'below' ? '↓' : '↑';
+      const currentDisplay = a.current_price_eur != null ? fmt.eur(a.current_price_eur) : '—';
+
+      return `<div class="alert-card ${statusClass}">
+        <div class="alert-card-header">
+          <div style="display:flex;align-items:center;gap:8px;">
+            ${cardThumb(a.image_url, a.name)}
+            <div>
+              <div style="font-weight:500;font-size:13px;">${escHtml(a.name)}</div>
+              <div style="color:var(--muted);font-size:11px;">${escHtml(a.card_id)} &middot; ${escHtml(a.set_code || '')}</div>
+            </div>
+          </div>
+          ${a.is_active ? `<button class="btn-icon" title="Delete alert" onclick="deleteAlert(${a.id})">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 4h8l-.75 8.25a1 1 0 01-1 .75h-4.5a1 1 0 01-1-.75L3 4z" stroke="currentColor" stroke-width="1.2"/><path d="M2 4h10M5.5 2h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+          </button>` : ''}
+        </div>
+        <div class="alert-card-body">
+          <span class="alert-direction">${dirIcon} ${a.direction} ${fmt.eur(a.target_price)}</span>
+          <span style="color:var(--muted);font-size:12px;">Now: ${currentDisplay}</span>
+          <span class="alert-status ${statusClass}">${statusLabel}</span>
+        </div>
+      </div>`;
+    }).join('')}</div>`;
+  } catch (err) {
+    container.innerHTML = `<div style="color:var(--muted);font-size:13px;">Failed to load alerts.</div>`;
+  }
+}
+
+async function deleteAlert(alertId) {
+  try {
+    await apiFetchMut(`/api/alerts/${alertId}`, 'DELETE');
+    showToast('Alert deleted', 'success');
+    loadAlertsList();
+  } catch (err) {
+    showToast('Delete failed: ' + err.message, 'error');
+  }
+}
+window.deleteAlert = deleteAlert;
+
+
+/* ══════════════════════════════════════════════════════════════════
    INIT ALL FILTERS once DOM is ready
    ══════════════════════════════════════════════════════════════════ */
 document.addEventListener('DOMContentLoaded', () => {
@@ -1536,5 +1685,22 @@ document.addEventListener('DOMContentLoaded', () => {
   // Close add-card modal on overlay click
   $('add-card-modal')?.addEventListener('click', (e) => {
     if (e.target === $('add-card-modal')) closeAddCardModal();
+  });
+
+  // Close alert mini-modal on overlay click
+  $('alert-mini-modal')?.addEventListener('click', (e) => {
+    if (e.target === $('alert-mini-modal')) closeAlertMini();
+  });
+
+  // Update default target when direction changes
+  $('alert-direction')?.addEventListener('change', () => {
+    if (_alertCardIdx == null) return;
+    const card = State.browser.cards[_alertCardIdx];
+    if (!card) return;
+    const currentPrice = card.eu_cardmarket_7d_avg ?? card.en_tcgplayer_market;
+    if (currentPrice != null) {
+      const factor = $('alert-direction').value === 'below' ? 0.9 : 1.1;
+      $('alert-target').value = (currentPrice * factor).toFixed(2);
+    }
   });
 });
