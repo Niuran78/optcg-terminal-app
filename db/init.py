@@ -1,5 +1,6 @@
 """PostgreSQL database initialization and connection pool."""
 import os
+import ssl
 import logging
 import asyncpg
 
@@ -11,10 +12,24 @@ DATABASE_URL = os.getenv("DATABASE_URL", "")
 _pool: asyncpg.Pool = None
 
 
+def _make_ssl_context():
+    """Create an SSL context for Supabase (requires SSL, self-signed cert)."""
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
 async def get_pool() -> asyncpg.Pool:
     global _pool
     if _pool is None:
-        _pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=10)
+        try:
+            _pool = await asyncpg.create_pool(
+                DATABASE_URL, min_size=2, max_size=10, ssl=_make_ssl_context()
+            )
+        except Exception as e:
+            logger.warning(f"SSL pool creation failed ({e}), retrying without SSL...")
+            _pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=10)
     return _pool
 
 
