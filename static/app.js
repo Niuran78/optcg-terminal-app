@@ -1368,8 +1368,9 @@ let _acDebounce = null;
 
 function openAddCardModal() {
   const modal = $('add-card-modal');
-  if (!modal) return;
-  modal.style.display = '';
+  if (!modal) { showToast('Add card modal not found', 'error'); return; }
+  modal.style.display = 'flex';
+  modal.classList.add('open');
   modal.setAttribute('aria-hidden', 'false');
   // Reset form
   $('ac-search').value = '';
@@ -1389,6 +1390,7 @@ function closeAddCardModal() {
   const modal = $('add-card-modal');
   if (!modal) return;
   modal.style.display = 'none';
+  modal.classList.remove('open');
   modal.setAttribute('aria-hidden', 'true');
 }
 window.closeAddCardModal = closeAddCardModal;
@@ -1546,7 +1548,9 @@ function openAlertMini(idx) {
 
   _alertCardIdx = idx;
   const modal = $('alert-mini-modal');
-  modal.style.display = '';
+  if (!modal) { showToast('Alert modal not found', 'error'); return; }
+  modal.style.display = 'flex';
+  modal.classList.add('open');
   modal.setAttribute('aria-hidden', 'false');
 
   const currentPrice = card.eu_cardmarket_7d_avg ?? card.en_tcgplayer_market;
@@ -1576,6 +1580,7 @@ function closeAlertMini() {
   const modal = $('alert-mini-modal');
   if (!modal) return;
   modal.style.display = 'none';
+  modal.classList.remove('open');
   modal.setAttribute('aria-hidden', 'true');
   _alertCardIdx = null;
 }
