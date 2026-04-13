@@ -76,8 +76,26 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not seed sets on startup: {e}")
 
-    # Check if cards_unified has data — only seed if empty
+    # Ensure admin account exists
     pool = await get_pool()
+    async with pool.acquire() as conn:
+        admin = await conn.fetchrow(
+            "SELECT id FROM users WHERE email=$1",
+            "mail@blockreaction-investments.ch",
+        )
+        if not admin:
+            import bcrypt
+            hashed = bcrypt.hashpw(b"Holygrade2026!", bcrypt.gensalt()).decode()
+            await conn.execute(
+                "INSERT INTO users (email, password_hash, tier) VALUES ($1, $2, 'elite')",
+                "mail@blockreaction-investments.ch",
+                hashed,
+            )
+            logger.info("Admin account created: mail@blockreaction-investments.ch (elite)")
+        else:
+            logger.info(f"Admin account exists: id={admin['id']}")
+
+    # Check if cards_unified has data — only seed if empty
     async with pool.acquire() as conn:
         count = await conn.fetchval("SELECT COUNT(*) FROM cards_unified")
         priced = await conn.fetchval(

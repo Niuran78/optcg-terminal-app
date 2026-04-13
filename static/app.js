@@ -168,16 +168,36 @@ function switchTab(tab) {
 function renderNavUser() {
   const emailEl = $('nav-user-email');
   const tierEl  = $('nav-user-tier');
+  const userBtn = $('user-btn');
 
   if (!State.user) {
-    if (emailEl) emailEl.textContent = 'Guest';
-    if (tierEl)  tierEl.textContent = 'Free';
+    // Not logged in — turn the user button into a Sign In link
+    if (emailEl) emailEl.textContent = 'Sign In';
+    if (tierEl)  tierEl.textContent = '';
+    if (userBtn) {
+      userBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        window.location.href = '/login.html';
+      };
+    }
     return;
   }
 
+  // Logged in — restore dropdown behavior
   if (emailEl) emailEl.textContent = State.user.email || 'User';
   const tier = Auth?.getTier(State.user) || 'free';
   if (tierEl) tierEl.textContent = tier.toUpperCase();
+  if (userBtn) {
+    userBtn.onclick = (e) => {
+      e.stopPropagation();
+      const menu = $('user-menu');
+      if (menu) {
+        const isOpen = menu.classList.toggle('open');
+        userBtn.setAttribute('aria-expanded', isOpen);
+      }
+    };
+  }
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -894,7 +914,24 @@ async function loadOverviewData() {
   showLoadingBar();
 
   try {
-    const data = await apiFetch('/api/market/overview');
+    // Fetch both endpoints in parallel: market-summary (reliable) + overview (for sets/movers)
+    const [summary, overview] = await Promise.all([
+      apiFetch('/api/cards/market-summary').catch(() => null),
+      apiFetch('/api/market/overview').catch(() => null),
+    ]);
+
+    // Merge into a single data object for renderOverview
+    const data = {
+      total_sets:    summary?.total_sets || 0,
+      total_cards:   summary?.total_cards || 0,
+      cards_with_eu: summary?.cards_with_eu_prices || 0,
+      cards_with_en: summary?.cards_with_en_prices || 0,
+      last_updated:  summary?.last_updated || null,
+      top_movers:    overview?.top_movers || [],
+      recent_sets:   overview?.recent_sets || [],
+      arb_opportunities: overview?.stats?.arb_opportunities || 0,
+    };
+
     State.overview.data = data;
     renderOverview(data);
   } catch (err) {
@@ -914,21 +951,25 @@ async function loadOverviewData() {
 function renderOverview(data) {
   const heroEl = $('overview-hero');
   if (heroEl) {
+    const setsTracked = Number(data.total_sets) || 0;
+    const cardsIndexed = Number(data.total_cards) || 0;
+    const arbOpps = Number(data.arb_opportunities) || 0;
+
     heroEl.innerHTML = `
       <div class="overview-hero-card accent-border">
         <div class="stat-label">Sets Tracked</div>
-        <div class="stat-value accent">${fmt.int(data.sets_tracked || data.total_sets || '—')}</div>
+        <div class="stat-value accent">${fmt.int(setsTracked)}</div>
         <div class="stat-sub">active in market</div>
       </div>
       <div class="overview-hero-card">
         <div class="stat-label">Cards Indexed</div>
-        <div class="stat-value">${fmt.int(data.cards_indexed || data.total_cards || '—')}</div>
+        <div class="stat-value">${fmt.int(cardsIndexed)}</div>
         <div class="stat-sub">with price data</div>
       </div>
       <div class="overview-hero-card">
-        <div class="stat-label">Arb Opportunities</div>
-        <div class="stat-value positive">${fmt.int(data.arb_opportunities || '—')}</div>
-        <div class="stat-sub">above 5% spread</div>
+        <div class="stat-label">EU Priced</div>
+        <div class="stat-value positive">${fmt.int(Number(data.cards_with_eu) || 0)}</div>
+        <div class="stat-sub">cards with EU prices</div>
       </div>
       <div class="overview-hero-card">
         <div class="stat-label">Last Updated</div>
@@ -955,7 +996,7 @@ function renderOverview(data) {
       `).join('');
     } else {
       moversEl.innerHTML = `<div class="empty-state" style="padding:24px 0;">
-        <div style="color:var(--muted);font-size:13px;">No movers data available</div>
+        <div style="color:var(--muted);font-size:13px;">Coming soon — EN prices needed for arbitrage movers</div>
       </div>`;
     }
   }

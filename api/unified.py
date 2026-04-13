@@ -224,29 +224,37 @@ async def card_price_history(
 
     pool = await get_pool()
     async with pool.acquire() as conn:
-        # Card metadata
+        # Card metadata (match by card_id + variant)
         card = await conn.fetchrow(
-            "SELECT card_id, name, set_code, set_name, rarity, variant, image_url, "
+            "SELECT id, card_id, name, set_code, set_name, rarity, variant, image_url, "
             "en_tcgplayer_market, eu_cardmarket_7d_avg, eu_cardmarket_30d_avg "
-            "FROM cards_unified WHERE card_id = $1 LIMIT 1",
-            card_id,
+            "FROM cards_unified WHERE card_id = $1 AND variant = $2 LIMIT 1",
+            card_id, variant,
         )
+        if not card:
+            # Fallback: try without variant filter
+            card = await conn.fetchrow(
+                "SELECT id, card_id, name, set_code, set_name, rarity, variant, image_url, "
+                "en_tcgplayer_market, eu_cardmarket_7d_avg, eu_cardmarket_30d_avg "
+                "FROM cards_unified WHERE card_id = $1 LIMIT 1",
+                card_id,
+            )
         if not card:
             raise HTTPException(404, detail="Card not found")
 
-        # Snapshot history
+        # Snapshot history — join via card_unified_id, column is snap_date
         rows = await conn.fetch(
-            "SELECT snapshot_date, en_tcgplayer_market, en_tcgplayer_low, "
+            "SELECT snap_date, en_tcgplayer_market, en_tcgplayer_low, "
             "eu_cardmarket_7d_avg, eu_cardmarket_30d_avg, eu_cardmarket_lowest "
             "FROM daily_price_snapshots "
-            "WHERE card_id = $1 AND variant = $2 AND snapshot_date >= $3 "
-            "ORDER BY snapshot_date ASC",
-            card_id, variant, since,
+            "WHERE card_unified_id = $1 AND snap_date >= $2 "
+            "ORDER BY snap_date ASC",
+            card["id"], since,
         )
 
     history = [
         {
-            "date": str(row["snapshot_date"]),
+            "date": str(row["snap_date"]),
             "en_tcgplayer_market": row["en_tcgplayer_market"],
             "en_tcgplayer_low": row["en_tcgplayer_low"],
             "eu_cardmarket_7d_avg": row["eu_cardmarket_7d_avg"],
@@ -420,7 +428,7 @@ async def browse_sealed(
 
     if product_type:
         conditions.append(f"product_type = ${param_idx}")
-        params.append(product_type.lower())
+        params.append(product_type.lower().replace("_", " "))
         param_idx += 1
 
     where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""

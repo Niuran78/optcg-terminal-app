@@ -160,6 +160,12 @@ def _extract_eu_product_prices(product: dict, set_code: Optional[str] = None) ->
     avg_30 = _cents_to_eur(cm.get("30d_average"), set_code)
     avg_7 = _cents_to_eur(cm.get("7d_average"), set_code)
 
+    # Fallback: use the pre-extracted _cardmarket_price from opcg_api cache
+    if lowest is None and avg_30 is None and avg_7 is None:
+        fallback_price = product.get("_cardmarket_price")
+        if fallback_price is not None:
+            lowest = _cents_to_eur(fallback_price, set_code)
+
     # Determine trend
     trend = "stable"
     if avg_7 and avg_30:
@@ -409,7 +415,7 @@ async def aggregate_sealed(set_code: str, set_name: str) -> int:
         if "case" in name_lower:
             return "case"
         if "booster box" in name_lower or "display" in name_lower:
-            return "booster_box"
+            return "booster box"
         if "booster" in name_lower or "pack" in name_lower:
             return "booster"
         return "other"

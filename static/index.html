@@ -488,17 +488,11 @@
 <script src="app.js"></script>
 
 <script>
-  // Close user dropdown on outside click
-  const userBtn = document.getElementById('user-btn');
-  if (userBtn) {
-    userBtn.addEventListener('click', function(e) {
-      const menu = document.getElementById('user-menu');
-      if (menu) {
-        const isOpen = menu.classList.toggle('open');
-        userBtn.setAttribute('aria-expanded', isOpen);
-      }
-    });
-  }
+  // Close user dropdown on outside click (handled by app.js renderNavUser for open/toggle)
+  document.addEventListener('click', function() {
+    const menu = document.getElementById('user-menu');
+    if (menu) menu.classList.remove('open');
+  });
 </script>
 </body>
 </html>
