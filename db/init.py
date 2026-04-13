@@ -1,6 +1,5 @@
 """PostgreSQL database initialization and connection pool."""
 import os
-import ssl
 import logging
 import asyncpg
 
@@ -15,13 +14,7 @@ _pool: asyncpg.Pool = None
 async def get_pool() -> asyncpg.Pool:
     global _pool
     if _pool is None:
-        # Supabase requires SSL. Create a permissive SSL context.
-        ssl_ctx = ssl.create_default_context()
-        ssl_ctx.check_hostname = False
-        ssl_ctx.verify_mode = ssl.CERT_NONE
-        _pool = await asyncpg.create_pool(
-            DATABASE_URL, min_size=2, max_size=10, ssl=ssl_ctx
-        )
+        _pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=10)
         logger.info("PostgreSQL pool created.")
     return _pool
 
