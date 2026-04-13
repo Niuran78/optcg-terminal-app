@@ -1562,3 +1562,37 @@ ul { list-style: none; }
   50%  { transform: scaleX(0.5) translateX(60%); }
   100% { transform: scaleX(0) translateX(100%); }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   MARKET SUMMARY BAR
+   ═══════════════════════════════════════════════════════════════ */
+.market-summary-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-6);
+  background: #1a1a2e;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-2);
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+.market-summary-bar span {
+  white-space: nowrap;
+}
+
+.market-summary-sep {
+  width: 1px;
+  height: 12px;
+  background: var(--accent-dim);
+  opacity: 0.4;
+  flex-shrink: 0;
+}
+
+.market-summary-loading {
+  color: var(--muted);
+  font-style: italic;
+}

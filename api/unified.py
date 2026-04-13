@@ -160,6 +160,46 @@ def _arbitrage_calc(card_row: dict, min_profit_pct: float) -> Optional[dict]:
     }
 
 
+# ─── Market Summary ───────────────────────────────────────────────────────────
+
+@router.get("/market-summary")
+async def market_summary():
+    """Public endpoint: aggregate stats from cards_unified."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        total_cards = await conn.fetchval("SELECT COUNT(*) FROM cards_unified")
+        total_sets = await conn.fetchval("SELECT COUNT(DISTINCT set_code) FROM cards_unified WHERE set_code IS NOT NULL")
+        cards_with_eu = await conn.fetchval("SELECT COUNT(*) FROM cards_unified WHERE eu_cardmarket_7d_avg IS NOT NULL")
+        cards_with_en = await conn.fetchval("SELECT COUNT(*) FROM cards_unified WHERE en_tcgplayer_market IS NOT NULL")
+
+        top_eu = await conn.fetchrow(
+            "SELECT card_id, name, eu_cardmarket_7d_avg FROM cards_unified "
+            "WHERE eu_cardmarket_7d_avg IS NOT NULL "
+            "ORDER BY eu_cardmarket_7d_avg DESC LIMIT 1"
+        )
+
+        last_updated = await conn.fetchval(
+            "SELECT MAX(eu_updated_at) FROM cards_unified WHERE eu_updated_at IS NOT NULL"
+        )
+
+    top_eu_card = None
+    if top_eu:
+        top_eu_card = {
+            "card_id": top_eu["card_id"],
+            "name": top_eu["name"],
+            "eu_cardmarket_7d_avg": top_eu["eu_cardmarket_7d_avg"],
+        }
+
+    return {
+        "total_cards": total_cards,
+        "total_sets": total_sets,
+        "cards_with_eu_prices": cards_with_eu,
+        "cards_with_en_prices": cards_with_en,
+        "top_eu_card": top_eu_card,
+        "last_updated": str(last_updated) if last_updated else None,
+    }
+
+
 # ─── Browse cards ─────────────────────────────────────────────────────────────
 
 @router.get("/browse")
@@ -167,7 +207,7 @@ async def browse_cards(
     set_code: Optional[str] = Query(None, description="Filter by set code, e.g. OP01"),
     search: Optional[str] = Query(None, min_length=2, description="Card name search"),
     rarity: Optional[str] = Query(None, description="Filter by rarity"),
-    sort: str = Query("en_tcgplayer_market", description="Sort column"),
+    sort: str = Query("eu_cardmarket_7d_avg", description="Sort column"),
     order: str = Query("desc", description="asc or desc"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -176,7 +216,7 @@ async def browse_cards(
     """Browse all cards with EN + EU prices from both sources."""
     # Validate sort/order
     if sort not in CARD_SORT_COLUMNS:
-        sort = "en_tcgplayer_market"
+        sort = "eu_cardmarket_7d_avg"
     order_sql = "DESC" if order.lower() != "asc" else "ASC"
 
     # Free tier: limit to latest sets

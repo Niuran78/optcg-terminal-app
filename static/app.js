@@ -17,7 +17,7 @@ const State = {
     offset:  0,
     loading: false,
     filters: { set: 'all', rarity: 'all', search: '' },
-    sort:    { col: 'en_tcgplayer_market', order: 'desc' },
+    sort:    { col: 'eu_cardmarket_7d_avg', order: 'desc' },
   },
 
   sealed: {
@@ -74,9 +74,37 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Bind nav
   bindNav();
 
+  // Load market summary bar
+  loadMarketSummary();
+
   // Load default tab
   switchTab('browser');
 });
+
+/* ══════════════════════════════════════════════════════════════════
+   MARKET SUMMARY BAR
+   ══════════════════════════════════════════════════════════════════ */
+async function loadMarketSummary() {
+  const bar = $('market-summary-bar');
+  if (!bar) return;
+
+  try {
+    const data = await apiFetch('/api/cards/market-summary');
+    const updated = data.last_updated
+      ? new Date(data.last_updated).toLocaleString()
+      : 'N/A';
+    bar.innerHTML =
+      `<span>${fmt.int(data.total_cards)} Cards Tracked</span>` +
+      `<span class="market-summary-sep"></span>` +
+      `<span>${fmt.int(data.total_sets)} Sets</span>` +
+      `<span class="market-summary-sep"></span>` +
+      `<span>${fmt.int(data.cards_with_eu_prices)} EU Priced</span>` +
+      `<span class="market-summary-sep"></span>` +
+      `<span>Last Updated: ${escHtml(updated)}</span>`;
+  } catch (_) {
+    bar.innerHTML = '<span>Market data unavailable</span>';
+  }
+}
 
 /* ══════════════════════════════════════════════════════════════════
    NAV

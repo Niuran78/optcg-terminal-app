@@ -15,6 +15,7 @@ from typing import Optional
 from db.init import get_pool
 from services import opcg_api
 from services import tcg_price_lookup
+from services.price_snapshots import take_daily_snapshots
 
 logger = logging.getLogger(__name__)
 
@@ -563,3 +564,10 @@ async def seed_all_unified():
     if errors:
         for err in errors[:10]:
             logger.warning(f"  - {err}")
+
+    # Take daily price snapshots after seed completes
+    try:
+        snapshot_count = await take_daily_snapshots()
+        logger.info(f"seed_all_unified: captured {snapshot_count} daily price snapshots")
+    except Exception as e:
+        logger.warning(f"seed_all_unified: daily snapshot failed: {e}")

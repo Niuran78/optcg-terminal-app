@@ -175,7 +175,7 @@ async def init_db():
                 UNIQUE(set_slug, card_id, variant)
             );
 
-            -- Indexes
+            -- Indexes (Phase 1)
             CREATE INDEX IF NOT EXISTS idx_cards_cache_set ON cards_cache(set_api_id);
             CREATE INDEX IF NOT EXISTS idx_products_cache_set ON products_cache(set_api_id);
             CREATE INDEX IF NOT EXISTS idx_price_history_item ON price_history(item_api_id, recorded_at);
@@ -184,6 +184,93 @@ async def init_db():
             CREATE INDEX IF NOT EXISTS idx_cards_unified_card_id ON cards_unified(card_id);
             CREATE INDEX IF NOT EXISTS idx_sealed_unified_set ON sealed_unified(set_code);
             CREATE INDEX IF NOT EXISTS idx_tcg_en_cards_set ON tcg_en_cards_cache(set_slug);
+
+            -- ═══ Phase 2 Tables ═══
+
+            CREATE TABLE IF NOT EXISTS daily_price_snapshots (
+                id                    SERIAL PRIMARY KEY,
+                card_unified_id       INTEGER NOT NULL REFERENCES cards_unified(id) ON DELETE CASCADE,
+                snap_date             DATE    NOT NULL,
+                en_tcgplayer_market   REAL,
+                en_tcgplayer_low      REAL,
+                en_ebay_avg_7d        REAL,
+                eu_cardmarket_7d_avg  REAL,
+                eu_cardmarket_30d_avg REAL,
+                eu_cardmarket_lowest  REAL,
+                created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (card_unified_id, snap_date)
+            );
+
+            CREATE TABLE IF NOT EXISTS price_alerts (
+                id                SERIAL PRIMARY KEY,
+                user_id           INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                card_unified_id   INTEGER NOT NULL REFERENCES cards_unified(id) ON DELETE CASCADE,
+                price_field       TEXT    NOT NULL DEFAULT 'en_tcgplayer_market',
+                direction         TEXT    NOT NULL CHECK (direction IN ('above', 'below')),
+                target_price      REAL    NOT NULL CHECK (target_price >= 0),
+                price_at_creation REAL,
+                is_active         BOOLEAN     NOT NULL DEFAULT TRUE,
+                triggered_at      TIMESTAMPTZ,
+                triggered_price   REAL,
+                created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (user_id, card_unified_id, price_field, direction, target_price)
+            );
+
+            CREATE TABLE IF NOT EXISTS portfolios (
+                id          SERIAL PRIMARY KEY,
+                user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                name        TEXT    NOT NULL DEFAULT 'My Portfolio',
+                description TEXT,
+                created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (user_id, name)
+            );
+
+            CREATE TABLE IF NOT EXISTS portfolio_items (
+                id              SERIAL PRIMARY KEY,
+                portfolio_id    INTEGER NOT NULL REFERENCES portfolios(id) ON DELETE CASCADE,
+                card_unified_id INTEGER NOT NULL REFERENCES cards_unified(id) ON DELETE CASCADE,
+                quantity        INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
+                buy_price       REAL    NOT NULL CHECK (buy_price >= 0),
+                buy_currency    TEXT    NOT NULL DEFAULT 'USD' CHECK (buy_currency IN ('USD', 'EUR')),
+                acquired_at     DATE    NOT NULL DEFAULT CURRENT_DATE,
+                notes           TEXT,
+                created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+
+            CREATE TABLE IF NOT EXISTS watchlist (
+                id                SERIAL PRIMARY KEY,
+                user_id           INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                card_unified_id   INTEGER NOT NULL REFERENCES cards_unified(id) ON DELETE CASCADE,
+                price_when_added  REAL,
+                price_field       TEXT NOT NULL DEFAULT 'en_tcgplayer_market',
+                created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (user_id, card_unified_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS market_indices (
+                id              SERIAL PRIMARY KEY,
+                snap_date       DATE NOT NULL,
+                index_name      TEXT NOT NULL,
+                index_value     REAL,
+                pct_change_1d   REAL,
+                detail_json     TEXT,
+                created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (snap_date, index_name)
+            );
+
+            -- Indexes (Phase 2)
+            CREATE INDEX IF NOT EXISTS idx_dps_card_date ON daily_price_snapshots(card_unified_id, snap_date DESC);
+            CREATE INDEX IF NOT EXISTS idx_dps_snap_date ON daily_price_snapshots(snap_date);
+            CREATE INDEX IF NOT EXISTS idx_alerts_active ON price_alerts(is_active) WHERE is_active = TRUE;
+            CREATE INDEX IF NOT EXISTS idx_alerts_user ON price_alerts(user_id, is_active);
+            CREATE INDEX IF NOT EXISTS idx_alerts_card ON price_alerts(card_unified_id) WHERE is_active = TRUE;
+            CREATE INDEX IF NOT EXISTS idx_portfolios_user ON portfolios(user_id);
+            CREATE INDEX IF NOT EXISTS idx_pitems_portfolio ON portfolio_items(portfolio_id);
+            CREATE INDEX IF NOT EXISTS idx_pitems_card ON portfolio_items(card_unified_id);
+            CREATE INDEX IF NOT EXISTS idx_watchlist_user ON watchlist(user_id);
+            CREATE INDEX IF NOT EXISTS idx_watchlist_card ON watchlist(card_unified_id);
+            CREATE INDEX IF NOT EXISTS idx_mindices_date ON market_indices(snap_date DESC);
+            CREATE INDEX IF NOT EXISTS idx_mindices_name_date ON market_indices(index_name, snap_date DESC);
         """)
     logger.info(f"[DB] PostgreSQL database initialized")
 
