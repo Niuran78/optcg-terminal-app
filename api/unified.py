@@ -22,7 +22,7 @@ router = APIRouter(prefix="/api/cards", tags=["cards"])
 
 # Free tier: access limited to the 3 most recent main sets
 FREE_TIER_SET_LIMIT = 3
-FREE_TIER_SETS = ["OP09", "OP08", "OP07"]  # Updated as new sets release
+FREE_TIER_SETS = ["OP15", "OP14", "OP13"]  # Latest 3 booster sets
 
 # Valid sort columns for cards_unified
 CARD_SORT_COLUMNS = {
