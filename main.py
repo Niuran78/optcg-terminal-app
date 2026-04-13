@@ -80,13 +80,19 @@ async def lifespan(app: FastAPI):
     pool = await get_pool()
     async with pool.acquire() as conn:
         count = await conn.fetchval("SELECT COUNT(*) FROM cards_unified")
+        priced = await conn.fetchval(
+            "SELECT COUNT(*) FROM cards_unified WHERE en_tcgplayer_market IS NOT NULL OR eu_cardmarket_7d_avg IS NOT NULL"
+        )
 
+    from services.card_aggregator import seed_all_unified
     if count == 0:
         logger.info("cards_unified is empty — starting full data seed...")
-        from services.card_aggregator import seed_all_unified
+        asyncio.create_task(seed_all_unified())
+    elif priced == 0:
+        logger.info(f"cards_unified has {count} records but 0 with prices — re-seeding...")
         asyncio.create_task(seed_all_unified())
     else:
-        logger.info(f"cards_unified has {count} records — skipping seed")
+        logger.info(f"cards_unified: {count} records, {priced} with prices — skipping seed")
 
     yield
 
