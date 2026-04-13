@@ -167,22 +167,30 @@ def _extract_eu_card_prices(card: dict, set_code: Optional[str] = None) -> dict:
 def _extract_eu_product_prices(product: dict, set_code: Optional[str] = None) -> dict:
     """Extract EU product prices from a RapidAPI product dict.
     
-    Sealed products (booster boxes, cases) always use Eurocent pricing.
+    Sealed products (booster boxes, cases) are ALWAYS in EUR from RapidAPI.
+    No cent conversion needed — a Booster Box at 330.27 means €330.27.
     """
     prices = product.get("prices", {}) or {}
     cm = prices.get("cardmarket", {}) or {}
-    # Products are always booster-level (eurocent), pass OP-prefix to force /100
-    product_ref = "OP-PRODUCT"
 
-    lowest = _cents_to_eur(cm.get("lowest_near_mint") or cm.get("lowest"), product_ref, set_code)
-    avg_30 = _cents_to_eur(cm.get("30d_average"), product_ref, set_code)
-    avg_7 = _cents_to_eur(cm.get("7d_average"), product_ref, set_code)
+    def _safe_eur(v) -> Optional[float]:
+        if v is None:
+            return None
+        try:
+            f = float(v)
+            return round(f, 2) if f > 0 else None
+        except (ValueError, TypeError):
+            return None
+
+    lowest = _safe_eur(cm.get("lowest_near_mint") or cm.get("lowest"))
+    avg_30 = _safe_eur(cm.get("30d_average"))
+    avg_7 = _safe_eur(cm.get("7d_average"))
 
     # Fallback: use the pre-extracted _cardmarket_price from opcg_api cache
     if lowest is None and avg_30 is None and avg_7 is None:
         fallback_price = product.get("_cardmarket_price")
         if fallback_price is not None:
-            lowest = _cents_to_eur(fallback_price, product_ref, set_code)
+            lowest = _safe_eur(fallback_price)
 
     # Determine trend
     trend = "stable"
