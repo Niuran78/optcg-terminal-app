@@ -104,16 +104,26 @@ def _variant_from_rapidapi(card: dict) -> str:
     return _normalize_variant(version)
 
 
-def _cents_to_eur(v) -> Optional[float]:
+def _is_booster_set(set_code: Optional[str]) -> bool:
+    """Return True if the set code indicates a booster set (prices in eurocent)."""
+    if not set_code:
+        return True  # Default to eurocent (safer for high values)
+    prefix = set_code.upper()
+    # Starter decks and promo sets return prices in EUR directly
+    if prefix.startswith("ST") or prefix.startswith("PRB"):
+        return False
+    # Booster sets (OP*, EB*) return prices in eurocent
+    return True
+
+
+def _cents_to_eur(v, set_code: Optional[str] = None) -> Optional[float]:
     """Normalize RapidAPI price to EUR.
 
-    RapidAPI is inconsistent:
-    - Booster sets (OP01–OP09): prices in Eurocent (e.g. 3013.57 = €30.14)
-    - Starter decks (ST01–ST20): prices in EUR (e.g. 6.33 = €6.33)
+    RapidAPI is inconsistent with price units by set type:
+    - Booster sets (OP01–OP09, EB01): prices in Eurocent → divide by 100
+    - Starter decks (ST01–ST20, PRB01): prices already in EUR → keep as is
 
-    Heuristic: values >= 50 are Eurocent (÷100), values < 50 are EUR.
-    This works because no single card is worth > €50 on Starter Decks,
-    and Booster set prices in Eurocent are always >= 50 (= €0.50).
+    Uses set_code to determine which conversion to apply (deterministic).
     """
     if v is None:
         return None
@@ -121,33 +131,33 @@ def _cents_to_eur(v) -> Optional[float]:
         f = float(v)
         if f <= 0:
             return None
-        if f >= 50:
+        if _is_booster_set(set_code):
             return round(f / 100.0, 2)  # Eurocent → EUR
         return round(f, 2)               # Already EUR
     except (ValueError, TypeError):
         return None
 
 
-def _extract_eu_card_prices(card: dict) -> dict:
+def _extract_eu_card_prices(card: dict, set_code: Optional[str] = None) -> dict:
     """Extract EU (Cardmarket) prices from a RapidAPI card dict."""
     prices = card.get("prices", {}) or {}
     cm = prices.get("cardmarket", {}) or {}
 
     return {
-        "eu_cardmarket_7d_avg": _cents_to_eur(cm.get("7d_average")),
-        "eu_cardmarket_30d_avg": _cents_to_eur(cm.get("30d_average")),
-        "eu_cardmarket_lowest": _cents_to_eur(cm.get("lowest_near_mint") or cm.get("lowest")),
+        "eu_cardmarket_7d_avg": _cents_to_eur(cm.get("7d_average"), set_code),
+        "eu_cardmarket_30d_avg": _cents_to_eur(cm.get("30d_average"), set_code),
+        "eu_cardmarket_lowest": _cents_to_eur(cm.get("lowest_near_mint") or cm.get("lowest"), set_code),
     }
 
 
-def _extract_eu_product_prices(product: dict) -> dict:
+def _extract_eu_product_prices(product: dict, set_code: Optional[str] = None) -> dict:
     """Extract EU product prices from a RapidAPI product dict."""
     prices = product.get("prices", {}) or {}
     cm = prices.get("cardmarket", {}) or {}
 
-    lowest = _cents_to_eur(cm.get("lowest_near_mint") or cm.get("lowest"))
-    avg_30 = _cents_to_eur(cm.get("30d_average"))
-    avg_7 = _cents_to_eur(cm.get("7d_average"))
+    lowest = _cents_to_eur(cm.get("lowest_near_mint") or cm.get("lowest"), set_code)
+    avg_30 = _cents_to_eur(cm.get("30d_average"), set_code)
+    avg_7 = _cents_to_eur(cm.get("7d_average"), set_code)
 
     # Determine trend
     trend = "stable"
@@ -165,10 +175,11 @@ def _extract_eu_product_prices(product: dict) -> dict:
     }
 
 
-async def aggregate_set(set_code: str, set_name: str) -> int:
+async def aggregate_set(set_code: str, set_name: str, skip_en: bool = False) -> int:
     """Merge EN and EU card data for a given set into cards_unified.
 
     Returns the number of records upserted.
+    If skip_en is True, only EU data is fetched (used when EN rate limit is hit).
     """
     mapping = SET_MAPPING.get(set_code.upper(), {})
     en_slug = mapping.get("en_slug", "")
@@ -178,12 +189,14 @@ async def aggregate_set(set_code: str, set_name: str) -> int:
 
     # ── Fetch EN cards ──────────────────────────────────────────────────────
     en_cards: list[dict] = []
-    if en_slug:
+    if en_slug and not skip_en:
         try:
             en_cards = await tcg_price_lookup.get_en_cards(en_slug)
             logger.info(f"Aggregator [{set_code}]: {len(en_cards)} EN cards from TCG Price Lookup")
         except Exception as e:
             logger.warning(f"Aggregator [{set_code}]: EN fetch failed: {e}")
+    elif skip_en:
+        logger.info(f"Aggregator [{set_code}]: skipping EN fetch (rate limit reached)")
 
     # ── Fetch EU cards ──────────────────────────────────────────────────────
     eu_cards: list[dict] = []
@@ -230,7 +243,7 @@ async def aggregate_set(set_code: str, set_name: str) -> int:
 
             # Look up matching EU card
             eu_card = eu_lookup.get((card_id, variant)) or eu_lookup.get((card_id, "Normal"))
-            eu_prices = _extract_eu_card_prices(eu_card) if eu_card else {
+            eu_prices = _extract_eu_card_prices(eu_card, set_code) if eu_card else {
                 "eu_cardmarket_7d_avg": None,
                 "eu_cardmarket_30d_avg": None,
                 "eu_cardmarket_lowest": None,
@@ -315,7 +328,7 @@ async def aggregate_set(set_code: str, set_name: str) -> int:
             if (card_num, variant) in en_known:
                 continue  # Already handled above
 
-            eu_prices = _extract_eu_card_prices(eu_card)
+            eu_prices = _extract_eu_card_prices(eu_card, set_code)
             name = eu_card.get("name") or eu_card.get("card_name") or ""
             image_url = eu_card.get("image") or eu_card.get("image_url") or ""
             rarity = eu_card.get("rarity") or ""
@@ -415,7 +428,7 @@ async def aggregate_sealed(set_code: str, set_name: str) -> int:
             product_type = _classify_product_type(name)
             image_url = product.get("image_url") or product.get("image") or ""
             rapidapi_product_id = str(product.get("id") or product.get("_id") or "")
-            prices = _extract_eu_product_prices(product)
+            prices = _extract_eu_product_prices(product, set_code)
 
             await conn.execute(
                 """
@@ -503,10 +516,15 @@ async def seed_all_unified():
     total_sealed = 0
     processed = 0
     errors = []
+    en_requests_made = 0
+    EN_REQUEST_LIMIT = 190  # Stay below TCG Price Lookup free plan (200 req/day)
 
     for code, name in sets_to_process.items():
+        skip_en = en_requests_made >= EN_REQUEST_LIMIT
         try:
-            cards_count = await aggregate_set(code, name)
+            cards_count = await aggregate_set(code, name, skip_en=skip_en)
+            if not skip_en:
+                en_requests_made += 1  # Each set = ~1 API call (paginated internally)
             total_cards += cards_count
         except Exception as e:
             logger.error(f"seed_all_unified: card error for {code}: {e}")
@@ -524,10 +542,11 @@ async def seed_all_unified():
         processed += 1
         logger.info(
             f"seed_all_unified: [{processed}/{len(sets_to_process)}] {code} "
-            f"— {cards_count} cards, {sealed_count} sealed"
+            f"— {cards_count} cards, {sealed_count} sealed "
+            f"(EN reqs: {en_requests_made}/{EN_REQUEST_LIMIT})"
         )
 
-        await asyncio.sleep(3.5)  # Rate limit: TCG Price Lookup Free = 200 req/day
+        await asyncio.sleep(3.5)  # Rate limit between sets
 
     # Log final summary
     pool = await get_pool()

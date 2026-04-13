@@ -38,14 +38,42 @@ def _headers() -> dict:
     }
 
 
-def _cents_to_eur(v) -> Optional[float]:
+# RapidAPI set ID → set code mapping (starter decks return EUR, boosters return eurocent)
+_RAPIDAPI_ID_TO_CODE: dict[str, str] = {
+    "368": "OP01", "369": "OP02", "370": "OP03", "371": "OP04",
+    "372": "OP05", "373": "OP06", "374": "OP07", "375": "OP08", "376": "OP09",
+    "377": "ST01", "378": "ST02", "379": "ST03", "380": "ST04",
+    "381": "ST05", "382": "ST06", "383": "ST07", "384": "ST08",
+    "385": "ST09", "386": "ST10", "387": "ST11", "388": "ST12",
+    "389": "ST13", "390": "ST14", "391": "ST15", "392": "ST16",
+    "393": "ST17", "394": "ST18", "395": "ST19", "396": "ST20",
+    "397": "EB01", "398": "PRB01",
+}
+
+
+def _is_booster_set(set_code: Optional[str]) -> bool:
+    """Return True if the set code indicates a booster set (prices in eurocent)."""
+    if not set_code:
+        return True  # Default to eurocent (safer for high values)
+    prefix = set_code.upper()
+    if prefix.startswith("ST") or prefix.startswith("PRB"):
+        return False
+    return True
+
+
+def _set_code_from_id(set_id: str) -> Optional[str]:
+    """Resolve a RapidAPI set ID to a set code."""
+    return _RAPIDAPI_ID_TO_CODE.get(str(set_id))
+
+
+def _cents_to_eur(v, set_code: Optional[str] = None) -> Optional[float]:
     """Normalize RapidAPI price to EUR.
 
-    RapidAPI is inconsistent:
-    - Booster sets (OP01–OP09): prices in Eurocent (e.g. 3013.57 = €30.14)
-    - Starter decks (ST01–ST20): prices in EUR (e.g. 6.33 = €6.33)
+    RapidAPI is inconsistent with price units by set type:
+    - Booster sets (OP01–OP09, EB01): prices in Eurocent → divide by 100
+    - Starter decks (ST01–ST20, PRB01): prices already in EUR → keep as is
 
-    Heuristic: values >= 50 are Eurocent (÷100), values < 50 are EUR.
+    Uses set_code to determine which conversion to apply (deterministic).
     """
     if v is None:
         return None
@@ -53,17 +81,18 @@ def _cents_to_eur(v) -> Optional[float]:
         f = float(v)
         if f <= 0:
             return None
-        if f >= 50:
+        if _is_booster_set(set_code):
             return round(f / 100.0, 2)
         return round(f, 2)
     except (ValueError, TypeError):
         return None
 
 
-def _extract_price(item: dict, source: str) -> Optional[float]:
+def _extract_price(item: dict, source: str, set_code: Optional[str] = None) -> Optional[float]:
     """Extract price from API response item for a given source.
 
-    All RapidAPI prices are in Eurocent and must be divided by 100.
+    Booster set prices are in Eurocent, starter deck prices are in EUR.
+    The set_code parameter determines which conversion to apply.
 
     Cards:
         prices.cardmarket.7d_average (preferred, most realistic)
@@ -71,20 +100,6 @@ def _extract_price(item: dict, source: str) -> Optional[float]:
         prices.cardmarket.lowest_near_mint or prices.cardmarket.30d_average
     TCGPlayer:
         prices.tcg_player.market_price
-
-    API response structure example:
-    "prices": {
-        "cardmarket": {
-            "currency": "EUR",
-            "lowest_near_mint": 1999,     <- €19.99
-            "30d_average": 2347.69,       <- €23.48
-            "7d_average": 3013.57         <- €30.14
-        },
-        "tcg_player": {
-            "currency": "EUR",
-            "market_price": 1742.62       <- €17.43
-        }
-    }
     """
     prices = item.get("prices", {}) or {}
     if not isinstance(prices, dict):
@@ -96,9 +111,9 @@ def _extract_price(item: dict, source: str) -> Optional[float]:
             for key in ["7d_average", "30d_average", "lowest_near_mint", "lowest"]:
                 v = cm.get(key)
                 if v is not None:
-                    return _cents_to_eur(v)
+                    return _cents_to_eur(v, set_code)
         if isinstance(cm, (int, float)):
-            return _cents_to_eur(cm)
+            return _cents_to_eur(cm, set_code)
 
     elif source == "tcgplayer":
         for k in ["tcg_player", "tcgplayer", "tcgPlayer"]:
@@ -106,9 +121,9 @@ def _extract_price(item: dict, source: str) -> Optional[float]:
             if isinstance(tcg, dict):
                 v = tcg.get("market_price")
                 if v is not None:
-                    return _cents_to_eur(v)
+                    return _cents_to_eur(v, set_code)
             elif isinstance(tcg, (int, float)):
-                return _cents_to_eur(tcg)
+                return _cents_to_eur(tcg, set_code)
 
     return None
 
@@ -214,6 +229,7 @@ def _detect_language(name: str, code: str, ep: dict) -> str:
 
 async def get_cards(set_id: str, tier: str = "free") -> list[dict]:
     """Fetch ALL cards for a set from API or cache, with full pagination."""
+    set_code = _set_code_from_id(set_id)
     threshold = _cache_age_threshold(tier)
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -265,8 +281,8 @@ async def get_cards(set_id: str, tier: str = "free") -> list[dict]:
     async with pool.acquire() as conn:
         for card in all_cards:
             card_api_id = str(card.get("id", card.get("_id", card.get("code", ""))))
-            cm_price = _extract_price(card, "cardmarket")
-            tcp_price = _extract_price(card, "tcgplayer")
+            cm_price = _extract_price(card, "cardmarket", set_code)
+            tcp_price = _extract_price(card, "tcgplayer", set_code)
 
             await conn.execute("""
                 INSERT INTO cards_cache (set_api_id, card_api_id, card_data_json, cardmarket_price, tcgplayer_price, last_updated)
@@ -288,8 +304,8 @@ async def get_cards(set_id: str, tier: str = "free") -> list[dict]:
     # Return with extracted prices and region
     result = []
     for card in all_cards:
-        cm_price = _extract_price(card, "cardmarket")
-        tcp_price = _extract_price(card, "tcgplayer")
+        cm_price = _extract_price(card, "cardmarket", set_code)
+        tcp_price = _extract_price(card, "tcgplayer", set_code)
         card["_cardmarket_price"] = cm_price
         card["_tcgplayer_price"] = tcp_price
         card["_region"] = _classify_region(cm_price, tcp_price)
@@ -299,6 +315,7 @@ async def get_cards(set_id: str, tier: str = "free") -> list[dict]:
 
 async def get_products(set_id: str, tier: str = "free") -> list[dict]:
     """Fetch ALL sealed products for a set from API or cache, with full pagination."""
+    set_code = _set_code_from_id(set_id)
     threshold = _cache_age_threshold(tier)
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -357,8 +374,8 @@ async def get_products(set_id: str, tier: str = "free") -> list[dict]:
     async with pool.acquire() as conn:
         for product in all_products:
             prod_api_id = str(product.get("id", product.get("_id", product.get("code", ""))))
-            cm_price = _extract_price(product, "cardmarket")
-            tcp_price = _extract_price(product, "tcgplayer")
+            cm_price = _extract_price(product, "cardmarket", set_code)
+            tcp_price = _extract_price(product, "tcgplayer", set_code)
 
             await conn.execute("""
                 INSERT INTO products_cache (set_api_id, product_api_id, product_data_json, cardmarket_price, tcgplayer_price, last_updated)
@@ -378,8 +395,8 @@ async def get_products(set_id: str, tier: str = "free") -> list[dict]:
 
     result = []
     for product in all_products:
-        cm_price = _extract_price(product, "cardmarket")
-        tcp_price = _extract_price(product, "tcgplayer")
+        cm_price = _extract_price(product, "cardmarket", set_code)
+        tcp_price = _extract_price(product, "tcgplayer", set_code)
         product["_cardmarket_price"] = cm_price
         product["_tcgplayer_price"] = tcp_price
         result.append(product)
@@ -403,8 +420,10 @@ async def search_cards(query: str, tier: str = "free") -> list[dict]:
 
     cards = data if isinstance(data, list) else data.get("data", data.get("cards", []))
     for card in cards:
-        card["_cardmarket_price"] = _extract_price(card, "cardmarket")
-        card["_tcgplayer_price"] = _extract_price(card, "tcgplayer")
+        card_num = str(card.get("card_number") or "")
+        sc = card_num.split("-")[0].upper() if "-" in card_num else None
+        card["_cardmarket_price"] = _extract_price(card, "cardmarket", sc)
+        card["_tcgplayer_price"] = _extract_price(card, "tcgplayer", sc)
     return cards
 
 
