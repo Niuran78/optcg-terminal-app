@@ -1,272 +1,261 @@
-/* ============================================================
-   OPTCG MARKET TERMINAL — auth.js
-   Handles login, registration, token storage
-   ============================================================ */
-
-'use strict';
+/* ═══════════════════════════════════════════════════════════════
+   OPTCG MARKET TERMINAL — Auth Module
+   Handles JWT token storage, login, register, session restore.
+   ═══════════════════════════════════════════════════════════════ */
 
 const Auth = (() => {
   const TOKEN_KEY = 'optcg_token';
   const USER_KEY  = 'optcg_user';
 
-  /* ── Storage ── */
-  function getToken() {
-    return localStorage.getItem(TOKEN_KEY);
+  /* ── Storage ─────────────────────────────────────────────────── */
+  function setToken(token) {
+    try { localStorage.setItem(TOKEN_KEY, token); } catch (e) { /* private mode */ }
   }
 
-  function getUser() {
+  function getToken() {
+    try { return localStorage.getItem(TOKEN_KEY); } catch (e) { return null; }
+  }
+
+  function clearToken() {
+    try {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(USER_KEY);
+    } catch (e) { /* noop */ }
+  }
+
+  function setUser(user) {
+    try { localStorage.setItem(USER_KEY, JSON.stringify(user)); } catch (e) { /* noop */ }
+  }
+
+  function getStoredUser() {
     try {
       const raw = localStorage.getItem(USER_KEY);
       return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
-    }
+    } catch (e) { return null; }
   }
 
-  function saveSession(token, user) {
-    localStorage.setItem(TOKEN_KEY, token);
-    localStorage.setItem(USER_KEY, JSON.stringify(user));
+  /* ── API helpers ─────────────────────────────────────────────── */
+  async function apiFetch(path, options = {}) {
+    const token = getToken();
+    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch(path, { ...options, headers });
+    return res;
   }
 
-  function clearSession() {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(USER_KEY);
-  }
-
-  function isLoggedIn() {
-    return !!getToken();
-  }
-
-  /* ── API calls ── */
+  /* ── Login ───────────────────────────────────────────────────── */
   async function login(email, password) {
-    const resp = await fetch('/api/auth/login', {
+    const res = await apiFetch('/api/auth/login', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     });
 
-    const data = await resp.json();
+    const data = await res.json();
 
-    if (!resp.ok) {
+    if (!res.ok) {
       throw new Error(data.detail || data.message || 'Login failed');
     }
 
-    saveSession(data.access_token, data.user);
-    return data;
+    const token = data.access_token || data.token;
+    if (!token) throw new Error('No token returned from server');
+
+    setToken(token);
+
+    // Fetch user profile
+    const user = await fetchMe(token);
+    setUser(user);
+    return user;
   }
 
+  /* ── Register ────────────────────────────────────────────────── */
   async function register(email, password) {
-    const resp = await fetch('/api/auth/register', {
+    const res = await apiFetch('/api/auth/register', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     });
 
-    const data = await resp.json();
+    const data = await res.json();
 
-    if (!resp.ok) {
+    if (!res.ok) {
       throw new Error(data.detail || data.message || 'Registration failed');
     }
 
-    saveSession(data.access_token, data.user);
+    // Some APIs return a token on register; if so, store it
+    if (data.access_token || data.token) {
+      const token = data.access_token || data.token;
+      setToken(token);
+      const user = await fetchMe(token);
+      setUser(user);
+      return user;
+    }
+
+    // Otherwise return partial data
     return data;
   }
 
-  async function fetchMe() {
+  /* ── Fetch /me ───────────────────────────────────────────────── */
+  async function fetchMe(overrideToken) {
+    const headers = { 'Content-Type': 'application/json' };
+    const token = overrideToken || getToken();
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch('/api/auth/me', { headers });
+    if (!res.ok) throw new Error('Session expired');
+
+    const data = await res.json();
+    return data;
+  }
+
+  /* ── Session restore ─────────────────────────────────────────── */
+  async function restoreSession() {
     const token = getToken();
     if (!token) return null;
 
     try {
-      const resp = await fetch('/api/auth/me', {
-        headers: { 'Authorization': 'Bearer ' + token },
-      });
-
-      if (!resp.ok) {
-        if (resp.status === 401) {
-          clearSession();
-          return null;
-        }
-        return null;
-      }
-
-      const user = await resp.json();
-      localStorage.setItem(USER_KEY, JSON.stringify(user));
+      const user = await fetchMe(token);
+      setUser(user);
       return user;
-    } catch {
+    } catch (e) {
+      clearToken();
       return null;
     }
   }
 
+  /* ── Logout ──────────────────────────────────────────────────── */
   function logout() {
-    clearSession();
-    window.location.href = '/static/login.html';
+    clearToken();
+    window.location.href = '/login.html';
   }
 
-  /* ── Redirect guards ── */
+  /* ── Is authenticated ────────────────────────────────────────── */
+  function isAuthenticated() {
+    return !!getToken();
+  }
+
+  /* ── Guard: redirect to login if not authed ──────────────────── */
   function requireAuth() {
-    if (!isLoggedIn()) {
-      window.location.href = '/static/login.html';
+    if (!isAuthenticated()) {
+      window.location.href = '/login.html?next=' + encodeURIComponent(window.location.pathname);
       return false;
     }
     return true;
   }
 
-  function redirectIfAuthed() {
-    if (isLoggedIn()) {
-      window.location.href = '/static/index.html';
-      return true;
-    }
-    return false;
+  /* ── Tier helpers ────────────────────────────────────────────── */
+  function getTier(user) {
+    return (user?.tier || user?.subscription_tier || 'free').toLowerCase();
   }
 
-  /* ── authFetch — wrapper that adds Bearer token ── */
-  async function authFetch(url, options = {}) {
-    const token = getToken();
-    const headers = {
-      ...(options.headers || {}),
-      ...(token ? { 'Authorization': 'Bearer ' + token } : {}),
-    };
-
-    const resp = await fetch(url, { ...options, headers });
-
-    if (resp.status === 401) {
-      clearSession();
-      window.location.href = '/static/login.html';
-      throw new Error('Session expired. Please log in again.');
-    }
-
-    return resp;
+  function isElite(user) {
+    const tier = getTier(user);
+    return tier === 'elite' || tier === 'pro';
   }
 
   return {
-    getToken,
-    getUser,
-    saveSession,
-    clearSession,
-    isLoggedIn,
     login,
     register,
-    fetchMe,
     logout,
+    restoreSession,
+    isAuthenticated,
     requireAuth,
-    redirectIfAuthed,
-    authFetch,
+    getToken,
+    getStoredUser,
+    clearToken,
+    fetchMe,
+    getTier,
+    isElite,
+    apiFetch,
   };
 })();
 
-/* ============================================================
-   LOGIN PAGE LOGIC
-   (Only runs on login.html)
-   ============================================================ */
-if (document.getElementById('login-form')) {
-  // Redirect if already logged in
-  Auth.redirectIfAuthed();
+/* ═══════════════════════════════════════════════════════════════
+   Login Page Controller (only active on login.html)
+   ═══════════════════════════════════════════════════════════════ */
+if (document.getElementById('auth-page')) {
+  initAuthPage();
+}
 
-  const loginForm    = document.getElementById('login-form');
-  const registerForm = document.getElementById('register-form');
-  const tabLogin     = document.getElementById('tab-login');
-  const tabRegister  = document.getElementById('tab-register');
-  const errorEl      = document.getElementById('auth-error');
-  const successEl    = document.getElementById('auth-success');
+function initAuthPage() {
+  let activeMode = 'login'; // 'login' | 'register'
 
-  function setError(msg) {
-    if (!errorEl) return;
-    errorEl.textContent = msg;
-    errorEl.style.display = msg ? 'block' : 'none';
-    if (successEl) successEl.style.display = 'none';
+  const tabLogin    = document.getElementById('tab-login');
+  const tabRegister = document.getElementById('tab-register');
+  const formLogin   = document.getElementById('form-login');
+  const formRegister = document.getElementById('form-register');
+
+  // If already logged in, redirect
+  if (Auth.isAuthenticated()) {
+    window.location.href = '/';
+    return;
   }
 
-  function setSuccess(msg) {
-    if (!successEl) return;
-    successEl.textContent = msg;
-    successEl.style.display = msg ? 'block' : 'none';
-    if (errorEl) errorEl.style.display = 'none';
+  // Tab switching
+  function switchMode(mode) {
+    activeMode = mode;
+    tabLogin.classList.toggle('active', mode === 'login');
+    tabRegister.classList.toggle('active', mode === 'register');
+    formLogin.classList.toggle('hidden', mode !== 'login');
+    formRegister.classList.toggle('hidden', mode !== 'register');
   }
 
-  function setLoading(form, loading) {
-    const btn = form.querySelector('[type="submit"]');
-    if (!btn) return;
-    btn.disabled = loading;
-    btn.textContent = loading ? 'Please wait…' : btn.dataset.label;
-  }
+  tabLogin.addEventListener('click', () => switchMode('login'));
+  tabRegister.addEventListener('click', () => switchMode('register'));
 
-  /* ── Tab switching ── */
-  if (tabLogin && tabRegister) {
-    tabLogin.addEventListener('click', () => {
-      tabLogin.classList.add('active');
-      tabRegister.classList.remove('active');
-      loginForm.style.display = '';
-      if (registerForm) registerForm.style.display = 'none';
-      setError('');
-    });
-
-    tabRegister.addEventListener('click', () => {
-      tabRegister.classList.add('active');
-      tabLogin.classList.remove('active');
-      if (registerForm) registerForm.style.display = '';
-      loginForm.style.display = 'none';
-      setError('');
-    });
-  }
-
-  /* ── Login submit ── */
-  loginForm.addEventListener('submit', async (e) => {
+  // Handle login
+  formLogin.addEventListener('submit', async (e) => {
     e.preventDefault();
-    setError('');
-    const email    = loginForm.querySelector('[name="email"]').value.trim();
-    const password = loginForm.querySelector('[name="password"]').value;
+    const email    = formLogin.querySelector('[name=email]').value.trim();
+    const password = formLogin.querySelector('[name=password]').value;
+    const errEl    = document.getElementById('login-error');
+    const submitBtn = formLogin.querySelector('[type=submit]');
 
-    if (!email || !password) {
-      setError('Please enter your email and password.');
-      return;
-    }
+    errEl.textContent = '';
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Signing in…';
 
-    setLoading(loginForm, true);
     try {
       await Auth.login(email, password);
-      setSuccess('Logged in! Redirecting…');
-      setTimeout(() => { window.location.href = '/static/index.html'; }, 500);
+      const next = new URLSearchParams(window.location.search).get('next');
+      window.location.href = next || '/';
     } catch (err) {
-      setError(err.message || 'Login failed. Check your credentials.');
-    } finally {
-      setLoading(loginForm, false);
+      errEl.textContent = err.message;
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Sign In';
     }
   });
 
-  /* ── Register submit ── */
-  if (registerForm) {
-    registerForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      setError('');
-      const email    = registerForm.querySelector('[name="email"]').value.trim();
-      const password = registerForm.querySelector('[name="password"]').value;
-      const confirm  = registerForm.querySelector('[name="confirm"]')?.value;
+  // Handle register
+  formRegister.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email    = formRegister.querySelector('[name=email]').value.trim();
+    const password = formRegister.querySelector('[name=password]').value;
+    const confirm  = formRegister.querySelector('[name=confirm]').value;
+    const errEl    = document.getElementById('register-error');
+    const submitBtn = formRegister.querySelector('[type=submit]');
 
-      if (!email || !password) {
-        setError('Please fill in all fields.');
-        return;
-      }
+    errEl.textContent = '';
 
-      if (confirm !== undefined && password !== confirm) {
-        setError('Passwords do not match.');
-        return;
-      }
+    if (password !== confirm) {
+      errEl.textContent = 'Passwords do not match';
+      return;
+    }
 
-      if (password.length < 8) {
-        setError('Password must be at least 8 characters.');
-        return;
-      }
+    if (password.length < 8) {
+      errEl.textContent = 'Password must be at least 8 characters';
+      return;
+    }
 
-      setLoading(registerForm, true);
-      try {
-        await Auth.register(email, password);
-        setSuccess('Account created! Redirecting…');
-        setTimeout(() => { window.location.href = '/static/index.html'; }, 600);
-      } catch (err) {
-        setError(err.message || 'Registration failed. Try a different email.');
-      } finally {
-        setLoading(registerForm, false);
-      }
-    });
-  }
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Creating account…';
+
+    try {
+      await Auth.register(email, password);
+      window.location.href = '/';
+    } catch (err) {
+      errEl.textContent = err.message;
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Create Account';
+    }
+  });
 }

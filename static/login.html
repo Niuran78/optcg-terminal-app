@@ -5,384 +5,161 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sign In — OPTCG Market Terminal</title>
   <link rel="stylesheet" href="style.css" />
-  <style>
-    /* ── Login page specifics ── */
-    body {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      padding: 20px;
-      background: var(--bg);
-    }
-
-    .login-wrap {
-      width: 100%;
-      max-width: 420px;
-    }
-
-    .login-logo {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 32px;
-      text-align: center;
-    }
-
-    .login-logo-mark {
-      width: 48px;
-      height: 48px;
-      color: var(--accent);
-    }
-
-    .login-logo h1 {
-      font-family: var(--font-head);
-      font-size: 22px;
-      font-weight: 900;
-      letter-spacing: 0.08em;
-      color: var(--text);
-    }
-
-    .login-logo h1 span { color: var(--accent); }
-
-    .login-logo-sub {
-      font-size: 12px;
-      color: var(--muted);
-      font-family: var(--font-mono);
-      letter-spacing: 0.04em;
-    }
-
-    .auth-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      overflow: hidden;
-    }
-
-    .auth-tabs {
-      display: flex;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .auth-tab {
-      flex: 1;
-      padding: 14px;
-      text-align: center;
-      font-size: 13px;
-      font-weight: 700;
-      color: var(--muted);
-      background: none;
-      border: none;
-      cursor: pointer;
-      transition: color 0.15s, background 0.15s;
-      letter-spacing: 0.04em;
-    }
-
-    .auth-tab.active {
-      color: var(--accent);
-      background: rgba(0,229,192,0.06);
-    }
-
-    .auth-tab:hover:not(.active) {
-      color: var(--text);
-    }
-
-    .auth-body {
-      padding: 28px 28px 24px;
-    }
-
-    .auth-form {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-
-    .auth-form[style*="none"] { display: none; }
-
-    .auth-field {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .auth-label {
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      color: var(--muted);
-      text-transform: uppercase;
-      font-family: var(--font-mono);
-    }
-
-    .auth-input {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      color: var(--text);
-      padding: 10px 14px;
-      font-size: 14px;
-      font-family: var(--font-body);
-      transition: border-color 0.15s;
-      width: 100%;
-    }
-
-    .auth-input:focus {
-      outline: none;
-      border-color: var(--accent);
-    }
-
-    .auth-input::placeholder { color: var(--muted); }
-
-    .auth-submit {
-      width: 100%;
-      padding: 12px;
-      border-radius: var(--radius);
-      font-size: 14px;
-      font-weight: 700;
-      color: var(--bg);
-      background: var(--accent);
-      border: none;
-      cursor: pointer;
-      transition: background 0.15s, opacity 0.15s;
-      margin-top: 4px;
-      font-family: var(--font-head);
-      letter-spacing: 0.04em;
-    }
-
-    .auth-submit:hover:not(:disabled) { background: var(--accent-dim); }
-    .auth-submit:disabled { opacity: 0.5; cursor: default; }
-
-    .auth-error {
-      display: none;
-      padding: 10px 14px;
-      border-radius: var(--radius);
-      background: rgba(229,92,92,0.1);
-      border: 1px solid rgba(229,92,92,0.3);
-      color: var(--negative);
-      font-size: 13px;
-    }
-
-    .auth-success {
-      display: none;
-      padding: 10px 14px;
-      border-radius: var(--radius);
-      background: rgba(0,229,192,0.08);
-      border: 1px solid rgba(0,229,192,0.25);
-      color: var(--positive);
-      font-size: 13px;
-    }
-
-    .auth-footer {
-      padding: 14px 28px;
-      border-top: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      font-size: 12px;
-      color: var(--muted);
-    }
-
-    .auth-footer a {
-      color: var(--accent);
-    }
-
-    .auth-divider {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      font-size: 11px;
-      color: var(--muted);
-      margin: 4px 0;
-    }
-
-    .auth-divider::before,
-    .auth-divider::after {
-      content: '';
-      flex: 1;
-      height: 1px;
-      background: var(--border);
-    }
-
-    .login-page-footer {
-      margin-top: 20px;
-      text-align: center;
-      font-size: 11px;
-      color: var(--muted);
-    }
-
-    .feature-list {
-      margin-top: 24px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .feature-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-size: 12px;
-      color: var(--muted);
-    }
-
-    .feature-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--accent);
-      flex-shrink: 0;
-    }
-
-    .password-hint {
-      font-size: 11px;
-      color: var(--muted);
-      font-family: var(--font-mono);
-      margin-top: 2px;
-    }
-  </style>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230a0a0b'/%3E%3Cpath d='M8 10h6l4 12 4-12h6' stroke='%2300e5c0' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
 </head>
-<body>
-
-  <div class="login-wrap">
-    <!-- Logo -->
-    <div class="login-logo">
-      <svg class="login-logo-mark" viewBox="0 0 48 48" fill="none" aria-label="OPTCG Terminal">
-        <rect x="4" y="4" width="40" height="40" rx="8" stroke="currentColor" stroke-width="2"/>
-        <path d="M14 24 L24 14 L34 24" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M14 32 L24 22 L34 32" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/>
-        <circle cx="24" cy="24" r="3" fill="currentColor"/>
-      </svg>
-      <h1>OPTCG <span>TERMINAL</span></h1>
-      <span class="login-logo-sub">ONE PIECE TCG MARKET INTELLIGENCE</span>
-    </div>
-
-    <!-- Auth Card -->
+<body id="auth-page">
+  <div class="auth-root">
     <div class="auth-card">
+
+      <!-- Logo -->
+      <div class="auth-logo">
+        <div class="auth-logo-mark">
+          <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-label="OPTCG Terminal">
+            <path d="M5 8h5l4 12 4-12h5" stroke="#00e5c0" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="14" cy="22" r="1.5" fill="#00e5c0"/>
+          </svg>
+        </div>
+        <h1 class="auth-title">OPTCG Terminal</h1>
+        <p class="auth-sub">Market intelligence for One Piece TCG</p>
+      </div>
+
+      <!-- Tabs -->
       <div class="auth-tabs">
         <button class="auth-tab active" id="tab-login">Sign In</button>
         <button class="auth-tab" id="tab-register">Create Account</button>
       </div>
 
-      <div class="auth-body">
-        <!-- Alerts -->
-        <div id="auth-error" class="auth-error"></div>
-        <div id="auth-success" class="auth-success"></div>
+      <!-- Login Form -->
+      <form class="auth-form" id="form-login" autocomplete="on" novalidate>
+        <div class="form-group">
+          <label class="form-label" for="login-email">Email address</label>
+          <input
+            class="form-input"
+            type="email"
+            id="login-email"
+            name="email"
+            placeholder="you@example.com"
+            autocomplete="email"
+            required
+          />
+        </div>
 
-        <!-- Login Form -->
-        <form id="login-form" class="auth-form">
-          <div class="auth-field">
-            <label class="auth-label" for="login-email">Email</label>
-            <input
-              class="auth-input"
-              id="login-email"
-              name="email"
-              type="email"
-              autocomplete="email"
-              placeholder="you@example.com"
-              required
-            />
-          </div>
+        <div class="form-group">
+          <label class="form-label" for="login-password">Password</label>
+          <input
+            class="form-input"
+            type="password"
+            id="login-password"
+            name="password"
+            placeholder="••••••••"
+            autocomplete="current-password"
+            required
+          />
+        </div>
 
-          <div class="auth-field">
-            <label class="auth-label" for="login-password">Password</label>
-            <input
-              class="auth-input"
-              id="login-password"
-              name="password"
-              type="password"
-              autocomplete="current-password"
-              placeholder="••••••••"
-              required
-            />
-          </div>
+        <p class="form-error" id="login-error" aria-live="polite"></p>
 
-          <button type="submit" class="auth-submit" data-label="Sign In">
-            Sign In
-          </button>
-        </form>
+        <button class="btn btn-primary btn-lg" type="submit" style="width:100%; margin-top: 4px;">
+          Sign In
+        </button>
 
-        <!-- Register Form -->
-        <form id="register-form" class="auth-form" style="display:none">
-          <div class="auth-field">
-            <label class="auth-label" for="reg-email">Email</label>
-            <input
-              class="auth-input"
-              id="reg-email"
-              name="email"
-              type="email"
-              autocomplete="email"
-              placeholder="you@example.com"
-              required
-            />
-          </div>
+        <p class="auth-footer">
+          Don't have an account?
+          <a class="auth-link" href="#" id="link-to-register">Create one free</a>
+        </p>
+      </form>
 
-          <div class="auth-field">
-            <label class="auth-label" for="reg-password">Password</label>
-            <input
-              class="auth-input"
-              id="reg-password"
-              name="password"
-              type="password"
-              autocomplete="new-password"
-              placeholder="••••••••"
-              required
-            />
-            <span class="password-hint">Minimum 8 characters</span>
-          </div>
+      <!-- Register Form -->
+      <form class="auth-form hidden" id="form-register" autocomplete="on" novalidate>
+        <div class="form-group">
+          <label class="form-label" for="reg-email">Email address</label>
+          <input
+            class="form-input"
+            type="email"
+            id="reg-email"
+            name="email"
+            placeholder="you@example.com"
+            autocomplete="email"
+            required
+          />
+        </div>
 
-          <div class="auth-field">
-            <label class="auth-label" for="reg-confirm">Confirm Password</label>
-            <input
-              class="auth-input"
-              id="reg-confirm"
-              name="confirm"
-              type="password"
-              autocomplete="new-password"
-              placeholder="••••••••"
-              required
-            />
-          </div>
+        <div class="form-group">
+          <label class="form-label" for="reg-password">Password</label>
+          <input
+            class="form-input"
+            type="password"
+            id="reg-password"
+            name="password"
+            placeholder="Min. 8 characters"
+            autocomplete="new-password"
+            required
+          />
+        </div>
 
-          <button type="submit" class="auth-submit" data-label="Create Account">
-            Create Account
-          </button>
-        </form>
-      </div>
+        <div class="form-group">
+          <label class="form-label" for="reg-confirm">Confirm password</label>
+          <input
+            class="form-input"
+            type="password"
+            id="reg-confirm"
+            name="confirm"
+            placeholder="Repeat password"
+            autocomplete="new-password"
+            required
+          />
+        </div>
 
-      <div class="auth-footer">
-        <span>By signing in you agree to our</span>
-        <a href="#">Terms of Service</a>
-      </div>
+        <p class="form-error" id="register-error" aria-live="polite"></p>
+
+        <button class="btn btn-primary btn-lg" type="submit" style="width:100%; margin-top: 4px;">
+          Create Account
+        </button>
+
+        <p class="auth-footer">
+          Already have an account?
+          <a class="auth-link" href="#" id="link-to-login">Sign in</a>
+        </p>
+      </form>
+
     </div>
 
-    <!-- Features teaser -->
-    <div class="feature-list">
-      <div class="feature-item">
-        <span class="feature-dot"></span>
-        <span>Live arbitrage scanner across EU &amp; US markets</span>
+    <!-- Tier comparison teaser -->
+    <div style="margin-top: 32px; max-width: 420px; width: 100%;">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div style="background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 16px;">
+          <div style="font-family: var(--font-mono); font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px;">Free</div>
+          <div style="font-size: 13px; color: var(--text-2); display: flex; flex-direction: column; gap: 6px;">
+            <div>✓ 10 cards preview</div>
+            <div>✓ Overview stats</div>
+            <div style="color: var(--muted);">✗ Full card browser</div>
+            <div style="color: var(--muted);">✗ Arbitrage scanner</div>
+          </div>
+        </div>
+        <div style="background: var(--surface); border: 1px solid rgba(0,229,192,0.25); border-radius: var(--r-lg); padding: 16px; background: linear-gradient(135deg, rgba(0,229,192,0.05), var(--surface));">
+          <div style="font-family: var(--font-mono); font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px;">Elite</div>
+          <div style="font-size: 13px; color: var(--text-2); display: flex; flex-direction: column; gap: 6px;">
+            <div>✓ All cards unlocked</div>
+            <div>✓ Arbitrage alerts</div>
+            <div>✓ Sealed tracker</div>
+            <div>✓ Live price feeds</div>
+          </div>
+        </div>
       </div>
-      <div class="feature-item">
-        <span class="feature-dot"></span>
-        <span>Sealed product price tracking &amp; trend analysis</span>
-      </div>
-      <div class="feature-item">
-        <span class="feature-dot"></span>
-        <span>Expected value calculator for booster boxes</span>
-      </div>
-      <div class="feature-item">
-        <span class="feature-dot"></span>
-        <span>6,000+ singles across all 49 sets</span>
-      </div>
-    </div>
-
-    <div class="login-page-footer">
-      &copy; 2025 OPTCG Market Terminal
     </div>
   </div>
 
   <script src="auth.js"></script>
+  <script>
+    // Cross-link tab buttons
+    document.getElementById('link-to-register')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      document.getElementById('tab-register').click();
+    });
+    document.getElementById('link-to-login')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      document.getElementById('tab-login').click();
+    });
+  </script>
 </body>
 </html>

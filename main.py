@@ -7,6 +7,11 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 load_dotenv()
 
+# Validate critical env vars early (non-fatal — just warn)
+_TCG_KEY = os.getenv("TCG_PRICE_LOOKUP_KEY", "")
+if not _TCG_KEY:
+    logging.warning("TCG_PRICE_LOOKUP_KEY not set — EN price source will be disabled")
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -21,6 +26,7 @@ from api.sealed import router as sealed_router
 from api.ev import router as ev_router
 from api.stripe_billing import router as billing_router
 from api.scraper import router as scraper_router
+from api.unified import router as unified_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -30,9 +36,9 @@ logger = logging.getLogger("optcg")
 
 
 async def seed_all_data():
-    """Background task to seed all card and product data."""
+    """Background task to seed all card and product data (legacy — kept for compat)."""
     from services import opcg_api
-    logger.info("Starting full data seed...")
+    logger.info("Starting legacy data seed (RapidAPI only)...")
     try:
         sets = await opcg_api.get_sets(tier="elite")
     except Exception as e:
@@ -51,7 +57,7 @@ async def seed_all_data():
         except Exception as e:
             logger.error(f"  {s.get('code', s['api_id'])}: seed error: {e}")
     logger.info(
-        f"Data seed complete: {total_cards} cards, {total_products} products "
+        f"Legacy seed complete: {total_cards} cards, {total_products} products "
         f"across {len(sets)} sets"
     )
 
@@ -70,8 +76,9 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not seed sets on startup: {e}")
 
-    # Kick off full background data seed (non-blocking)
-    asyncio.create_task(seed_all_data())
+    # Kick off unified multi-source data seed (non-blocking)
+    from services.card_aggregator import seed_all_unified
+    asyncio.create_task(seed_all_unified())
 
     yield
     logger.info("OPTCG Market Terminal shutting down.")
@@ -95,7 +102,8 @@ app.add_middleware(
 
 # API Routers
 app.include_router(auth_router)
-app.include_router(cards_router)
+app.include_router(unified_router)  # unified multi-source endpoints (new)
+app.include_router(cards_router)    # legacy single-source endpoints (kept for compat)
 app.include_router(sets_router)
 app.include_router(arbitrage_router)
 app.include_router(sealed_router)

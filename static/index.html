@@ -4,393 +4,440 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>OPTCG Market Terminal</title>
-  <meta name="description" content="One Piece TCG market intelligence — arbitrage scanner, sealed tracker, EV calculator" />
+  <meta name="description" content="One Piece TCG market intelligence — live EN and EU price data, arbitrage scanner, sealed product tracker." />
   <link rel="stylesheet" href="style.css" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230a0a0b'/%3E%3Cpath d='M8 10h5l3 9 3-9h5' stroke='%2300e5c0' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
 </head>
 <body>
 
-<!-- ============================================================
-     NAVIGATION
-     ============================================================ -->
+<!-- ═══ NAVIGATION ════════════════════════════════════════════════ -->
 <nav class="nav" role="navigation" aria-label="Main navigation">
 
   <!-- Logo -->
-  <a class="nav-logo" href="/static/index.html" aria-label="OPTCG Market Terminal home">
-    <svg class="nav-logo-icon" viewBox="0 0 28 28" fill="none" aria-hidden="true">
-      <rect x="2" y="2" width="24" height="24" rx="5" stroke="currentColor" stroke-width="1.5"/>
-      <path d="M8 14 L14 8 L20 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M8 19 L14 13 L20 19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.45"/>
-      <circle cx="14" cy="14" r="2" fill="currentColor"/>
+  <a class="nav-logo" href="/" aria-label="OPTCG Terminal home">
+    <svg class="nav-logo-mark" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+      <rect width="28" height="28" rx="5" fill="rgba(0,229,192,0.08)" stroke="rgba(0,229,192,0.25)" stroke-width="1"/>
+      <path d="M6 9h5l3 9 3-9h5" stroke="#00e5c0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="14" cy="20.5" r="1.2" fill="#00e5c0"/>
     </svg>
-    <span class="nav-logo-text">OPTCG <span>TERMINAL</span></span>
+    <span class="nav-logo-text">OPTCG Terminal</span>
   </a>
 
-  <!-- Desktop Tabs -->
+  <div class="nav-divider" aria-hidden="true"></div>
+
+  <!-- Tabs -->
   <div class="nav-tabs" role="tablist">
-    <button class="nav-tab active" data-tab="arbitrage" role="tab" aria-selected="true">
-      <span class="nav-tab-icon" aria-hidden="true">⚡</span>
-      Arbitrage Scanner
+    <button class="nav-tab active" data-tab="browser" role="tab" aria-selected="true" aria-controls="panel-browser">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+        <rect x="1" y="1" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.3"/>
+        <rect x="8" y="1" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.3"/>
+        <rect x="1" y="8" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.3"/>
+        <rect x="8" y="8" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.3"/>
+      </svg>
+      <span>Card Browser</span>
     </button>
-    <button class="nav-tab" data-tab="sealed" role="tab" aria-selected="false">
-      <span class="nav-tab-icon" aria-hidden="true">📦</span>
-      Sealed Tracker
+
+    <button class="nav-tab" data-tab="sealed" role="tab" aria-selected="false" aria-controls="panel-sealed">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+        <rect x="1" y="3" width="12" height="9" rx="1.5" stroke="currentColor" stroke-width="1.3"/>
+        <path d="M1 6h12" stroke="currentColor" stroke-width="1.3"/>
+        <path d="M5 6v6" stroke="currentColor" stroke-width="1.3"/>
+      </svg>
+      <span>Sealed Tracker</span>
     </button>
-    <button class="nav-tab" data-tab="ev" role="tab" aria-selected="false">
-      <span class="nav-tab-icon" aria-hidden="true">📊</span>
-      EV Calculator
+
+    <button class="nav-tab" data-tab="arbitrage" role="tab" aria-selected="false" aria-controls="panel-arbitrage">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+        <path d="M2 10 L5 6 L8 8 L12 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M10 3h2v2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span>Arbitrage</span>
     </button>
-    <button class="nav-tab" data-tab="overview" role="tab" aria-selected="false">
-      <span class="nav-tab-icon" aria-hidden="true">📈</span>
-      Market Overview
+
+    <button class="nav-tab" data-tab="overview" role="tab" aria-selected="false" aria-controls="panel-overview">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+        <circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.3"/>
+        <path d="M7 4v3.5l2 1.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+      </svg>
+      <span>Overview</span>
     </button>
   </div>
 
-  <!-- Right controls (currency, status, user) -->
-  <div id="nav-right" class="nav-right">
-    <!-- Rendered by app.js via updateNavUserState() -->
-    <div class="status-pill"><span class="status-dot"></span>15MIN</div>
-    <a href="/static/login.html" class="btn-signin">Sign In</a>
-    <a href="/static/login.html#register" class="btn-elite">ELITE ⚡</a>
+  <!-- Actions -->
+  <div class="nav-actions">
+    <!-- FX Currency toggle -->
+    <div class="fx-toggle" role="group" aria-label="Display currency">
+      <button class="fx-btn" data-fx="EUR" aria-label="Display in EUR">EUR</button>
+      <button class="fx-btn active" data-fx="USD" aria-label="Display in USD">USD</button>
+    </div>
+
+    <!-- Live badge -->
+    <div class="live-badge" aria-label="Live data feed active">
+      <span class="live-dot" aria-hidden="true"></span>
+      LIVE
+    </div>
+
+    <!-- User menu -->
+    <div class="user-menu" id="user-menu">
+      <button class="user-btn" id="user-btn" aria-haspopup="true" aria-expanded="false">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+          <circle cx="7" cy="5" r="2.5" stroke="currentColor" stroke-width="1.3"/>
+          <path d="M2 12c0-2.2 2.2-4 5-4s5 1.8 5 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+        </svg>
+        <span id="nav-user-email">User</span>
+        <span class="user-tier-badge" id="nav-user-tier">Free</span>
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
+          <path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <div class="user-dropdown" role="menu">
+        <a class="user-dropdown-item" href="/login.html" role="menuitem">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style="display:inline;margin-right:6px;" aria-hidden="true">
+            <circle cx="6.5" cy="4.5" r="2.2" stroke="currentColor" stroke-width="1.2"/>
+            <path d="M1.5 11.5c0-2 2-3.5 5-3.5s5 1.5 5 3.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+          </svg>
+          Account
+        </a>
+        <button class="user-dropdown-item danger" id="logout-btn" role="menuitem">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style="display:inline;margin-right:6px;" aria-hidden="true">
+            <path d="M5 2H3a1 1 0 00-1 1v7a1 1 0 001 1h2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+            <path d="M8.5 9l3-2.5L8.5 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M11.5 6.5H5.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+          </svg>
+          Sign Out
+        </button>
+      </div>
+    </div>
   </div>
 </nav>
 
-<!-- ============================================================
-     TICKER BAR
-     ============================================================ -->
-<div class="ticker-bar" aria-hidden="true">
-  <span class="ticker-label">TOP SIGNALS</span>
-  <div id="ticker-track" class="ticker-track">
-    <!-- Populated by renderTicker() -->
-    <div class="ticker-item">
-      <span class="ticker-item-name">Loading market data…</span>
-    </div>
-  </div>
-</div>
+<!-- ═══ APP SHELL ════════════════════════════════════════════════ -->
+<main class="app-shell" role="main">
 
-<!-- ============================================================
-     MAIN CONTENT
-     ============================================================ -->
-<main class="app-main" id="app-main">
+  <!-- ─── TAB 1: CARD BROWSER ──────────────────────────────────── -->
+  <section id="panel-browser" class="tab-panel active" role="tabpanel" aria-labelledby="tab-browser">
 
-  <!-- ===========================================================
-       TAB 1: ARBITRAGE SCANNER
-       =========================================================== -->
-  <section class="tab-panel active" id="tab-arbitrage" role="tabpanel" aria-labelledby="tab-btn-arbitrage">
+    <!-- Filter bar -->
+    <div class="filter-bar" role="search" aria-label="Card filters">
 
-    <!-- Stat Cards -->
-    <div class="stat-grid" id="arb-stat-grid">
-      <div class="stat-card">
-        <span class="stat-label">Total Opportunities</span>
-        <span class="stat-value" id="stat-total">—</span>
-        <span class="stat-sub">after filters</span>
-      </div>
-      <div class="stat-card accent">
-        <span class="stat-label">Best Profit</span>
-        <span class="stat-value" id="stat-best-profit">—</span>
-        <span class="stat-sub">single card</span>
-      </div>
-      <div class="stat-card positive">
-        <span class="stat-label">Buy EU Signals</span>
-        <span class="stat-value" id="stat-buy-eu">—</span>
-        <span class="stat-sub">cheaper in EU market</span>
-      </div>
-      <div class="stat-card blue">
-        <span class="stat-label">Buy US Signals</span>
-        <span class="stat-value" id="stat-buy-us">—</span>
-        <span class="stat-sub">cheaper in US market</span>
-      </div>
-    </div>
-
-    <!-- Filter Bar -->
-    <div class="filter-bar" role="search" aria-label="Arbitrage filters">
-
-      <!-- Region -->
       <div class="filter-group">
-        <span class="filter-label">Region</span>
-        <button class="pill-btn active" data-arb-region="all">🌍 All</button>
-        <button class="pill-btn" data-arb-region="JP">🇯🇵 JP</button>
-        <button class="pill-btn" data-arb-region="EN">🇺🇸 EN</button>
-      </div>
-
-      <div class="filter-sep" aria-hidden="true"></div>
-
-      <!-- Set -->
-      <div class="filter-group">
-        <span class="filter-label">Set</span>
-        <select class="filter-select" id="filter-set" aria-label="Filter by set">
+        <label class="filter-label" for="browser-set">Set</label>
+        <select class="filter-select" id="browser-set" data-set-select aria-label="Filter by set">
           <option value="all">All Sets</option>
         </select>
       </div>
 
-      <div class="filter-sep" aria-hidden="true"></div>
-
-      <!-- Rarity -->
       <div class="filter-group">
-        <span class="filter-label">Rarity</span>
-        <button class="pill-btn active" data-arb-rarity="all">All</button>
-        <button class="pill-btn" data-arb-rarity="sec">⭐ SEC</button>
-        <button class="pill-btn" data-arb-rarity="manga">🎨 Manga/SP</button>
-        <button class="pill-btn" data-arb-rarity="regular">Regular</button>
+        <span class="filter-label" id="rarity-label">Rarity</span>
+        <div class="pill-group" role="group" aria-labelledby="rarity-label">
+          <button class="pill active" data-rarity="all">All</button>
+          <button class="pill" data-rarity="Leader">Leader</button>
+          <button class="pill" data-rarity="SEC">SEC</button>
+          <button class="pill" data-rarity="SR">SR</button>
+          <button class="pill" data-rarity="Rare">Rare</button>
+          <button class="pill" data-rarity="Common">Common</button>
+        </div>
       </div>
 
-      <div class="filter-sep" aria-hidden="true"></div>
-
-      <!-- Signal -->
-      <div class="filter-group">
-        <span class="filter-label">Signal</span>
-        <button class="pill-btn active" data-arb-signal="all">All</button>
-        <button class="pill-btn" data-arb-signal="BUY_EU">BUY EU</button>
-        <button class="pill-btn" data-arb-signal="BUY_US">BUY US</button>
-        <button class="pill-btn" data-arb-signal="WATCH">WATCH</button>
-      </div>
-
-      <div class="filter-sep" aria-hidden="true"></div>
-
-      <!-- Search -->
-      <label class="search-input-wrap">
-        <span class="search-icon" aria-hidden="true">🔍</span>
+      <div class="search-wrap">
+        <svg class="search-icon" width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+          <circle cx="6" cy="6" r="4" stroke="currentColor" stroke-width="1.4"/>
+          <path d="M9.5 9.5l2.5 2.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+        </svg>
         <input
-          type="search"
           class="search-input"
-          id="arb-search"
-          placeholder="Search cards, sets, codes…"
-          aria-label="Search cards"
+          type="search"
+          id="browser-search"
+          placeholder="Search cards…"
+          aria-label="Search cards by name"
           autocomplete="off"
         />
-      </label>
+      </div>
 
     </div>
 
-    <!-- Data Table -->
-    <div class="table-wrap" id="arb-table-wrap">
-      <div class="table-scroll">
-        <table class="data-table" id="arb-table" aria-label="Arbitrage opportunities">
+    <!-- Summary bar -->
+    <div class="summary-bar" id="browser-summary" aria-live="polite" aria-atomic="true">
+      <span>Loading…</span>
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrap" id="browser-table-wrap">
+      <div class="table-responsive">
+        <table class="data-table" role="grid" aria-label="Card price browser">
           <thead>
             <tr>
-              <th data-col="name">PRODUCT/CARD <span class="sort-icon">↕</span></th>
-              <th data-col="set_name">SET <span class="sort-icon">↕</span></th>
-              <th data-col="_region">REGION <span class="sort-icon">↕</span></th>
-              <th data-col="eu_price" style="text-align:right">EU PRICE <span class="sort-icon">↕</span></th>
-              <th data-col="us_price"  style="text-align:right">US PRICE <span class="sort-icon">↕</span></th>
-              <th data-col="profit_eur"       style="text-align:right">PROFIT <span class="sort-icon">▼</span></th>
-              <th data-col="profit_pct"       style="text-align:right">% <span class="sort-icon">↕</span></th>
-              <th data-col="signal">SIGNAL <span class="sort-icon">↕</span></th>
-              <th style="cursor:default">BUY ON</th>
+              <th scope="col" style="min-width:220px;">
+                <div class="th-content">
+                  <span class="th-main">Card</span>
+                </div>
+              </th>
+              <th scope="col">
+                <div class="th-content">
+                  <span class="th-main">Set</span>
+                </div>
+              </th>
+              <th scope="col">
+                <div class="th-content">
+                  <span class="th-main">Rarity</span>
+                </div>
+              </th>
+              <th scope="col" class="col-en sortable" data-sort="en_tcgplayer_market">
+                <div class="th-content">
+                  <span class="th-main">
+                    EN Price ($)
+                    <span class="th-sort-icon" aria-hidden="true">↕</span>
+                  </span>
+                  <span class="th-sub">TCGPlayer Market</span>
+                </div>
+              </th>
+              <th scope="col" class="col-eu sortable" data-sort="eu_cardmarket_7d_avg">
+                <div class="th-content">
+                  <span class="th-main">
+                    EU Price (€)
+                    <span class="th-sort-icon" aria-hidden="true">↕</span>
+                  </span>
+                  <span class="th-sub">Cardmarket 7d Avg</span>
+                </div>
+              </th>
+              <th scope="col" class="sortable" data-sort="spread">
+                <div class="th-content">
+                  <span class="th-main">
+                    Spread
+                    <span class="th-sort-icon" aria-hidden="true">↕</span>
+                  </span>
+                  <span class="th-sub">EN vs EU (converted)</span>
+                </div>
+              </th>
+              <th scope="col">
+                <div class="th-content">
+                  <span class="th-main">Signal</span>
+                  <span class="th-sub">Arbitrage direction</span>
+                </div>
+              </th>
             </tr>
           </thead>
-          <tbody id="arb-tbody">
-            <!-- Skeleton rows while loading -->
-            <tr><td colspan="9"><div class="skeleton skeleton-row"></div></td></tr>
-            <tr><td colspan="9"><div class="skeleton skeleton-row"></div></td></tr>
-            <tr><td colspan="9"><div class="skeleton skeleton-row"></div></td></tr>
-            <tr><td colspan="9"><div class="skeleton skeleton-row"></div></td></tr>
-            <tr><td colspan="9"><div class="skeleton skeleton-row"></div></td></tr>
-            <tr><td colspan="9"><div class="skeleton skeleton-row"></div></td></tr>
-            <tr><td colspan="9"><div class="skeleton skeleton-row"></div></td></tr>
-            <tr><td colspan="9"><div class="skeleton skeleton-row"></div></td></tr>
+          <tbody id="browser-tbody">
+            <!-- Populated by app.js -->
           </tbody>
         </table>
       </div>
 
-      <!-- Pro lock overlay (hidden for paid users) -->
-      <div id="arb-pro-wrap" style="display:none; position:relative;">
-        <div class="pro-lock-overlay">
-          <div class="pro-lock-card">
-            <h3>Unlock All Results</h3>
-            <p>Upgrade to access 6,000+ cards with full profit data</p>
-            <a href="/api/billing/checkout" class="btn-upgrade">⚡ Upgrade to Elite</a>
-          </div>
-        </div>
-      </div>
-
-      <!-- Table footer (pagination / count) -->
-      <div id="arb-tfoot"></div>
+      <!-- Pagination -->
+      <div id="browser-pagination"></div>
     </div>
 
   </section>
 
-  <!-- ===========================================================
-       TAB 2: SEALED TRACKER
-       =========================================================== -->
-  <section class="tab-panel" id="tab-sealed" role="tabpanel">
+  <!-- ─── TAB 2: SEALED TRACKER ────────────────────────────────── -->
+  <section id="panel-sealed" class="tab-panel" role="tabpanel" aria-labelledby="tab-sealed">
 
-    <!-- Filter Bar -->
+    <!-- Filter bar -->
     <div class="filter-bar" role="search" aria-label="Sealed product filters">
 
-      <!-- Set -->
       <div class="filter-group">
-        <span class="filter-label">Set</span>
-        <select class="filter-select" id="sealed-filter-set" aria-label="Filter by set">
+        <label class="filter-label" for="sealed-set">Set</label>
+        <select class="filter-select" id="sealed-set" data-set-select aria-label="Filter by set">
           <option value="all">All Sets</option>
         </select>
       </div>
 
-      <div class="filter-sep" aria-hidden="true"></div>
-
-      <!-- Type -->
       <div class="filter-group">
-        <span class="filter-label">Type</span>
-        <button class="pill-btn active" data-sealed-type="all">All</button>
-        <button class="pill-btn" data-sealed-type="case">📦 Cases</button>
-        <button class="pill-btn" data-sealed-type="box">🎴 Booster Box</button>
-        <button class="pill-btn" data-sealed-type="booster">🃏 Booster</button>
+        <span class="filter-label" id="type-label">Type</span>
+        <div class="pill-group" role="group" aria-labelledby="type-label">
+          <button class="pill active" data-type="all">All</button>
+          <button class="pill" data-type="case">📦 Cases</button>
+          <button class="pill" data-type="booster box">🎴 Booster Box</button>
+          <button class="pill" data-type="booster">🃏 Booster</button>
+        </div>
       </div>
 
-      <div class="filter-sep" aria-hidden="true"></div>
-
-      <!-- Region -->
-      <div class="filter-group">
-        <span class="filter-label">Region</span>
-        <button class="pill-btn active" data-sealed-region="all">🌍 All</button>
-        <button class="pill-btn" data-sealed-region="JP">🇯🇵 JP</button>
-        <button class="pill-btn" data-sealed-region="EN">🇺🇸 EN</button>
-      </div>
-
-      <div class="filter-sep" aria-hidden="true"></div>
-
-      <!-- Sort -->
-      <div class="filter-group">
-        <span class="filter-label">Sort</span>
-        <button class="pill-btn active" data-sealed-sort="price">💰 Price</button>
-        <button class="pill-btn" data-sealed-sort="trend">📈 Trend</button>
-        <button class="pill-btn" data-sealed-sort="set">📋 Set</button>
+      <div class="filter-group" style="margin-left:auto;">
+        <span class="filter-label" id="sort-sealed-label">Sort</span>
+        <div class="pill-group" role="group" aria-labelledby="sort-sealed-label">
+          <button class="pill active" data-sort-sealed="eu_price">💰 Price</button>
+          <button class="pill" data-sort-sealed="eu_trend">📈 Trend</button>
+          <button class="pill" data-sort-sealed="set_code">📋 Set</button>
+        </div>
       </div>
 
     </div>
 
-    <!-- Product Grid -->
-    <div id="sealed-grid" class="product-grid">
-      <!-- Skeleton cards -->
-      <div class="skeleton skeleton-card"></div>
-      <div class="skeleton skeleton-card"></div>
-      <div class="skeleton skeleton-card"></div>
-      <div class="skeleton skeleton-card"></div>
-      <div class="skeleton skeleton-card"></div>
-      <div class="skeleton skeleton-card"></div>
-      <div class="skeleton skeleton-card"></div>
-      <div class="skeleton skeleton-card"></div>
+    <!-- Section header -->
+    <div class="section-header">
+      <div>
+        <h2 class="section-title">Sealed Products</h2>
+        <div class="section-meta" id="sealed-count" aria-live="polite">Loading…</div>
+      </div>
+    </div>
+
+    <!-- Product grid -->
+    <div class="product-grid" id="sealed-grid" aria-label="Sealed product grid" aria-live="polite">
+      <!-- Populated by app.js -->
     </div>
 
   </section>
 
-  <!-- ===========================================================
-       TAB 3: EV CALCULATOR
-       =========================================================== -->
-  <section class="tab-panel" id="tab-ev" role="tabpanel">
+  <!-- ─── TAB 3: ARBITRAGE SCANNER ─────────────────────────────── -->
+  <section id="panel-arbitrage" class="tab-panel" role="tabpanel" aria-labelledby="tab-arbitrage">
 
-    <div class="section-header">
-      <span class="section-title">Expected Value Calculator</span>
+    <!-- Stat cards -->
+    <div class="stat-grid" id="arb-stats" aria-live="polite" aria-label="Arbitrage statistics">
+      <!-- Populated by app.js -->
+      <div class="stat-card"><div class="stat-label">Loading…</div><div class="stat-value">—</div></div>
+      <div class="stat-card"><div class="stat-label">Loading…</div><div class="stat-value">—</div></div>
+      <div class="stat-card"><div class="stat-label">Loading…</div><div class="stat-value">—</div></div>
+      <div class="stat-card"><div class="stat-label">Loading…</div><div class="stat-value">—</div></div>
+      <div class="stat-card"><div class="stat-label">Loading…</div><div class="stat-value">—</div></div>
     </div>
 
-    <div class="ev-layout">
+    <!-- Filter bar -->
+    <div class="filter-bar" role="search" aria-label="Arbitrage filters">
 
-      <!-- Left: Controls -->
-      <div class="ev-panel">
-        <h2>Configuration</h2>
-
-        <div class="form-group">
-          <label class="form-label" for="ev-set">Set</label>
-          <select class="form-select" id="ev-set" aria-label="Select set for EV calculation">
-            <option value="">Select a set…</option>
-          </select>
+      <div class="filter-group">
+        <span class="filter-label" id="signal-label">Signal</span>
+        <div class="pill-group" role="group" aria-labelledby="signal-label">
+          <button class="pill active" data-signal="all">All</button>
+          <button class="pill" data-signal="BUY_EU">BUY EU</button>
+          <button class="pill" data-signal="BUY_EN">BUY EN</button>
+          <button class="pill" data-signal="WATCH">WATCH</button>
         </div>
-
-        <div class="form-group">
-          <label class="form-label">Language / Format</label>
-          <div class="lang-toggle" role="group" aria-label="Box language">
-            <button class="lang-btn active" data-ev-lang="JP">🇯🇵 JP (10 packs)</button>
-            <button class="lang-btn" data-ev-lang="EN">🇺🇸 EN (24 packs)</button>
-          </div>
-          <span class="password-hint" id="ev-packs-hint" style="margin-top:6px;display:block">10 packs per box</span>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label" for="ev-box-cost">Box Cost (EUR)</label>
-          <input
-            class="form-input"
-            id="ev-box-cost"
-            type="number"
-            min="0"
-            step="0.01"
-            value="100"
-            placeholder="e.g. 100"
-            aria-label="Box cost in EUR"
-          />
-        </div>
-
-        <button class="btn-calculate" id="btn-calculate">
-          Calculate EV
-        </button>
       </div>
 
-      <!-- Right: Results -->
+      <div class="filter-group">
+        <label class="filter-label" for="arb-min-spread">Min Spread</label>
+        <select class="filter-select" id="arb-min-spread" aria-label="Minimum spread filter" style="min-width:80px;">
+          <option value="0">0%</option>
+          <option value="5" selected>5%</option>
+          <option value="10">10%</option>
+          <option value="15">15%</option>
+          <option value="20">20%</option>
+          <option value="30">30%</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label" for="arb-set">Set</label>
+        <select class="filter-select" id="arb-set" data-set-select aria-label="Filter by set">
+          <option value="all">All Sets</option>
+        </select>
+      </div>
+
+    </div>
+
+    <!-- Section header -->
+    <div class="section-header">
       <div>
-        <div id="ev-results" class="ev-results">
-          <!-- Empty state before calculation -->
-          <div class="ev-panel" style="background:var(--surface)">
-            <div class="empty-state" style="padding:40px 20px">
-              <span class="empty-icon">📊</span>
-              <span class="empty-title">Select a set and calculate</span>
-              <span class="empty-sub">EV results will appear here</span>
+        <h2 class="section-title">Arbitrage Scanner</h2>
+        <div class="section-meta">Cross-market price discrepancies — EN (TCGPlayer) vs EU (Cardmarket)</div>
+      </div>
+    </div>
+
+    <!-- Arbitrage table -->
+    <div class="table-wrap">
+      <div class="table-responsive">
+        <table class="data-table" role="grid" aria-label="Arbitrage opportunities">
+          <thead>
+            <tr>
+              <th scope="col" style="min-width:200px;">
+                <div class="th-content"><span class="th-main">Card</span></div>
+              </th>
+              <th scope="col">
+                <div class="th-content"><span class="th-main">Set</span></div>
+              </th>
+              <th scope="col" class="col-en">
+                <div class="th-content">
+                  <span class="th-main">EN Price ($)</span>
+                  <span class="th-sub">TCGPlayer Market</span>
+                </div>
+              </th>
+              <th scope="col" class="col-eu">
+                <div class="th-content">
+                  <span class="th-main">EU Price (€)</span>
+                  <span class="th-sub">Cardmarket 7d Avg</span>
+                </div>
+              </th>
+              <th scope="col">
+                <div class="th-content">
+                  <span class="th-main">Spread</span>
+                  <span class="th-sub">% difference</span>
+                </div>
+              </th>
+              <th scope="col">
+                <div class="th-content">
+                  <span class="th-main">Profit</span>
+                  <span class="th-sub">estimated net</span>
+                </div>
+              </th>
+              <th scope="col">
+                <div class="th-content">
+                  <span class="th-main">Signal</span>
+                </div>
+              </th>
+              <th scope="col">
+                <div class="th-content"><span class="th-main">Action</span></div>
+              </th>
+            </tr>
+          </thead>
+          <tbody id="arb-tbody" aria-live="polite">
+            <!-- Populated by app.js -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ─── TAB 4: MARKET OVERVIEW ───────────────────────────────── -->
+  <section id="panel-overview" class="tab-panel" role="tabpanel" aria-labelledby="tab-overview">
+
+    <!-- Hero stat bar -->
+    <div class="overview-hero" id="overview-hero" aria-live="polite">
+      <!-- Populated by app.js -->
+      <div class="overview-hero-card"><div class="stat-label">Loading…</div><div class="stat-value">—</div></div>
+      <div class="overview-hero-card"><div class="stat-label">Loading…</div><div class="stat-value">—</div></div>
+      <div class="overview-hero-card"><div class="stat-label">Loading…</div><div class="stat-value">—</div></div>
+      <div class="overview-hero-card"><div class="stat-label">Loading…</div><div class="stat-value">—</div></div>
+    </div>
+
+    <!-- Two-column layout -->
+    <div class="overview-grid" id="overview-content">
+
+      <!-- Top Movers -->
+      <div class="overview-card">
+        <div class="overview-card-header">
+          <span class="overview-card-title">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style="display:inline;margin-right:6px;" aria-hidden="true">
+              <path d="M2 9 L4.5 5.5 L7 7 L10 2.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Top Arbitrage Movers
+          </span>
+        </div>
+        <div class="overview-card-body">
+          <div id="overview-movers" aria-live="polite">
+            <div class="empty-state" style="padding:32px 0;">
+              <div style="color:var(--muted);font-size:13px;">Loading…</div>
             </div>
           </div>
         </div>
       </div>
 
-    </div>
-
-  </section>
-
-  <!-- ===========================================================
-       TAB 4: MARKET OVERVIEW
-       =========================================================== -->
-  <section class="tab-panel" id="tab-overview" role="tabpanel">
-
-    <!-- Top Stat Cards -->
-    <div class="stat-grid">
-      <div class="stat-card accent">
-        <span class="stat-label">Sets Tracked</span>
-        <span class="stat-value" id="ov-sets">49</span>
-        <span class="stat-sub">across JP &amp; EN</span>
-      </div>
-      <div class="stat-card positive">
-        <span class="stat-label">Top Signal</span>
-        <span class="stat-value" id="ov-top-signal" style="font-size:18px">—</span>
-        <span class="stat-sub">dominant opportunity</span>
-      </div>
-      <div class="stat-card">
-        <span class="stat-label">Most Recent Set</span>
-        <span class="stat-value" id="ov-recent" style="font-size:16px;line-height:1.3">—</span>
-        <span class="stat-sub">latest release</span>
-      </div>
-      <div class="stat-card">
-        <span class="stat-label">Data Updated</span>
-        <span class="stat-value" id="ov-updated" style="font-size:18px">—</span>
-        <span class="stat-sub">every 15 minutes</span>
-      </div>
-    </div>
-
-    <!-- Two-column layout -->
-    <div class="overview-grid">
-
-      <!-- Top 5 Arbitrage Movers -->
-      <div class="overview-panel">
-        <div class="overview-panel-header">⚡ Top 5 Arbitrage Movers</div>
-        <ul class="overview-list" id="ov-movers" aria-label="Top arbitrage opportunities">
-          <li class="overview-list-item">
-            <span class="empty-sub">Loading…</span>
-          </li>
-        </ul>
-      </div>
-
       <!-- Recent Sets -->
-      <div class="overview-panel">
-        <div class="overview-panel-header">🗓 Recent Sets</div>
-        <ul class="overview-list" id="ov-sets-list" aria-label="Recent card sets">
-          <li class="overview-list-item">
-            <span class="empty-sub">Loading…</span>
-          </li>
-        </ul>
+      <div class="overview-card">
+        <div class="overview-card-header">
+          <span class="overview-card-title">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style="display:inline;margin-right:6px;" aria-hidden="true">
+              <rect x="1" y="1" width="10" height="10" rx="1.5" stroke="currentColor" stroke-width="1.2"/>
+              <path d="M4 5h4M4 7.5h2.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+            </svg>
+            Sets Tracked
+          </span>
+        </div>
+        <div class="overview-card-body">
+          <div class="set-list" id="overview-sets" aria-live="polite">
+            <div style="color:var(--muted);font-size:13px;">Loading…</div>
+          </div>
+        </div>
       </div>
 
     </div>
@@ -399,49 +446,25 @@
 
 </main>
 
-<!-- ============================================================
-     MOBILE NAV (bottom bar)
-     ============================================================ -->
-<nav class="mobile-nav" aria-label="Mobile navigation" style="display:none">
-  <button class="mobile-nav-btn active" data-tab="arbitrage">
-    <span class="mobile-nav-btn-icon" aria-hidden="true">⚡</span>
-    Arb
-  </button>
-  <button class="mobile-nav-btn" data-tab="sealed">
-    <span class="mobile-nav-btn-icon" aria-hidden="true">📦</span>
-    Sealed
-  </button>
-  <button class="mobile-nav-btn" data-tab="ev">
-    <span class="mobile-nav-btn-icon" aria-hidden="true">📊</span>
-    EV
-  </button>
-  <button class="mobile-nav-btn" data-tab="overview">
-    <span class="mobile-nav-btn-icon" aria-hidden="true">📈</span>
-    Market
-  </button>
-</nav>
+<!-- ═══ TOAST CONTAINER ══════════════════════════════════════════ -->
+<div class="toast-container" id="toast-container" aria-live="assertive" role="alert"></div>
 
-<!-- Toast container -->
-<div id="toast-container" class="toast-container" aria-live="polite"></div>
-
-<!-- ============================================================
-     MOBILE NAV VISIBILITY — show on small screens
-     ============================================================ -->
-<script>
-  (function() {
-    function checkMobile() {
-      const mobileNav = document.querySelector('.mobile-nav');
-      if (!mobileNav) return;
-      mobileNav.style.display = window.innerWidth <= 768 ? 'flex' : 'none';
-    }
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-  })();
-</script>
-
-<!-- Scripts -->
+<!-- ═══ SCRIPTS ══════════════════════════════════════════════════ -->
 <script src="auth.js"></script>
 <script src="app.js"></script>
 
+<script>
+  // Close user dropdown on outside click
+  const userBtn = document.getElementById('user-btn');
+  if (userBtn) {
+    userBtn.addEventListener('click', function(e) {
+      const menu = document.getElementById('user-menu');
+      if (menu) {
+        const isOpen = menu.classList.toggle('open');
+        userBtn.setAttribute('aria-expanded', isOpen);
+      }
+    });
+  }
+</script>
 </body>
 </html>
