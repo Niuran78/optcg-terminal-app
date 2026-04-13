@@ -14,7 +14,24 @@ _pool: asyncpg.Pool = None
 async def get_pool() -> asyncpg.Pool:
     global _pool
     if _pool is None:
-        _pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=10)
+        dsn = DATABASE_URL
+        if 'pooler.supabase.com' in dsn:
+            # Supabase Pooler: parse URL manually because asyncpg misparses
+            # the dotted username (postgres.project_ref).
+            from urllib.parse import urlparse
+            p = urlparse(dsn)
+            _pool = await asyncpg.create_pool(
+                host=p.hostname,
+                port=p.port or 5432,
+                user=p.username,        # postgres.gwddra...
+                password=p.password,
+                database=p.path.lstrip('/') or 'postgres',
+                min_size=2,
+                max_size=10,
+                ssl='require',
+            )
+        else:
+            _pool = await asyncpg.create_pool(dsn, min_size=2, max_size=10)
         logger.info("PostgreSQL pool created.")
     return _pool
 
