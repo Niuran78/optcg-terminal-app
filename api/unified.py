@@ -1,14 +1,16 @@
 """Unified card browser API — merges EN (TCG Price Lookup) and EU (Cardmarket) prices.
 
 Endpoints:
-    GET /api/cards/browse   — browse all cards with EN + EU prices
-    GET /api/cards/sealed   — browse sealed products with EU prices
-    GET /api/cards/arbitrage — find EN↔EU arbitrage opportunities
+    GET /api/cards/browse        — browse all cards with EN + EU prices
+    GET /api/cards/sealed        — browse sealed products with EU prices
+    GET /api/cards/arbitrage     — find EN↔EU arbitrage opportunities
+    GET /api/cards/price-history — daily price history for a card
 """
 import logging
+from datetime import date, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Path, Query, HTTPException
 
 from db.init import get_pool
 from middleware.tier_gate import get_current_user, UserInfo
@@ -197,6 +199,87 @@ async def market_summary():
         "cards_with_en_prices": cards_with_en,
         "top_eu_card": top_eu_card,
         "last_updated": str(last_updated) if last_updated else None,
+    }
+
+
+# ─── Price History ────────────────────────────────────────────────────────────
+
+@router.get("/price-history/{card_id}")
+async def card_price_history(
+    card_id: str = Path(..., description="Card ID, e.g. OP01-001"),
+    variant: str = Query("Normal", description="Card variant"),
+    days: int = Query(30, ge=7, le=365, description="Number of days of history"),
+    user: UserInfo = Depends(get_current_user),
+):
+    """Daily price history for a card from daily_price_snapshots.
+
+    Free tier: capped at 7 days.
+    Pro+: up to 365 days.
+    """
+    # Free tier: 7 days only
+    if not user.can_access("pro"):
+        days = min(days, 7)
+
+    since = date.today() - timedelta(days=days)
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        # Card metadata
+        card = await conn.fetchrow(
+            "SELECT card_id, name, set_code, set_name, rarity, variant, image_url, "
+            "en_tcgplayer_market, eu_cardmarket_7d_avg, eu_cardmarket_30d_avg "
+            "FROM cards_unified WHERE card_id = $1 LIMIT 1",
+            card_id,
+        )
+        if not card:
+            raise HTTPException(404, detail="Card not found")
+
+        # Snapshot history
+        rows = await conn.fetch(
+            "SELECT snapshot_date, en_tcgplayer_market, en_tcgplayer_low, "
+            "eu_cardmarket_7d_avg, eu_cardmarket_30d_avg, eu_cardmarket_lowest "
+            "FROM daily_price_snapshots "
+            "WHERE card_id = $1 AND variant = $2 AND snapshot_date >= $3 "
+            "ORDER BY snapshot_date ASC",
+            card_id, variant, since,
+        )
+
+    history = [
+        {
+            "date": str(row["snapshot_date"]),
+            "en_tcgplayer_market": row["en_tcgplayer_market"],
+            "en_tcgplayer_low": row["en_tcgplayer_low"],
+            "eu_cardmarket_7d_avg": row["eu_cardmarket_7d_avg"],
+            "eu_cardmarket_30d_avg": row["eu_cardmarket_30d_avg"],
+            "eu_cardmarket_lowest": row["eu_cardmarket_lowest"],
+        }
+        for row in rows
+    ]
+
+    # Fallback: if no snapshots yet, return current prices as single data point
+    if not history:
+        history = [
+            {
+                "date": str(date.today()),
+                "en_tcgplayer_market": card["en_tcgplayer_market"],
+                "en_tcgplayer_low": None,
+                "eu_cardmarket_7d_avg": card["eu_cardmarket_7d_avg"],
+                "eu_cardmarket_30d_avg": card["eu_cardmarket_30d_avg"],
+                "eu_cardmarket_lowest": None,
+            }
+        ]
+
+    return {
+        "card_id": card["card_id"],
+        "name": card["name"],
+        "set_code": card["set_code"],
+        "set_name": card["set_name"],
+        "rarity": card["rarity"],
+        "variant": variant,
+        "image_url": card["image_url"],
+        "days": days,
+        "tier": user.tier,
+        "history": history,
     }
 
 

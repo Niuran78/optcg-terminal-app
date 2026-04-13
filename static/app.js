@@ -492,7 +492,7 @@ function renderBrowserTable(data) {
     const variant = card.variant && card.variant !== 'Normal' ? ` <span style="font-size:10px;color:var(--muted);">(${escHtml(card.variant)})</span>` : '';
 
     rows += `
-      <tr data-idx="${i}" class="${i >= limit ? 'blurred-rows' : ''}">
+      <tr data-idx="${i}" class="clickable-row ${i >= limit ? 'blurred-rows' : ''}" onclick="openPriceHistory(${i})" title="Click for price history">
         <td>
           <div class="card-cell">
             ${cardThumb(card.image_url, card.name)}
@@ -979,10 +979,182 @@ function renderOverview(data) {
 }
 
 /* ══════════════════════════════════════════════════════════════════
+   PRICE HISTORY MODAL
+   ══════════════════════════════════════════════════════════════════ */
+let priceChart = null;
+let priceModalCard = null;
+
+function initPriceModal() {
+  const overlay = $('price-modal-overlay');
+  const closeBtn = $('price-modal-close');
+  const daysSelect = $('price-modal-days');
+
+  if (!overlay) return;
+
+  closeBtn?.addEventListener('click', closePriceModal);
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) closePriceModal();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && overlay.getAttribute('aria-hidden') === 'false') closePriceModal();
+  });
+
+  daysSelect?.addEventListener('change', () => {
+    if (priceModalCard) loadPriceHistory(priceModalCard, Number(daysSelect.value));
+  });
+}
+
+function closePriceModal() {
+  const overlay = $('price-modal-overlay');
+  if (overlay) {
+    overlay.setAttribute('aria-hidden', 'true');
+    overlay.classList.remove('open');
+  }
+  if (priceChart) { priceChart.destroy(); priceChart = null; }
+  priceModalCard = null;
+}
+
+function showPriceHistoryModal(card) {
+  priceModalCard = card;
+  const overlay = $('price-modal-overlay');
+  if (!overlay) return;
+
+  // Set header info
+  const titleEl = $('price-modal-title');
+  const subEl = $('price-modal-subtitle');
+  if (titleEl) titleEl.textContent = card.name || card.card_id || 'Price History';
+  if (subEl) subEl.textContent = [card.card_id, card.set_code, card.rarity].filter(Boolean).join(' · ');
+
+  overlay.setAttribute('aria-hidden', 'false');
+  overlay.classList.add('open');
+
+  const days = Number($('price-modal-days')?.value || 30);
+  loadPriceHistory(card, days);
+}
+
+async function loadPriceHistory(card, days) {
+  const chartCanvas = $('price-history-chart');
+  const summaryEl = $('price-modal-summary');
+  if (!chartCanvas) return;
+
+  // Destroy previous chart
+  if (priceChart) { priceChart.destroy(); priceChart = null; }
+
+  const variant = card.variant || 'Normal';
+  const params = new URLSearchParams({ variant, days });
+
+  try {
+    const data = await apiFetch(`/api/cards/price-history/${encodeURIComponent(card.card_id)}?${params}`);
+    const history = data.history || [];
+
+    const labels = history.map(h => h.date);
+    const euPrices = history.map(h => h.eu_cardmarket_7d_avg);
+    const enPrices = history.map(h => h.en_tcgplayer_market);
+
+    const datasets = [];
+    if (euPrices.some(v => v != null)) {
+      datasets.push({
+        label: 'EU Cardmarket 7d Avg',
+        data: euPrices,
+        borderColor: '#3b82f6',
+        backgroundColor: 'rgba(59,130,246,0.1)',
+        borderWidth: 2,
+        pointRadius: history.length > 60 ? 0 : 3,
+        pointHoverRadius: 5,
+        tension: 0.3,
+        fill: true,
+      });
+    }
+    if (enPrices.some(v => v != null)) {
+      datasets.push({
+        label: 'EN TCGPlayer Market',
+        data: enPrices,
+        borderColor: '#00e5c0',
+        backgroundColor: 'rgba(0,229,192,0.08)',
+        borderWidth: 2,
+        pointRadius: history.length > 60 ? 0 : 3,
+        pointHoverRadius: 5,
+        tension: 0.3,
+        fill: true,
+      });
+    }
+
+    if (!datasets.length) {
+      chartCanvas.parentElement.innerHTML = '<div class="empty-state" style="padding:40px 0;"><div class="empty-icon">📊</div><div class="empty-title">No price data</div></div>';
+      return;
+    }
+
+    priceChart = new Chart(chartCanvas, {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: {
+            labels: { color: '#b0ada6', font: { family: "'JetBrains Mono', monospace", size: 11 } }
+          },
+          tooltip: {
+            backgroundColor: '#1a2420',
+            borderColor: '#263430',
+            borderWidth: 1,
+            titleColor: '#e8e6e0',
+            bodyColor: '#b0ada6',
+            titleFont: { family: "'JetBrains Mono', monospace", size: 12 },
+            bodyFont: { family: "'JetBrains Mono', monospace", size: 11 },
+            callbacks: {
+              label: (ctx) => {
+                const v = ctx.parsed.y;
+                if (v == null) return '';
+                const prefix = ctx.dataset.label.startsWith('EU') ? '€' : '$';
+                return ` ${ctx.dataset.label}: ${prefix}${v.toFixed(2)}`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            ticks: { color: '#4a6660', font: { family: "'JetBrains Mono', monospace", size: 10 }, maxRotation: 45 },
+            grid: { color: 'rgba(30,42,40,0.4)' }
+          },
+          y: {
+            ticks: { color: '#4a6660', font: { family: "'JetBrains Mono', monospace", size: 10 } },
+            grid: { color: 'rgba(30,42,40,0.4)' }
+          }
+        }
+      }
+    });
+
+    // Summary below chart
+    if (summaryEl) {
+      const latestEu = euPrices.filter(v => v != null);
+      const latestEn = enPrices.filter(v => v != null);
+      const tierNote = data.tier === 'free' ? ' <span style="color:var(--warning);font-size:10px;">(Free: 7d limit — upgrade for full history)</span>' : '';
+      summaryEl.innerHTML =
+        `<span>${history.length} data point${history.length !== 1 ? 's' : ''} · ${data.days}d range${tierNote}</span>` +
+        (latestEu.length ? `<span>EU Latest: ${fmt.eur(latestEu[latestEu.length-1])}</span>` : '') +
+        (latestEn.length ? `<span>EN Latest: ${fmt.usd(latestEn[latestEn.length-1])}</span>` : '');
+    }
+
+  } catch (err) {
+    showToast('Failed to load price history: ' + err.message, 'error');
+    closePriceModal();
+  }
+}
+
+// Make card rows clickable in browser table
+window.openPriceHistory = function(idx) {
+  const card = State.browser.cards[idx];
+  if (card) showPriceHistoryModal(card);
+};
+
+/* ══════════════════════════════════════════════════════════════════
    INIT ALL FILTERS once DOM is ready
    ══════════════════════════════════════════════════════════════════ */
 document.addEventListener('DOMContentLoaded', () => {
   initBrowserFilters();
   initSealedFilters();
   initArbitrageFilters();
+  initPriceModal();
 });
