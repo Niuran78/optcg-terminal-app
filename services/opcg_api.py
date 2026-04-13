@@ -56,33 +56,19 @@ def _set_code_from_id(set_id: str) -> Optional[str]:
     return _RAPIDAPI_ID_TO_CODE.get(str(set_id))
 
 
-def _price_is_eurocent(card_number: Optional[str], set_code: Optional[str]) -> bool:
-    """Determine if a RapidAPI price is in Eurocent or EUR.
-    
-    Priority: card_number prefix > set_code.
-    """
-    if card_number:
-        prefix = card_number.split("-")[0].upper() if "-" in str(card_number) else str(card_number).upper()
-        if prefix.startswith("ST") or prefix.startswith("PRB"):
-            return False
-        if prefix.startswith("OP") or prefix.startswith("EB"):
-            return True
-    if set_code:
-        sc = set_code.upper()
-        if sc.startswith("ST") or sc.startswith("PRB"):
-            return False
-    return True
-
-
 def _cents_to_eur(v, card_number: Optional[str] = None, set_code: Optional[str] = None) -> Optional[float]:
-    """Normalize RapidAPI price to EUR using card_number prefix."""
+    """Normalize RapidAPI price to EUR.
+
+    Values >= 100 are Eurocent (÷100), values < 100 are EUR.
+    No OPTCG card averages > €100, so this heuristic is reliable.
+    """
     if v is None:
         return None
     try:
         f = float(v)
         if f <= 0:
             return None
-        if _price_is_eurocent(card_number, set_code):
+        if f >= 100:
             return round(f / 100.0, 2)
         return round(f, 2)
     except (ValueError, TypeError):
