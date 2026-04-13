@@ -27,6 +27,7 @@ from api.ev import router as ev_router
 from api.stripe_billing import router as billing_router
 from api.scraper import router as scraper_router
 from api.unified import router as unified_router
+from api.portfolio import router as portfolio_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -145,6 +146,7 @@ app.include_router(sealed_router)
 app.include_router(ev_router)
 app.include_router(billing_router)
 app.include_router(scraper_router)
+app.include_router(portfolio_router)
 
 
 # Health check
