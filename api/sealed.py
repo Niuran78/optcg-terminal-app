@@ -1,9 +1,8 @@
 """Sealed Products API endpoints."""
 import asyncio
-import aiosqlite
 from fastapi import APIRouter, Depends, Query, HTTPException
 
-from db.init import DATABASE_PATH
+from db.init import get_pool
 from middleware.tier_gate import get_current_user, UserInfo, require_pro
 from services import opcg_api
 
@@ -22,10 +21,9 @@ async def list_sealed_products(
     Pro/Elite: all sets.
     Note: The API does not distinguish JP vs EN; all regions are included.
     """
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT * FROM sets ORDER BY release_date DESC")
-        all_sets = await cursor.fetchall()
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        all_sets = await conn.fetch("SELECT * FROM sets ORDER BY release_date DESC")
 
     sets_list = [dict(row) for row in all_sets]
 
@@ -145,10 +143,9 @@ async def sealed_tracker(
     Requires Pro or Elite.
     Note: The API does not distinguish JP vs EN; all regions are included.
     """
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT * FROM sets ORDER BY release_date DESC")
-        all_sets = await cursor.fetchall()
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        all_sets = await conn.fetch("SELECT * FROM sets ORDER BY release_date DESC")
 
     sets_list = [dict(row) for row in all_sets]
     if set_id:

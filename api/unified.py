@@ -8,10 +8,9 @@ Endpoints:
 import logging
 from typing import Optional
 
-import aiosqlite
 from fastapi import APIRouter, Depends, Query, HTTPException
 
-from db.init import DATABASE_PATH
+from db.init import get_pool
 from middleware.tier_gate import get_current_user, UserInfo
 from services.card_aggregator import USD_TO_EUR, EUR_TO_USD
 
@@ -62,14 +61,14 @@ def _row_to_card(row: dict) -> dict:
             "tcgplayer_low_usd": row.get("en_tcgplayer_low"),
             "ebay_avg_7d_usd": row.get("en_ebay_avg_7d"),
             "source": row.get("en_source", "TCG Price Lookup"),
-            "updated_at": row.get("en_updated_at"),
+            "updated_at": str(row.get("en_updated_at")) if row.get("en_updated_at") else None,
         },
         "eu_prices": {
             "cardmarket_7d_avg_eur": row.get("eu_cardmarket_7d_avg"),
             "cardmarket_30d_avg_eur": row.get("eu_cardmarket_30d_avg"),
             "cardmarket_lowest_eur": row.get("eu_cardmarket_lowest"),
             "source": row.get("eu_source", "Cardmarket"),
-            "updated_at": row.get("eu_updated_at"),
+            "updated_at": str(row.get("eu_updated_at")) if row.get("eu_updated_at") else None,
         },
         "ids": {
             "tcg_price_lookup_id": row.get("tcg_price_lookup_id"),
@@ -94,7 +93,7 @@ def _row_to_sealed(row: dict) -> dict:
             "avg_7d_eur": row.get("eu_7d_avg"),
             "trend": row.get("eu_trend"),
             "source": row.get("eu_source", "Cardmarket"),
-            "updated_at": row.get("eu_updated_at"),
+            "updated_at": str(row.get("eu_updated_at")) if row.get("eu_updated_at") else None,
         },
         "rapidapi_product_id": row.get("rapidapi_product_id"),
     }
@@ -187,11 +186,13 @@ async def browse_cards(
 
     conditions = []
     params: list = []
+    param_idx = 1  # asyncpg uses $1, $2, ...
 
     if allowed_sets is not None:
-        placeholders = ",".join("?" * len(allowed_sets))
+        placeholders = ",".join(f"${param_idx + i}" for i in range(len(allowed_sets)))
         conditions.append(f"set_code IN ({placeholders})")
         params.extend(allowed_sets)
+        param_idx += len(allowed_sets)
 
     if set_code:
         if allowed_sets and set_code.upper() not in allowed_sets:
@@ -203,32 +204,32 @@ async def browse_cards(
                     "upgrade_url": "/login.html#upgrade",
                 },
             )
-        conditions.append("set_code = ?")
+        conditions.append(f"set_code = ${param_idx}")
         params.append(set_code.upper())
+        param_idx += 1
 
     if search:
-        conditions.append("name LIKE ?")
+        conditions.append(f"name LIKE ${param_idx}")
         params.append(f"%{search}%")
+        param_idx += 1
 
     if rarity:
-        conditions.append("rarity = ?")
+        conditions.append(f"rarity = ${param_idx}")
         params.append(rarity)
+        param_idx += 1
 
     where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
     count_query = f"SELECT COUNT(*) FROM cards_unified {where_clause}"
     data_query = (
         f"SELECT * FROM cards_unified {where_clause} "
         f"ORDER BY {sort} {order_sql} NULLS LAST "
-        f"LIMIT ? OFFSET ?"
+        f"LIMIT ${param_idx} OFFSET ${param_idx + 1}"
     )
 
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(count_query, params)
-        total = (await cursor.fetchone())[0]
-
-        cursor = await db.execute(data_query, params + [limit, offset])
-        rows = await cursor.fetchall()
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        total = await conn.fetchval(count_query, *params)
+        rows = await conn.fetch(data_query, *params, limit, offset)
 
     cards = [_row_to_card(dict(row)) for row in rows]
 
@@ -272,11 +273,13 @@ async def browse_sealed(
 
     conditions = []
     params: list = []
+    param_idx = 1
 
     if allowed_sets is not None:
-        placeholders = ",".join("?" * len(allowed_sets))
+        placeholders = ",".join(f"${param_idx + i}" for i in range(len(allowed_sets)))
         conditions.append(f"set_code IN ({placeholders})")
         params.extend(allowed_sets)
+        param_idx += len(allowed_sets)
 
     if set_code:
         if allowed_sets and set_code.upper() not in allowed_sets:
@@ -288,28 +291,27 @@ async def browse_sealed(
                     "upgrade_url": "/login.html#upgrade",
                 },
             )
-        conditions.append("set_code = ?")
+        conditions.append(f"set_code = ${param_idx}")
         params.append(set_code.upper())
+        param_idx += 1
 
     if product_type:
-        conditions.append("product_type = ?")
+        conditions.append(f"product_type = ${param_idx}")
         params.append(product_type.lower())
+        param_idx += 1
 
     where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
     count_query = f"SELECT COUNT(*) FROM sealed_unified {where_clause}"
     data_query = (
         f"SELECT * FROM sealed_unified {where_clause} "
         f"ORDER BY {sort} {order_sql} NULLS LAST "
-        f"LIMIT ? OFFSET ?"
+        f"LIMIT ${param_idx} OFFSET ${param_idx + 1}"
     )
 
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(count_query, params)
-        total = (await cursor.fetchone())[0]
-
-        cursor = await db.execute(data_query, params + [limit, offset])
-        rows = await cursor.fetchall()
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        total = await conn.fetchval(count_query, *params)
+        rows = await conn.fetch(data_query, *params, limit, offset)
 
     products = [_row_to_sealed(dict(row)) for row in rows]
 
@@ -353,11 +355,13 @@ async def arbitrage_scanner(
         "eu_cardmarket_7d_avg > 0",
     ]
     params: list = []
+    param_idx = 1
 
     if allowed_sets is not None:
-        placeholders = ",".join("?" * len(allowed_sets))
+        placeholders = ",".join(f"${param_idx + i}" for i in range(len(allowed_sets)))
         conditions.append(f"set_code IN ({placeholders})")
         params.extend(allowed_sets)
+        param_idx += len(allowed_sets)
 
     if set_code:
         if allowed_sets and set_code.upper() not in allowed_sets:
@@ -369,8 +373,9 @@ async def arbitrage_scanner(
                     "upgrade_url": "/login.html#upgrade",
                 },
             )
-        conditions.append("set_code = ?")
+        conditions.append(f"set_code = ${param_idx}")
         params.append(set_code.upper())
+        param_idx += 1
 
     where_clause = "WHERE " + " AND ".join(conditions)
     query = (
@@ -379,10 +384,9 @@ async def arbitrage_scanner(
         f"LIMIT 1000"  # Fetch more than needed; filter by profit_pct in Python
     )
 
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(query, params)
-        rows = await cursor.fetchall()
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(query, *params)
 
     opportunities = []
     for row in rows:

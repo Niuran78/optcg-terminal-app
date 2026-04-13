@@ -12,9 +12,7 @@ import json
 from datetime import datetime
 from typing import Optional
 
-import aiosqlite
-
-from db.init import DATABASE_PATH
+from db.init import get_pool
 from services import opcg_api
 from services import tcg_price_lookup
 
@@ -160,7 +158,6 @@ async def aggregate_set(set_code: str, set_name: str) -> int:
     en_slug = mapping.get("en_slug", "")
     rapidapi_id = mapping.get("rapidapi_id", "")
 
-    now = datetime.utcnow().isoformat()
     upserted = 0
 
     # ── Fetch EN cards ──────────────────────────────────────────────────────
@@ -200,7 +197,8 @@ async def aggregate_set(set_code: str, set_name: str) -> int:
                 eu_lookup.setdefault((card_num, "Normal"), card)
 
     # ── Merge and upsert into cards_unified ────────────────────────────────
-    async with aiosqlite.connect(DATABASE_PATH) as db:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
         for en_card in en_cards:
             card_id = (en_card.get("card_id") or "").upper()
             if not card_id:
@@ -223,7 +221,7 @@ async def aggregate_set(set_code: str, set_name: str) -> int:
                 rapidapi_card_id = str(eu_card.get("id") or eu_card.get("_id") or "")
                 cardmarket_id = eu_card.get("cardmarket_id") or eu_card.get("cardmarketId")
 
-            await db.execute(
+            await conn.execute(
                 """
                 INSERT INTO cards_unified (
                     card_id, name, set_code, set_name, rarity, variant, image_url,
@@ -235,54 +233,51 @@ async def aggregate_set(set_code: str, set_name: str) -> int:
                     tcgplayer_id, cardmarket_id,
                     created_at
                 ) VALUES (
-                    ?, ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?,
-                    'TCG Price Lookup', ?,
-                    ?, ?, ?,
-                    'Cardmarket', ?,
-                    ?, ?,
-                    ?, ?,
-                    datetime('now')
+                    $1, $2, $3, $4, $5, $6, $7,
+                    $8, $9, $10,
+                    'TCG Price Lookup', NOW(),
+                    $11, $12, $13,
+                    'Cardmarket', $14,
+                    $15, $16,
+                    $17, $18,
+                    NOW()
                 )
                 ON CONFLICT(card_id, variant) DO UPDATE SET
-                    name=excluded.name,
-                    set_code=excluded.set_code,
-                    set_name=excluded.set_name,
-                    rarity=excluded.rarity,
-                    image_url=excluded.image_url,
-                    en_tcgplayer_market=excluded.en_tcgplayer_market,
-                    en_tcgplayer_low=excluded.en_tcgplayer_low,
-                    en_ebay_avg_7d=excluded.en_ebay_avg_7d,
-                    en_source=excluded.en_source,
-                    en_updated_at=excluded.en_updated_at,
-                    eu_cardmarket_7d_avg=excluded.eu_cardmarket_7d_avg,
-                    eu_cardmarket_30d_avg=excluded.eu_cardmarket_30d_avg,
-                    eu_cardmarket_lowest=excluded.eu_cardmarket_lowest,
-                    eu_source=excluded.eu_source,
-                    eu_updated_at=excluded.eu_updated_at,
-                    tcg_price_lookup_id=excluded.tcg_price_lookup_id,
-                    rapidapi_card_id=excluded.rapidapi_card_id,
-                    tcgplayer_id=excluded.tcgplayer_id,
-                    cardmarket_id=excluded.cardmarket_id
+                    name=EXCLUDED.name,
+                    set_code=EXCLUDED.set_code,
+                    set_name=EXCLUDED.set_name,
+                    rarity=EXCLUDED.rarity,
+                    image_url=EXCLUDED.image_url,
+                    en_tcgplayer_market=EXCLUDED.en_tcgplayer_market,
+                    en_tcgplayer_low=EXCLUDED.en_tcgplayer_low,
+                    en_ebay_avg_7d=EXCLUDED.en_ebay_avg_7d,
+                    en_source=EXCLUDED.en_source,
+                    en_updated_at=EXCLUDED.en_updated_at,
+                    eu_cardmarket_7d_avg=EXCLUDED.eu_cardmarket_7d_avg,
+                    eu_cardmarket_30d_avg=EXCLUDED.eu_cardmarket_30d_avg,
+                    eu_cardmarket_lowest=EXCLUDED.eu_cardmarket_lowest,
+                    eu_source=EXCLUDED.eu_source,
+                    eu_updated_at=EXCLUDED.eu_updated_at,
+                    tcg_price_lookup_id=EXCLUDED.tcg_price_lookup_id,
+                    rapidapi_card_id=EXCLUDED.rapidapi_card_id,
+                    tcgplayer_id=EXCLUDED.tcgplayer_id,
+                    cardmarket_id=EXCLUDED.cardmarket_id
                 """,
-                (
-                    card_id, name, set_code, set_name,
-                    en_card.get("rarity", ""),
-                    variant,
-                    en_card.get("image_url", ""),
-                    en_card.get("en_tcgplayer_market"),
-                    en_card.get("en_tcgplayer_low"),
-                    en_card.get("en_ebay_avg_7d"),
-                    now,
-                    eu_prices["eu_cardmarket_7d_avg"],
-                    eu_prices["eu_cardmarket_30d_avg"],
-                    eu_prices["eu_cardmarket_lowest"],
-                    now if eu_card else None,
-                    en_card.get("tcg_price_lookup_id", ""),
-                    rapidapi_card_id,
-                    en_card.get("tcgplayer_id"),
-                    cardmarket_id,
-                ),
+                card_id, name, set_code, set_name,
+                en_card.get("rarity", ""),
+                variant,
+                en_card.get("image_url", ""),
+                en_card.get("en_tcgplayer_market"),
+                en_card.get("en_tcgplayer_low"),
+                en_card.get("en_ebay_avg_7d"),
+                eu_prices["eu_cardmarket_7d_avg"],
+                eu_prices["eu_cardmarket_30d_avg"],
+                eu_prices["eu_cardmarket_lowest"],
+                datetime.utcnow() if eu_card else None,
+                en_card.get("tcg_price_lookup_id", ""),
+                rapidapi_card_id,
+                en_card.get("tcgplayer_id"),
+                cardmarket_id,
             )
             upserted += 1
 
@@ -308,7 +303,7 @@ async def aggregate_set(set_code: str, set_name: str) -> int:
             rarity = eu_card.get("rarity") or ""
             rapidapi_card_id = str(eu_card.get("id") or eu_card.get("_id") or "")
 
-            await db.execute(
+            await conn.execute(
                 """
                 INSERT INTO cards_unified (
                     card_id, name, set_code, set_name, rarity, variant, image_url,
@@ -320,36 +315,31 @@ async def aggregate_set(set_code: str, set_name: str) -> int:
                     tcgplayer_id, cardmarket_id,
                     created_at
                 ) VALUES (
-                    ?, ?, ?, ?, ?, ?, ?,
+                    $1, $2, $3, $4, $5, $6, $7,
                     NULL, NULL, NULL,
                     'TCG Price Lookup', NULL,
-                    ?, ?, ?,
-                    'Cardmarket', ?,
-                    NULL, ?,
-                    NULL, ?,
-                    datetime('now')
+                    $8, $9, $10,
+                    'Cardmarket', NOW(),
+                    NULL, $11,
+                    NULL, $12,
+                    NOW()
                 )
                 ON CONFLICT(card_id, variant) DO UPDATE SET
-                    eu_cardmarket_7d_avg=excluded.eu_cardmarket_7d_avg,
-                    eu_cardmarket_30d_avg=excluded.eu_cardmarket_30d_avg,
-                    eu_cardmarket_lowest=excluded.eu_cardmarket_lowest,
-                    eu_updated_at=excluded.eu_updated_at,
-                    rapidapi_card_id=excluded.rapidapi_card_id,
-                    cardmarket_id=excluded.cardmarket_id
+                    eu_cardmarket_7d_avg=EXCLUDED.eu_cardmarket_7d_avg,
+                    eu_cardmarket_30d_avg=EXCLUDED.eu_cardmarket_30d_avg,
+                    eu_cardmarket_lowest=EXCLUDED.eu_cardmarket_lowest,
+                    eu_updated_at=EXCLUDED.eu_updated_at,
+                    rapidapi_card_id=EXCLUDED.rapidapi_card_id,
+                    cardmarket_id=EXCLUDED.cardmarket_id
                 """,
-                (
-                    card_num, name, set_code, set_name, rarity, variant, image_url,
-                    eu_prices["eu_cardmarket_7d_avg"],
-                    eu_prices["eu_cardmarket_30d_avg"],
-                    eu_prices["eu_cardmarket_lowest"],
-                    now,
-                    rapidapi_card_id,
-                    eu_card.get("cardmarket_id") or eu_card.get("cardmarketId"),
-                ),
+                card_num, name, set_code, set_name, rarity, variant, image_url,
+                eu_prices["eu_cardmarket_7d_avg"],
+                eu_prices["eu_cardmarket_30d_avg"],
+                eu_prices["eu_cardmarket_lowest"],
+                rapidapi_card_id,
+                eu_card.get("cardmarket_id") or eu_card.get("cardmarketId"),
             )
             upserted += 1
-
-        await db.commit()
 
     logger.info(f"Aggregator [{set_code}]: upserted {upserted} cards into cards_unified")
     return upserted
@@ -371,7 +361,6 @@ async def aggregate_sealed(set_code: str, set_name: str) -> int:
         return 0
 
     upserted = 0
-    now = datetime.utcnow().isoformat()
 
     try:
         products = await opcg_api.get_products(rapidapi_id, tier="elite")
@@ -390,7 +379,8 @@ async def aggregate_sealed(set_code: str, set_name: str) -> int:
             return "booster"
         return "other"
 
-    async with aiosqlite.connect(DATABASE_PATH) as db:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
         for product in products:
             name = (
                 product.get("name")
@@ -406,7 +396,7 @@ async def aggregate_sealed(set_code: str, set_name: str) -> int:
             rapidapi_product_id = str(product.get("id") or product.get("_id") or "")
             prices = _extract_eu_product_prices(product)
 
-            await db.execute(
+            await conn.execute(
                 """
                 INSERT INTO sealed_unified (
                     product_name, set_code, set_name, product_type, image_url,
@@ -414,27 +404,23 @@ async def aggregate_sealed(set_code: str, set_name: str) -> int:
                     eu_source, eu_updated_at,
                     rapidapi_product_id,
                     created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Cardmarket', ?, ?, datetime('now'))
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'Cardmarket', NOW(), $10, NOW())
                 ON CONFLICT(product_name, set_code) DO UPDATE SET
-                    product_type=excluded.product_type,
-                    image_url=excluded.image_url,
-                    eu_price=excluded.eu_price,
-                    eu_30d_avg=excluded.eu_30d_avg,
-                    eu_7d_avg=excluded.eu_7d_avg,
-                    eu_trend=excluded.eu_trend,
-                    eu_updated_at=excluded.eu_updated_at,
-                    rapidapi_product_id=excluded.rapidapi_product_id
+                    product_type=EXCLUDED.product_type,
+                    image_url=EXCLUDED.image_url,
+                    eu_price=EXCLUDED.eu_price,
+                    eu_30d_avg=EXCLUDED.eu_30d_avg,
+                    eu_7d_avg=EXCLUDED.eu_7d_avg,
+                    eu_trend=EXCLUDED.eu_trend,
+                    eu_updated_at=EXCLUDED.eu_updated_at,
+                    rapidapi_product_id=EXCLUDED.rapidapi_product_id
                 """,
-                (
-                    name, set_code, set_name, product_type, image_url,
-                    prices["eu_price"], prices["eu_30d_avg"],
-                    prices["eu_7d_avg"], prices["eu_trend"],
-                    now, rapidapi_product_id,
-                ),
+                name, set_code, set_name, product_type, image_url,
+                prices["eu_price"], prices["eu_30d_avg"],
+                prices["eu_7d_avg"], prices["eu_trend"],
+                rapidapi_product_id,
             )
             upserted += 1
-
-        await db.commit()
 
     logger.info(f"Aggregator sealed [{set_code}]: upserted {upserted} products")
     return upserted

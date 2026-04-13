@@ -4,12 +4,11 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 import bcrypt as _bcrypt
-import aiosqlite
 from fastapi import APIRouter, Depends, HTTPException, status
 from jose import jwt
 from pydantic import BaseModel, EmailStr
 
-from db.init import DATABASE_PATH
+from db.init import get_pool
 from middleware.tier_gate import JWT_SECRET, JWT_ALGORITHM, get_current_user, UserInfo
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -53,12 +52,12 @@ def create_token(user_id: int) -> str:
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
-def user_to_dict(row: aiosqlite.Row) -> dict:
+def user_to_dict(row) -> dict:
     return {
         "id": row["id"],
         "email": row["email"],
         "tier": row["tier"],
-        "created_at": row["created_at"],
+        "created_at": str(row["created_at"]),
     }
 
 
@@ -70,27 +69,24 @@ async def register(body: RegisterRequest):
     if len(body.password) < 8:
         raise HTTPException(400, "Password must be at least 8 characters.")
 
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
+    pool = await get_pool()
+    async with pool.acquire() as conn:
         # Check existing
-        cursor = await db.execute("SELECT id FROM users WHERE email=?", (body.email,))
-        existing = await cursor.fetchone()
+        existing = await conn.fetchval("SELECT id FROM users WHERE email=$1", body.email)
         if existing:
             raise HTTPException(409, "Email already registered.")
 
         password_hash = hash_password(body.password)
-        await db.execute(
-            "INSERT INTO users (email, password_hash, tier) VALUES (?, ?, 'free')",
-            (body.email, password_hash)
+        user_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, tier) VALUES ($1, $2, 'free') RETURNING id",
+            body.email, password_hash
         )
-        await db.commit()
 
         # Fetch the inserted row
-        cursor = await db.execute(
-            "SELECT id, email, tier, created_at FROM users WHERE email=?",
-            (body.email,)
+        row = await conn.fetchrow(
+            "SELECT id, email, tier, created_at FROM users WHERE id=$1",
+            user_id
         )
-        row = await cursor.fetchone()
 
         token = create_token(row["id"])
         return TokenResponse(access_token=token, user=user_to_dict(row))
@@ -99,13 +95,12 @@ async def register(body: RegisterRequest):
 @router.post("/login", response_model=TokenResponse)
 async def login(body: LoginRequest):
     """Login with email and password."""
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            "SELECT id, email, password_hash, tier, created_at FROM users WHERE email=?",
-            (body.email,)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT id, email, password_hash, tier, created_at FROM users WHERE email=$1",
+            body.email
         )
-        row = await cursor.fetchone()
 
     if row is None or not verify_password(body.password, row["password_hash"]):
         raise HTTPException(401, "Invalid email or password.")
@@ -117,7 +112,7 @@ async def login(body: LoginRequest):
             "id": row["id"],
             "email": row["email"],
             "tier": row["tier"],
-            "created_at": row["created_at"],
+            "created_at": str(row["created_at"]),
         }
     )
 
@@ -128,29 +123,27 @@ async def me(user: UserInfo = Depends(get_current_user)):
     if not user.is_authenticated:
         raise HTTPException(401, "Not authenticated.")
 
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            "SELECT id, email, tier, stripe_customer_id, created_at FROM users WHERE id=?",
-            (user.user_id,)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT id, email, tier, stripe_customer_id, created_at FROM users WHERE id=$1",
+            user.user_id
         )
-        row = await cursor.fetchone()
         if row is None:
             raise HTTPException(404, "User not found.")
 
         # Get active subscription
-        cursor = await db.execute(
+        sub = await conn.fetchrow(
             """SELECT tier, status, current_period_end FROM subscriptions
-               WHERE user_id=? AND status='active' ORDER BY id DESC LIMIT 1""",
-            (user.user_id,)
+               WHERE user_id=$1 AND status='active' ORDER BY id DESC LIMIT 1""",
+            user.user_id
         )
-        sub = await cursor.fetchone()
 
     return {
         "id": row["id"],
         "email": row["email"],
         "tier": row["tier"],
-        "created_at": row["created_at"],
+        "created_at": str(row["created_at"]),
         "subscription": dict(sub) if sub else None,
     }
 
@@ -172,14 +165,12 @@ async def admin_set_tier(body: AdminTierRequest):
     if body.tier not in ("free", "pro", "elite"):
         raise HTTPException(400, "Tier must be free, pro, or elite.")
 
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT id, email, tier FROM users WHERE email=?", (body.email,))
-        row = await cursor.fetchone()
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT id, email, tier FROM users WHERE email=$1", body.email)
         if row is None:
             raise HTTPException(404, "User not found.")
 
-        await db.execute("UPDATE users SET tier=? WHERE email=?", (body.tier, body.email))
-        await db.commit()
+        await conn.execute("UPDATE users SET tier=$1 WHERE email=$2", body.tier, body.email)
 
     return {"message": f"User {body.email} tier updated to {body.tier}"}

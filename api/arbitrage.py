@@ -4,9 +4,7 @@ import json
 from typing import Optional
 from fastapi import APIRouter, Depends, Query, HTTPException
 
-import aiosqlite
-
-from db.init import DATABASE_PATH
+from db.init import get_pool
 from middleware.tier_gate import get_current_user, UserInfo
 from services import opcg_api
 from services.arbitrage_engine import analyze_items
@@ -15,14 +13,13 @@ router = APIRouter(prefix="/api/arbitrage", tags=["arbitrage"])
 
 
 async def _load_items_from_cache(set_id: str, item_type: str) -> list[dict]:
-    """Load all items for a set from the SQLite cache (no live API call)."""
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
+    """Load all items for a set from the PostgreSQL cache (no live API call)."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
         if item_type == "product":
-            cursor = await db.execute(
-                "SELECT * FROM products_cache WHERE set_api_id=?", (set_id,)
+            rows = await conn.fetch(
+                "SELECT * FROM products_cache WHERE set_api_id=$1", set_id
             )
-            rows = await cursor.fetchall()
             result = []
             for row in rows:
                 item = json.loads(row["product_data_json"])
@@ -31,10 +28,9 @@ async def _load_items_from_cache(set_id: str, item_type: str) -> list[dict]:
                 result.append(item)
             return result
         else:
-            cursor = await db.execute(
-                "SELECT * FROM cards_cache WHERE set_api_id=?", (set_id,)
+            rows = await conn.fetch(
+                "SELECT * FROM cards_cache WHERE set_api_id=$1", set_id
             )
-            rows = await cursor.fetchall()
             result = []
             for row in rows:
                 item = json.loads(row["card_data_json"])
@@ -57,14 +53,13 @@ async def arbitrage_scanner(
 ):
     """
     Top arbitrage opportunities across all sets.
-    Reads from pre-seeded SQLite cache — no live API calls during requests.
+    Reads from pre-seeded PostgreSQL cache — no live API calls during requests.
     Free: top 10 from 3 latest sets, cards only show signal.
     Pro/Elite: all sets, full profit calculations.
     """
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT * FROM sets ORDER BY release_date DESC")
-        all_sets = await cursor.fetchall()
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        all_sets = await conn.fetch("SELECT * FROM sets ORDER BY release_date DESC")
 
     sets_list = [dict(row) for row in all_sets]
 
@@ -142,12 +137,11 @@ async def arbitrage_for_set(
     """Arbitrage analysis for a specific set. Reads from cache first."""
     # Check free tier set restriction
     if not user.can_access("pro"):
-        async with aiosqlite.connect(DATABASE_PATH) as db:
-            db.row_factory = aiosqlite.Row
-            cursor = await db.execute(
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            allowed = await conn.fetch(
                 "SELECT api_id FROM sets ORDER BY release_date DESC LIMIT 3"
             )
-            allowed = await cursor.fetchall()
             allowed_ids = {row["api_id"] for row in allowed}
 
         if set_id not in allowed_ids:
@@ -171,10 +165,9 @@ async def arbitrage_for_set(
     analyzed = analyze_items(items, item_type=item_type)
 
     # Get set info
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT * FROM sets WHERE api_id=?", (set_id,))
-        set_info = await cursor.fetchone()
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        set_info = await conn.fetchrow("SELECT * FROM sets WHERE api_id=$1", set_id)
 
     set_data = dict(set_info) if set_info else {"api_id": set_id}
 

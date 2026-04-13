@@ -4,12 +4,11 @@ import json
 import logging
 from typing import Optional
 
-import aiosqlite
 import stripe
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 
-from db.init import DATABASE_PATH
+from db.init import get_pool
 from middleware.tier_gate import get_current_user, require_auth, UserInfo
 
 logger = logging.getLogger(__name__)
@@ -50,12 +49,12 @@ async def create_checkout(
             metadata={"user_id": str(user.user_id)},
         )
         customer_id = customer.id
-        async with aiosqlite.connect(DATABASE_PATH) as db:
-            await db.execute(
-                "UPDATE users SET stripe_customer_id=? WHERE id=?",
-                (customer_id, user.user_id)
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE users SET stripe_customer_id=$1 WHERE id=$2",
+                customer_id, user.user_id
             )
-            await db.commit()
 
     try:
         session = stripe.checkout.Session.create(
@@ -126,45 +125,45 @@ async def _handle_subscription_update(subscription: dict):
     if not customer_id:
         return
 
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            "SELECT id FROM users WHERE stripe_customer_id=?", (customer_id,)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        user_row = await conn.fetchrow(
+            "SELECT id FROM users WHERE stripe_customer_id=$1", customer_id
         )
-        user_row = await cursor.fetchone()
         if user_row is None:
             # Try from metadata
             user_id = meta.get("user_id")
             if user_id:
-                cursor = await db.execute("SELECT id FROM users WHERE id=?", (int(user_id),))
-                user_row = await cursor.fetchone()
+                user_row = await conn.fetchrow("SELECT id FROM users WHERE id=$1", int(user_id))
 
         if user_row is None:
             logger.warning(f"No user found for customer {customer_id}")
             return
 
         user_id = user_row["id"]
-        period_end_str = (
-            str(current_period_end) if current_period_end else None
-        )
+
+        # Convert unix timestamp to timestamptz if present
+        period_end = None
+        if current_period_end:
+            from datetime import datetime, timezone
+            period_end = datetime.fromtimestamp(int(current_period_end), tz=timezone.utc)
 
         # Upsert subscription
-        await db.execute("""
+        await conn.execute("""
             INSERT INTO subscriptions (user_id, stripe_subscription_id, tier, status, current_period_end)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT(stripe_subscription_id) DO UPDATE SET
-                tier=excluded.tier, status=excluded.status,
-                current_period_end=excluded.current_period_end
-        """, (user_id, sub_id, tier, status_val, period_end_str))
+                tier=EXCLUDED.tier, status=EXCLUDED.status,
+                current_period_end=EXCLUDED.current_period_end
+        """, user_id, sub_id, tier, status_val, period_end)
 
         # Update user tier if subscription is active
         if status_val == "active" and tier in ("pro", "elite"):
-            await db.execute("UPDATE users SET tier=? WHERE id=?", (tier, user_id))
+            await conn.execute("UPDATE users SET tier=$1 WHERE id=$2", tier, user_id)
         elif status_val not in ("active", "trialing"):
             # Downgrade to free if subscription lapsed
-            await db.execute("UPDATE users SET tier='free' WHERE id=?", (user_id,))
+            await conn.execute("UPDATE users SET tier='free' WHERE id=$1", user_id)
 
-        await db.commit()
         logger.info(f"Updated subscription for user {user_id}: tier={tier} status={status_val}")
 
 
@@ -176,20 +175,18 @@ async def _handle_subscription_deleted(subscription: dict):
     if not customer_id:
         return
 
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            "SELECT id FROM users WHERE stripe_customer_id=?", (customer_id,)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        user_row = await conn.fetchrow(
+            "SELECT id FROM users WHERE stripe_customer_id=$1", customer_id
         )
-        user_row = await cursor.fetchone()
         if user_row:
             user_id = user_row["id"]
-            await db.execute("UPDATE users SET tier='free' WHERE id=?", (user_id,))
-            await db.execute(
-                "UPDATE subscriptions SET status='canceled' WHERE stripe_subscription_id=?",
-                (sub_id,)
+            await conn.execute("UPDATE users SET tier='free' WHERE id=$1", user_id)
+            await conn.execute(
+                "UPDATE subscriptions SET status='canceled' WHERE stripe_subscription_id=$1",
+                sub_id
             )
-            await db.commit()
             logger.info(f"Downgraded user {user_id} to free tier (subscription canceled)")
 
 

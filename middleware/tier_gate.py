@@ -9,9 +9,8 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from jose import JWTError, jwt
-import aiosqlite
 
-from db.init import DATABASE_PATH
+from db.init import get_pool
 
 JWT_SECRET = os.getenv("JWT_SECRET", "change-me-in-production")
 JWT_ALGORITHM = "HS256"
@@ -65,13 +64,12 @@ async def get_current_user(
 
     # Look up user in DB
     try:
-        async with aiosqlite.connect(DATABASE_PATH) as db:
-            db.row_factory = aiosqlite.Row
-            cursor = await db.execute(
-                "SELECT id, email, tier, stripe_customer_id FROM users WHERE id=?",
-                (int(user_id),)
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT id, email, tier, stripe_customer_id FROM users WHERE id=$1",
+                int(user_id)
             )
-            row = await cursor.fetchone()
             if row is None:
                 return UserInfo()
             return UserInfo(

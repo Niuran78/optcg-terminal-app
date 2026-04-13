@@ -34,8 +34,6 @@ async def get_cards_for_set(
     """
     # Check free tier set restriction
     if not user.can_access("pro"):
-        from db.init import DATABASE_PATH
-        import aiosqlite
         from services import opcg_api as api
         all_sets = await api.get_sets(tier="free")
         allowed_ids = {str(s.get("api_id")) for s in all_sets[:3]}

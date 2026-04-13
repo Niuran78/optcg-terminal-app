@@ -1,4 +1,4 @@
-"""One Piece Card Game API adapter via RapidAPI with SQLite caching."""
+"""One Piece Card Game API adapter via RapidAPI with PostgreSQL caching."""
 import asyncio
 import json
 import os
@@ -7,9 +7,8 @@ from datetime import datetime, timedelta
 from typing import Any, Optional
 
 import httpx
-import aiosqlite
 
-from db.init import DATABASE_PATH
+from db.init import get_pool
 
 logger = logging.getLogger(__name__)
 
@@ -136,13 +135,12 @@ def _card_from_cache(row) -> dict:
 async def get_sets(tier: str = "free") -> list[dict]:
     """Fetch all sets/episodes from API or cache."""
     threshold = _cache_age_threshold(tier)
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            "SELECT * FROM sets WHERE created_at > ? ORDER BY release_date DESC",
-            (threshold.isoformat(),)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        cached = await conn.fetch(
+            "SELECT * FROM sets WHERE created_at > $1 ORDER BY release_date DESC",
+            threshold
         )
-        cached = await cursor.fetchall()
         if cached:
             return [dict(row) for row in cached]
 
@@ -169,14 +167,11 @@ async def get_sets(tier: str = "free") -> list[dict]:
                 page += 1
     except Exception as e:
         logger.error(f"API error fetching sets: {e}")
-        async with aiosqlite.connect(DATABASE_PATH) as db:
-            db.row_factory = aiosqlite.Row
-            cursor = await db.execute("SELECT * FROM sets ORDER BY release_date DESC")
-            stale = await cursor.fetchall()
+        async with pool.acquire() as conn:
+            stale = await conn.fetch("SELECT * FROM sets ORDER BY release_date DESC")
             return [dict(row) for row in stale]
 
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        now = datetime.utcnow().isoformat()
+    async with pool.acquire() as conn:
         for ep in episodes:
             api_id = str(ep.get("id", ep.get("_id", "")))
             name = ep.get("name", ep.get("title", "Unknown"))
@@ -186,19 +181,16 @@ async def get_sets(tier: str = "free") -> list[dict]:
             # Detect language from name/code — JP if name contains JP indicators
             lang = _detect_language(name, code, ep)
 
-            await db.execute("""
+            await conn.execute("""
                 INSERT INTO sets (api_id, name, code, release_date, card_count, language, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES ($1, $2, $3, $4, $5, $6, NOW())
                 ON CONFLICT(api_id) DO UPDATE SET
-                    name=excluded.name, code=excluded.code,
-                    release_date=excluded.release_date, card_count=excluded.card_count,
-                    language=excluded.language, created_at=excluded.created_at
-            """, (api_id, name, code, release_date, card_count, lang, now))
-        await db.commit()
+                    name=EXCLUDED.name, code=EXCLUDED.code,
+                    release_date=EXCLUDED.release_date, card_count=EXCLUDED.card_count,
+                    language=EXCLUDED.language, created_at=NOW()
+            """, api_id, name, code, release_date, card_count, lang)
 
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT * FROM sets ORDER BY release_date DESC")
-        rows = await cursor.fetchall()
+        rows = await conn.fetch("SELECT * FROM sets ORDER BY release_date DESC")
         return [dict(row) for row in rows]
 
 
@@ -210,13 +202,12 @@ def _detect_language(name: str, code: str, ep: dict) -> str:
 async def get_cards(set_id: str, tier: str = "free") -> list[dict]:
     """Fetch ALL cards for a set from API or cache, with full pagination."""
     threshold = _cache_age_threshold(tier)
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            "SELECT * FROM cards_cache WHERE set_api_id=? AND last_updated>?",
-            (set_id, threshold.isoformat())
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        cached = await conn.fetch(
+            "SELECT * FROM cards_cache WHERE set_api_id=$1 AND last_updated>$2",
+            set_id, threshold
         )
-        cached = await cursor.fetchall()
         if cached:
             result = []
             for row in cached:
@@ -253,38 +244,33 @@ async def get_cards(set_id: str, tier: str = "free") -> list[dict]:
     except Exception as e:
         logger.error(f"API error fetching cards for set {set_id}: {e}")
         # Return stale cache
-        async with aiosqlite.connect(DATABASE_PATH) as db:
-            db.row_factory = aiosqlite.Row
-            cursor = await db.execute("SELECT * FROM cards_cache WHERE set_api_id=?", (set_id,))
-            stale = await cursor.fetchall()
+        async with pool.acquire() as conn:
+            stale = await conn.fetch("SELECT * FROM cards_cache WHERE set_api_id=$1", set_id)
             return [_card_from_cache(row) for row in stale]
 
     # Store in cache
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        now = datetime.utcnow().isoformat()
+    async with pool.acquire() as conn:
         for card in all_cards:
             card_api_id = str(card.get("id", card.get("_id", card.get("code", ""))))
             cm_price = _extract_price(card, "cardmarket")
             tcp_price = _extract_price(card, "tcgplayer")
 
-            await db.execute("""
+            await conn.execute("""
                 INSERT INTO cards_cache (set_api_id, card_api_id, card_data_json, cardmarket_price, tcgplayer_price, last_updated)
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES ($1, $2, $3, $4, $5, NOW())
                 ON CONFLICT(set_api_id, card_api_id) DO UPDATE SET
-                    card_data_json=excluded.card_data_json,
-                    cardmarket_price=excluded.cardmarket_price,
-                    tcgplayer_price=excluded.tcgplayer_price,
-                    last_updated=excluded.last_updated
-            """, (set_id, card_api_id, json.dumps(card), cm_price, tcp_price, now))
+                    card_data_json=EXCLUDED.card_data_json,
+                    cardmarket_price=EXCLUDED.cardmarket_price,
+                    tcgplayer_price=EXCLUDED.tcgplayer_price,
+                    last_updated=NOW()
+            """, set_id, card_api_id, json.dumps(card), cm_price, tcp_price)
 
             # Record price history
             if cm_price is not None or tcp_price is not None:
-                await db.execute("""
+                await conn.execute("""
                     INSERT INTO price_history (item_type, item_api_id, cardmarket_price, tcgplayer_price, recorded_at)
-                    VALUES ('card', ?, ?, ?, ?)
-                """, (card_api_id, cm_price, tcp_price, now))
-
-        await db.commit()
+                    VALUES ('card', $1, $2, $3, NOW())
+                """, card_api_id, cm_price, tcp_price)
 
     # Return with extracted prices and region
     result = []
@@ -301,13 +287,12 @@ async def get_cards(set_id: str, tier: str = "free") -> list[dict]:
 async def get_products(set_id: str, tier: str = "free") -> list[dict]:
     """Fetch ALL sealed products for a set from API or cache, with full pagination."""
     threshold = _cache_age_threshold(tier)
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            "SELECT * FROM products_cache WHERE set_api_id=? AND last_updated>?",
-            (set_id, threshold.isoformat())
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        cached = await conn.fetch(
+            "SELECT * FROM products_cache WHERE set_api_id=$1 AND last_updated>$2",
+            set_id, threshold
         )
-        cached = await cursor.fetchall()
         if cached:
             result = []
             for row in cached:
@@ -343,12 +328,10 @@ async def get_products(set_id: str, tier: str = "free") -> list[dict]:
     except Exception as e:
         logger.error(f"API error fetching products for set {set_id}: {e}")
         # Return stale cache
-        async with aiosqlite.connect(DATABASE_PATH) as db:
-            db.row_factory = aiosqlite.Row
-            cursor = await db.execute(
-                "SELECT * FROM products_cache WHERE set_api_id=?", (set_id,)
+        async with pool.acquire() as conn:
+            stale = await conn.fetch(
+                "SELECT * FROM products_cache WHERE set_api_id=$1", set_id
             )
-            stale = await cursor.fetchall()
             result = []
             for row in stale:
                 item = json.loads(row["product_data_json"])
@@ -358,30 +341,27 @@ async def get_products(set_id: str, tier: str = "free") -> list[dict]:
             return result
 
     # Store in cache
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        now = datetime.utcnow().isoformat()
+    async with pool.acquire() as conn:
         for product in all_products:
             prod_api_id = str(product.get("id", product.get("_id", product.get("code", ""))))
             cm_price = _extract_price(product, "cardmarket")
             tcp_price = _extract_price(product, "tcgplayer")
 
-            await db.execute("""
+            await conn.execute("""
                 INSERT INTO products_cache (set_api_id, product_api_id, product_data_json, cardmarket_price, tcgplayer_price, last_updated)
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES ($1, $2, $3, $4, $5, NOW())
                 ON CONFLICT(set_api_id, product_api_id) DO UPDATE SET
-                    product_data_json=excluded.product_data_json,
-                    cardmarket_price=excluded.cardmarket_price,
-                    tcgplayer_price=excluded.tcgplayer_price,
-                    last_updated=excluded.last_updated
-            """, (set_id, prod_api_id, json.dumps(product), cm_price, tcp_price, now))
+                    product_data_json=EXCLUDED.product_data_json,
+                    cardmarket_price=EXCLUDED.cardmarket_price,
+                    tcgplayer_price=EXCLUDED.tcgplayer_price,
+                    last_updated=NOW()
+            """, set_id, prod_api_id, json.dumps(product), cm_price, tcp_price)
 
             if cm_price is not None or tcp_price is not None:
-                await db.execute("""
+                await conn.execute("""
                     INSERT INTO price_history (item_type, item_api_id, cardmarket_price, tcgplayer_price, recorded_at)
-                    VALUES ('product', ?, ?, ?, ?)
-                """, (prod_api_id, cm_price, tcp_price, now))
-
-        await db.commit()
+                    VALUES ('product', $1, $2, $3, NOW())
+                """, prod_api_id, cm_price, tcp_price)
 
     result = []
     for product in all_products:
@@ -417,13 +397,12 @@ async def search_cards(query: str, tier: str = "free") -> list[dict]:
 
 async def get_price_history(item_api_id: str, item_type: str = "card", days: int = 30) -> list[dict]:
     """Get price history for an item."""
-    since = (datetime.utcnow() - timedelta(days=days)).isoformat()
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute("""
+    since = datetime.utcnow() - timedelta(days=days)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("""
             SELECT * FROM price_history
-            WHERE item_api_id=? AND item_type=? AND recorded_at>?
+            WHERE item_api_id=$1 AND item_type=$2 AND recorded_at>$3
             ORDER BY recorded_at ASC
-        """, (item_api_id, item_type, since))
-        rows = await cursor.fetchall()
+        """, item_api_id, item_type, since)
         return [dict(row) for row in rows]

@@ -17,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 
-from db.init import init_db
+from db.init import init_db, get_pool
 from api.auth import router as auth_router
 from api.cards import router as cards_router
 from api.sets import router as sets_router
@@ -76,11 +76,22 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not seed sets on startup: {e}")
 
-    # Kick off unified multi-source data seed (non-blocking)
-    from services.card_aggregator import seed_all_unified
-    asyncio.create_task(seed_all_unified())
+    # Check if cards_unified has data — only seed if empty
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        count = await conn.fetchval("SELECT COUNT(*) FROM cards_unified")
+
+    if count == 0:
+        logger.info("cards_unified is empty — starting full data seed...")
+        from services.card_aggregator import seed_all_unified
+        asyncio.create_task(seed_all_unified())
+    else:
+        logger.info(f"cards_unified has {count} records — skipping seed")
 
     yield
+
+    from db.init import close_db
+    await close_db()
     logger.info("OPTCG Market Terminal shutting down.")
 
 
@@ -124,19 +135,16 @@ async def market_overview():
     """Quick market overview — top movers and summary stats."""
     from services import opcg_api
     from services.arbitrage_engine import analyze_items
-    import aiosqlite
-    from db.init import DATABASE_PATH
 
     # Fetch ALL sets for total count
     all_sets = await opcg_api.get_sets(tier="elite")
     total_sets = len(all_sets)
 
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        recent_sets = await conn.fetch(
             "SELECT * FROM sets ORDER BY release_date DESC LIMIT 10"
         )
-        recent_sets = await cursor.fetchall()
 
     recent_sets = [dict(row) for row in recent_sets]
 

@@ -1,8 +1,7 @@
 """Sets/Episodes API endpoints."""
-import aiosqlite
 from fastapi import APIRouter, Depends, Query
 
-from db.init import DATABASE_PATH
+from db.init import get_pool
 from middleware.tier_gate import get_current_user, UserInfo
 from services import opcg_api
 
@@ -44,12 +43,11 @@ async def list_sets(
 @router.get("/{set_id}")
 async def get_set(set_id: str, user: UserInfo = Depends(get_current_user)):
     """Get details for a specific set."""
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            "SELECT * FROM sets WHERE api_id=?", (set_id,)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT * FROM sets WHERE api_id=$1", set_id
         )
-        row = await cursor.fetchone()
         if row is None:
             # Try fetching from API
             sets = await opcg_api.get_sets(tier=user.tier)

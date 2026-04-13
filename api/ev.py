@@ -3,7 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from db.init import DATABASE_PATH
+from db.init import get_pool
 from middleware.tier_gate import get_current_user, UserInfo, require_pro
 from services import opcg_api
 from services.ev_engine import calculate_ev, calculate_custom_ev, PULL_RATES
@@ -28,12 +28,10 @@ async def calculate_set_ev(
     Calculate EV for a set based on current card prices.
     Pro tier required.
     """
-    import aiosqlite
     # Get set info
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT * FROM sets WHERE api_id=?", (set_id,))
-        set_row = await cursor.fetchone()
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        set_row = await conn.fetchrow("SELECT * FROM sets WHERE api_id=$1", set_id)
 
     if set_row is None:
         # Try to find set via API data
@@ -94,12 +92,10 @@ async def custom_ev(
     Calculate EV with custom box cost and optional custom pull rates.
     Pro tier required.
     """
-    import aiosqlite
     # Get set info
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT * FROM sets WHERE api_id=?", (body.set_id,))
-        set_row = await cursor.fetchone()
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        set_row = await conn.fetchrow("SELECT * FROM sets WHERE api_id=$1", body.set_id)
 
     set_data = dict(set_row) if set_row else {"api_id": body.set_id, "name": "Unknown"}
     language = body.language or set_data.get("language", "JP")

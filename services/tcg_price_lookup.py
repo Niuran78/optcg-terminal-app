@@ -7,9 +7,8 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 import httpx
-import aiosqlite
 
-from db.init import DATABASE_PATH
+from db.init import get_pool
 
 logger = logging.getLogger(__name__)
 
@@ -26,12 +25,12 @@ def _headers() -> dict:
     return {"X-API-Key": TCG_API_KEY, "Accept": "application/json"}
 
 
-def _sets_cache_threshold() -> str:
-    return (datetime.utcnow() - timedelta(hours=SETS_CACHE_HOURS)).isoformat()
+def _sets_cache_threshold() -> datetime:
+    return datetime.utcnow() - timedelta(hours=SETS_CACHE_HOURS)
 
 
-def _cards_cache_threshold() -> str:
-    return (datetime.utcnow() - timedelta(hours=CARDS_CACHE_HOURS)).isoformat()
+def _cards_cache_threshold() -> datetime:
+    return datetime.utcnow() - timedelta(hours=CARDS_CACHE_HOURS)
 
 
 def _extract_en_prices(card: dict) -> dict:
@@ -83,54 +82,20 @@ def _normalize_card(card: dict) -> dict:
     }
 
 
-async def _ensure_tcg_sets_table(db: aiosqlite.Connection):
-    """Ensure the tcg_sets cache table exists."""
-    await db.execute("""
-        CREATE TABLE IF NOT EXISTS tcg_sets_cache (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            slug TEXT UNIQUE NOT NULL,
-            name TEXT NOT NULL,
-            game_slug TEXT NOT NULL DEFAULT 'onepiece',
-            cached_at TEXT NOT NULL DEFAULT (datetime('now'))
-        )
-    """)
-    await db.commit()
-
-
-async def _ensure_en_cards_table(db: aiosqlite.Connection):
-    """Ensure the en_cards cache table exists."""
-    await db.execute("""
-        CREATE TABLE IF NOT EXISTS tcg_en_cards_cache (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            set_slug TEXT NOT NULL,
-            card_data_json TEXT NOT NULL,
-            card_id TEXT NOT NULL,
-            variant TEXT NOT NULL DEFAULT 'Normal',
-            cached_at TEXT NOT NULL DEFAULT (datetime('now')),
-            UNIQUE(set_slug, card_id, variant)
-        )
-    """)
-    await db.execute(
-        "CREATE INDEX IF NOT EXISTS idx_en_cards_set ON tcg_en_cards_cache(set_slug)"
-    )
-    await db.commit()
-
-
 async def get_en_sets() -> list[dict]:
     """Fetch all One Piece EN sets from TCG Price Lookup, with DB caching."""
     threshold = _sets_cache_threshold()
+    pool = await get_pool()
 
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        await _ensure_tcg_sets_table(db)
-        cursor = await db.execute(
-            "SELECT * FROM tcg_sets_cache WHERE game_slug=? AND cached_at > ? ORDER BY name",
-            (GAME_SLUG, threshold),
+    async with pool.acquire() as conn:
+        cached = await conn.fetchrow(
+            "SELECT set_data_json, cached_at FROM tcg_sets_cache WHERE game_slug=$1 AND cached_at > $2",
+            GAME_SLUG, threshold
         )
-        cached = await cursor.fetchall()
         if cached:
-            logger.debug(f"TCG sets: returning {len(cached)} from cache")
-            return [dict(row) for row in cached]
+            sets = json.loads(cached["set_data_json"])
+            logger.debug(f"TCG sets: returning {len(sets)} from cache")
+            return sets
 
     # Fetch from API
     sets = []
@@ -149,46 +114,29 @@ async def get_en_sets() -> list[dict]:
     except Exception as e:
         logger.error(f"TCG Price Lookup: error fetching sets: {e}")
         # Return stale cache
-        async with aiosqlite.connect(DATABASE_PATH) as db:
-            db.row_factory = aiosqlite.Row
-            await _ensure_tcg_sets_table(db)
-            cursor = await db.execute(
-                "SELECT * FROM tcg_sets_cache WHERE game_slug=? ORDER BY name",
-                (GAME_SLUG,),
+        async with pool.acquire() as conn:
+            stale = await conn.fetchrow(
+                "SELECT set_data_json FROM tcg_sets_cache WHERE game_slug=$1",
+                GAME_SLUG
             )
-            stale = await cursor.fetchall()
-            return [dict(row) for row in stale]
+            if stale:
+                return json.loads(stale["set_data_json"])
+            return []
 
-    # Store in cache
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        await _ensure_tcg_sets_table(db)
-        now = datetime.utcnow().isoformat()
-        for s in sets:
-            slug = s.get("slug", "")
-            name = s.get("name", "")
-            game_slug = s.get("game", {}).get("slug", GAME_SLUG) if isinstance(s.get("game"), dict) else GAME_SLUG
-            if not slug:
-                continue
-            await db.execute(
-                """
-                INSERT INTO tcg_sets_cache (slug, name, game_slug, cached_at)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(slug) DO UPDATE SET
-                    name=excluded.name,
-                    game_slug=excluded.game_slug,
-                    cached_at=excluded.cached_at
-                """,
-                (slug, name, game_slug, now),
-            )
-        await db.commit()
-
-        cursor = await db.execute(
-            "SELECT * FROM tcg_sets_cache WHERE game_slug=? ORDER BY name",
-            (GAME_SLUG,),
+    # Store in cache (upsert the entire sets list as JSON)
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO tcg_sets_cache (game_slug, set_data_json, cached_at)
+            VALUES ($1, $2, NOW())
+            ON CONFLICT(game_slug) DO UPDATE SET
+                set_data_json=EXCLUDED.set_data_json,
+                cached_at=NOW()
+            """,
+            GAME_SLUG, json.dumps(sets)
         )
-        rows = await cursor.fetchall()
-        return [dict(row) for row in rows]
+
+    return sets
 
 
 async def get_en_cards(set_slug: str) -> list[dict]:
@@ -198,15 +146,13 @@ async def get_en_cards(set_slug: str) -> list[dict]:
     Results are cached per set_slug.
     """
     threshold = _cards_cache_threshold()
+    pool = await get_pool()
 
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        await _ensure_en_cards_table(db)
-        cursor = await db.execute(
-            "SELECT card_data_json FROM tcg_en_cards_cache WHERE set_slug=? AND cached_at > ?",
-            (set_slug, threshold),
+    async with pool.acquire() as conn:
+        cached = await conn.fetch(
+            "SELECT card_data_json FROM tcg_en_cards_cache WHERE set_slug=$1 AND cached_at > $2",
+            set_slug, threshold
         )
-        cached = await cursor.fetchall()
         if cached:
             logger.debug(f"TCG EN cards: returning {len(cached)} from cache for {set_slug}")
             return [json.loads(row["card_data_json"]) for row in cached]
@@ -249,38 +195,32 @@ async def get_en_cards(set_slug: str) -> list[dict]:
     except Exception as e:
         logger.error(f"TCG Price Lookup: error fetching cards for {set_slug}: {e}")
         # Return stale cache
-        async with aiosqlite.connect(DATABASE_PATH) as db:
-            db.row_factory = aiosqlite.Row
-            await _ensure_en_cards_table(db)
-            cursor = await db.execute(
-                "SELECT card_data_json FROM tcg_en_cards_cache WHERE set_slug=?",
-                (set_slug,),
+        async with pool.acquire() as conn:
+            stale = await conn.fetch(
+                "SELECT card_data_json FROM tcg_en_cards_cache WHERE set_slug=$1",
+                set_slug
             )
-            stale = await cursor.fetchall()
             return [json.loads(row["card_data_json"]) for row in stale]
 
     # Normalize and store in cache
     normalized = [_normalize_card(c) for c in all_cards]
 
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        await _ensure_en_cards_table(db)
-        now = datetime.utcnow().isoformat()
+    async with pool.acquire() as conn:
         for card in normalized:
             card_id = card.get("card_id", "")
             variant = card.get("variant", "Normal") or "Normal"
             if not card_id:
                 continue
-            await db.execute(
+            await conn.execute(
                 """
                 INSERT INTO tcg_en_cards_cache (set_slug, card_data_json, card_id, variant, cached_at)
-                VALUES (?, ?, ?, ?, ?)
+                VALUES ($1, $2, $3, $4, NOW())
                 ON CONFLICT(set_slug, card_id, variant) DO UPDATE SET
-                    card_data_json=excluded.card_data_json,
-                    cached_at=excluded.cached_at
+                    card_data_json=EXCLUDED.card_data_json,
+                    cached_at=NOW()
                 """,
-                (set_slug, json.dumps(card), card_id, variant, now),
+                set_slug, json.dumps(card), card_id, variant
             )
-        await db.commit()
 
     return normalized
 
@@ -288,14 +228,13 @@ async def get_en_cards(set_slug: str) -> list[dict]:
 async def search_en_cards(query: str) -> list[dict]:
     """Search EN cards by name from cache."""
     query_lower = query.lower()
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
+    pool = await get_pool()
+    async with pool.acquire() as conn:
         try:
-            cursor = await db.execute(
-                "SELECT card_data_json FROM tcg_en_cards_cache WHERE card_data_json LIKE ? LIMIT 100",
-                (f"%{query}%",),
+            rows = await conn.fetch(
+                "SELECT card_data_json FROM tcg_en_cards_cache WHERE card_data_json LIKE $1 LIMIT 100",
+                f"%{query}%"
             )
-            rows = await cursor.fetchall()
             results = []
             for row in rows:
                 card = json.loads(row["card_data_json"])
