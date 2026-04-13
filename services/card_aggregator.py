@@ -105,26 +105,36 @@ def _variant_from_rapidapi(card: dict) -> str:
     return _normalize_variant(version)
 
 
-def _is_booster_set(set_code: Optional[str]) -> bool:
-    """Return True if the set code indicates a booster set (prices in eurocent)."""
-    if not set_code:
-        return True  # Default to eurocent (safer for high values)
-    prefix = set_code.upper()
-    # Starter decks and promo sets return prices in EUR directly
-    if prefix.startswith("ST") or prefix.startswith("PRB"):
-        return False
-    # Booster sets (OP*, EB*) return prices in eurocent
-    return True
+def _price_is_eurocent(card_number: Optional[str], set_code: Optional[str]) -> bool:
+    """Determine if a RapidAPI price value is in Eurocent or EUR.
+
+    RapidAPI is inconsistent: booster cards (OP*, EB*) use Eurocent,
+    starter/promo cards (ST*, PRB*) use EUR directly.
+
+    Priority: card_number prefix > set_code (because RapidAPI mixes
+    starter cards into booster set responses).
+    """
+    # First check card_number prefix (most reliable)
+    if card_number:
+        prefix = card_number.split("-")[0].upper() if "-" in card_number else card_number.upper()
+        if prefix.startswith("ST") or prefix.startswith("PRB"):
+            return False  # Starter/promo → already EUR
+        if prefix.startswith("OP") or prefix.startswith("EB"):
+            return True   # Booster → Eurocent
+    # Fallback to set_code
+    if set_code:
+        sc = set_code.upper()
+        if sc.startswith("ST") or sc.startswith("PRB"):
+            return False
+    return True  # Default: assume Eurocent (safer for high values)
 
 
-def _cents_to_eur(v, set_code: Optional[str] = None) -> Optional[float]:
+def _cents_to_eur(v, card_number: Optional[str] = None, set_code: Optional[str] = None) -> Optional[float]:
     """Normalize RapidAPI price to EUR.
 
-    RapidAPI is inconsistent with price units by set type:
-    - Booster sets (OP01–OP09, EB01): prices in Eurocent → divide by 100
-    - Starter decks (ST01–ST20, PRB01): prices already in EUR → keep as is
-
-    Uses set_code to determine which conversion to apply (deterministic).
+    Uses card_number prefix to determine if value is Eurocent (÷100) or EUR.
+    Card number prefix is more reliable than set_code because RapidAPI mixes
+    starter deck cards (ST*) into booster set (OP*) API responses.
     """
     if v is None:
         return None
@@ -132,7 +142,7 @@ def _cents_to_eur(v, set_code: Optional[str] = None) -> Optional[float]:
         f = float(v)
         if f <= 0:
             return None
-        if _is_booster_set(set_code):
+        if _price_is_eurocent(card_number, set_code):
             return round(f / 100.0, 2)  # Eurocent → EUR
         return round(f, 2)               # Already EUR
     except (ValueError, TypeError):
@@ -143,28 +153,35 @@ def _extract_eu_card_prices(card: dict, set_code: Optional[str] = None) -> dict:
     """Extract EU (Cardmarket) prices from a RapidAPI card dict."""
     prices = card.get("prices", {}) or {}
     cm = prices.get("cardmarket", {}) or {}
+    # Use card_number prefix for cent detection (more reliable than set_code)
+    card_num = str(card.get("card_number") or "").upper()
 
     return {
-        "eu_cardmarket_7d_avg": _cents_to_eur(cm.get("7d_average"), set_code),
-        "eu_cardmarket_30d_avg": _cents_to_eur(cm.get("30d_average"), set_code),
-        "eu_cardmarket_lowest": _cents_to_eur(cm.get("lowest_near_mint") or cm.get("lowest"), set_code),
+        "eu_cardmarket_7d_avg": _cents_to_eur(cm.get("7d_average"), card_num, set_code),
+        "eu_cardmarket_30d_avg": _cents_to_eur(cm.get("30d_average"), card_num, set_code),
+        "eu_cardmarket_lowest": _cents_to_eur(cm.get("lowest_near_mint") or cm.get("lowest"), card_num, set_code),
     }
 
 
 def _extract_eu_product_prices(product: dict, set_code: Optional[str] = None) -> dict:
-    """Extract EU product prices from a RapidAPI product dict."""
+    """Extract EU product prices from a RapidAPI product dict.
+    
+    Sealed products (booster boxes, cases) always use Eurocent pricing.
+    """
     prices = product.get("prices", {}) or {}
     cm = prices.get("cardmarket", {}) or {}
+    # Products are always booster-level (eurocent), pass OP-prefix to force /100
+    product_ref = "OP-PRODUCT"
 
-    lowest = _cents_to_eur(cm.get("lowest_near_mint") or cm.get("lowest"), set_code)
-    avg_30 = _cents_to_eur(cm.get("30d_average"), set_code)
-    avg_7 = _cents_to_eur(cm.get("7d_average"), set_code)
+    lowest = _cents_to_eur(cm.get("lowest_near_mint") or cm.get("lowest"), product_ref, set_code)
+    avg_30 = _cents_to_eur(cm.get("30d_average"), product_ref, set_code)
+    avg_7 = _cents_to_eur(cm.get("7d_average"), product_ref, set_code)
 
     # Fallback: use the pre-extracted _cardmarket_price from opcg_api cache
     if lowest is None and avg_30 is None and avg_7 is None:
         fallback_price = product.get("_cardmarket_price")
         if fallback_price is not None:
-            lowest = _cents_to_eur(fallback_price, set_code)
+            lowest = _cents_to_eur(fallback_price, product_ref, set_code)
 
     # Determine trend
     trend = "stable"

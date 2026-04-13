@@ -51,37 +51,38 @@ _RAPIDAPI_ID_TO_CODE: dict[str, str] = {
 }
 
 
-def _is_booster_set(set_code: Optional[str]) -> bool:
-    """Return True if the set code indicates a booster set (prices in eurocent)."""
-    if not set_code:
-        return True  # Default to eurocent (safer for high values)
-    prefix = set_code.upper()
-    if prefix.startswith("ST") or prefix.startswith("PRB"):
-        return False
-    return True
-
-
 def _set_code_from_id(set_id: str) -> Optional[str]:
     """Resolve a RapidAPI set ID to a set code."""
     return _RAPIDAPI_ID_TO_CODE.get(str(set_id))
 
 
-def _cents_to_eur(v, set_code: Optional[str] = None) -> Optional[float]:
-    """Normalize RapidAPI price to EUR.
-
-    RapidAPI is inconsistent with price units by set type:
-    - Booster sets (OP01–OP09, EB01): prices in Eurocent → divide by 100
-    - Starter decks (ST01–ST20, PRB01): prices already in EUR → keep as is
-
-    Uses set_code to determine which conversion to apply (deterministic).
+def _price_is_eurocent(card_number: Optional[str], set_code: Optional[str]) -> bool:
+    """Determine if a RapidAPI price is in Eurocent or EUR.
+    
+    Priority: card_number prefix > set_code.
     """
+    if card_number:
+        prefix = card_number.split("-")[0].upper() if "-" in str(card_number) else str(card_number).upper()
+        if prefix.startswith("ST") or prefix.startswith("PRB"):
+            return False
+        if prefix.startswith("OP") or prefix.startswith("EB"):
+            return True
+    if set_code:
+        sc = set_code.upper()
+        if sc.startswith("ST") or sc.startswith("PRB"):
+            return False
+    return True
+
+
+def _cents_to_eur(v, card_number: Optional[str] = None, set_code: Optional[str] = None) -> Optional[float]:
+    """Normalize RapidAPI price to EUR using card_number prefix."""
     if v is None:
         return None
     try:
         f = float(v)
         if f <= 0:
             return None
-        if _is_booster_set(set_code):
+        if _price_is_eurocent(card_number, set_code):
             return round(f / 100.0, 2)
         return round(f, 2)
     except (ValueError, TypeError):
@@ -91,19 +92,13 @@ def _cents_to_eur(v, set_code: Optional[str] = None) -> Optional[float]:
 def _extract_price(item: dict, source: str, set_code: Optional[str] = None) -> Optional[float]:
     """Extract price from API response item for a given source.
 
-    Booster set prices are in Eurocent, starter deck prices are in EUR.
-    The set_code parameter determines which conversion to apply.
-
-    Cards:
-        prices.cardmarket.7d_average (preferred, most realistic)
-    Products:
-        prices.cardmarket.lowest_near_mint or prices.cardmarket.30d_average
-    TCGPlayer:
-        prices.tcg_player.market_price
+    Uses card_number prefix to determine cents vs EUR conversion.
     """
     prices = item.get("prices", {}) or {}
     if not isinstance(prices, dict):
         return None
+
+    card_num = str(item.get("card_number") or "").upper()
 
     if source == "cardmarket":
         cm = prices.get("cardmarket", {})
@@ -111,9 +106,9 @@ def _extract_price(item: dict, source: str, set_code: Optional[str] = None) -> O
             for key in ["7d_average", "30d_average", "lowest_near_mint", "lowest"]:
                 v = cm.get(key)
                 if v is not None:
-                    return _cents_to_eur(v, set_code)
+                    return _cents_to_eur(v, card_num, set_code)
         if isinstance(cm, (int, float)):
-            return _cents_to_eur(cm, set_code)
+            return _cents_to_eur(cm, card_num, set_code)
 
     elif source == "tcgplayer":
         for k in ["tcg_player", "tcgplayer", "tcgPlayer"]:
@@ -121,9 +116,9 @@ def _extract_price(item: dict, source: str, set_code: Optional[str] = None) -> O
             if isinstance(tcg, dict):
                 v = tcg.get("market_price")
                 if v is not None:
-                    return _cents_to_eur(v, set_code)
+                    return _cents_to_eur(v, card_num, set_code)
             elif isinstance(tcg, (int, float)):
-                return _cents_to_eur(tcg, set_code)
+                return _cents_to_eur(tcg, card_num, set_code)
 
     return None
 
