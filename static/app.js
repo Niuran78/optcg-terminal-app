@@ -41,6 +41,14 @@ const State = {
     loading: false,
   },
 
+  portfolio: {
+    id: null,          // active portfolio id
+    name: '',
+    items: [],
+    summary: null,
+    loading: false,
+  },
+
   // FX
   usdToEur: 0.92,
   displayCurrency: 'EUR', // 'EUR' | 'USD' for arbitrage calculated fields
@@ -163,6 +171,7 @@ function switchTab(tab) {
   if (tab === 'sealed')    loadSealedData();
   if (tab === 'arbitrage') loadArbitrageData();
   if (tab === 'overview')  loadOverviewData();
+  if (tab === 'portfolio') loadPortfolioData();
 }
 
 function renderNavUser() {
@@ -1191,6 +1200,326 @@ window.openPriceHistory = function(idx) {
 };
 
 /* ══════════════════════════════════════════════════════════════════
+   PORTFOLIO TAB
+   ══════════════════════════════════════════════════════════════════ */
+
+async function loadPortfolioData() {
+  const authGate = $('portfolio-auth-gate');
+  const content  = $('portfolio-content');
+
+  // Auth gate: must be signed in
+  if (!State.user || !State.token) {
+    if (authGate) authGate.style.display = '';
+    if (content)  content.style.display = 'none';
+    return;
+  }
+  if (authGate) authGate.style.display = 'none';
+  if (content)  content.style.display = '';
+
+  State.portfolio.loading = true;
+  showLoadingBar();
+  $('portfolio-tbody').innerHTML = skeletonRows(5, 8);
+
+  try {
+    // Get or create portfolio
+    const listRes = await apiFetch('/api/portfolio');
+    let pf = listRes.portfolios[0];
+
+    if (!pf) {
+      // Auto-create default portfolio
+      const createRes = await apiFetchMut('/api/portfolio', 'POST', { name: 'My Portfolio' });
+      pf = createRes;
+    }
+
+    State.portfolio.id   = pf.id;
+    State.portfolio.name = pf.name;
+
+    // Load items and summary in parallel
+    const [itemsRes, summaryRes] = await Promise.all([
+      apiFetch(`/api/portfolio/${pf.id}/items`),
+      apiFetch(`/api/portfolio/${pf.id}/summary`),
+    ]);
+
+    State.portfolio.items   = itemsRes.items || [];
+    State.portfolio.summary = summaryRes;
+
+    renderPortfolioSummary(summaryRes);
+    renderPortfolioItems(State.portfolio.items);
+
+    // Export button visibility
+    const exportBtn = $('export-csv-btn');
+    if (exportBtn) {
+      exportBtn.style.display = (State.user.tier === 'elite') ? '' : 'none';
+    }
+  } catch (err) {
+    const detail = err.message || '';
+    if (detail.includes('PRO_REQUIRED')) {
+      $('portfolio-tbody').innerHTML = `<tr><td colspan="8" class="empty-state" style="padding:40px 0;">
+        <div style="margin-bottom:8px;font-weight:600;">Pro Required</div>
+        <div style="color:var(--muted);font-size:13px;">Portfolio tracking requires a Pro (CHF 19/mo) or Elite subscription.</div>
+        <a href="/login.html#upgrade" class="btn-primary" style="margin-top:12px;display:inline-block;">Upgrade</a>
+      </td></tr>`;
+    } else {
+      showToast('Portfolio: ' + detail, 'error');
+      $('portfolio-tbody').innerHTML = `<tr><td colspan="8" class="empty-state" style="padding:40px 0;color:var(--muted);">Failed to load portfolio</td></tr>`;
+    }
+  } finally {
+    State.portfolio.loading = false;
+    hideLoadingBar();
+  }
+}
+
+/** POST/PUT/DELETE helper — apiFetch only does GET */
+async function apiFetchMut(url, method, body) {
+  const headers = { 'Content-Type': 'application/json' };
+  const token = State.token || (typeof Auth !== 'undefined' ? Auth.getToken() : null);
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined });
+
+  if (res.status === 401) {
+    if (typeof Auth !== 'undefined') Auth.clearToken();
+    State.user = null; State.token = null; renderNavUser();
+    throw new Error('Session expired. Please sign in again.');
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const msg = typeof err.detail === 'string' ? err.detail : (err.detail?.message || err.detail?.error || `HTTP ${res.status}`);
+    throw new Error(msg);
+  }
+  // CSV export returns blob, not JSON
+  const ct = res.headers.get('content-type') || '';
+  if (ct.includes('text/csv')) return res;
+  return res.json();
+}
+
+function renderPortfolioSummary(s) {
+  const grid = $('portfolio-stat-grid');
+  if (!grid || !s) return;
+
+  const pnlClass = (s.total_pnl_eur || 0) >= 0 ? 'pnl-positive' : 'pnl-negative';
+  const roiClass = (s.total_roi_pct || 0) >= 0 ? 'pnl-positive' : 'pnl-negative';
+
+  grid.innerHTML = `
+    <div class="stat-card"><div class="stat-label">Invested</div><div class="stat-value">${fmt.eur(s.total_invested_eur)}</div></div>
+    <div class="stat-card"><div class="stat-label">Current Value</div><div class="stat-value">${fmt.eur(s.current_value_eur)}</div></div>
+    <div class="stat-card"><div class="stat-label">P&L</div><div class="stat-value ${pnlClass}">${fmt.eur(s.total_pnl_eur)}</div></div>
+    <div class="stat-card"><div class="stat-label">ROI</div><div class="stat-value ${roiClass}">${fmt.pct(s.total_roi_pct)}</div></div>
+  `;
+}
+
+function renderPortfolioItems(items) {
+  const tbody = $('portfolio-tbody');
+  if (!tbody) return;
+
+  if (!items.length) {
+    tbody.innerHTML = `<tr><td colspan="8" class="empty-state" style="padding:40px 0;">
+      <div style="margin-bottom:8px;font-weight:600;">No cards yet</div>
+      <div style="color:var(--muted);font-size:13px;">Click "Add Card" to start tracking your collection.</div>
+    </td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = items.map((it, idx) => {
+    const pnlClass = (it.pnl_eur || 0) >= 0 ? 'pnl-positive' : 'pnl-negative';
+    const roiClass = (it.roi_pct || 0) >= 0 ? 'pnl-positive' : 'pnl-negative';
+    const marketPrice = it.eu_cardmarket_7d_avg != null ? fmt.eur(it.eu_cardmarket_7d_avg)
+                      : it.en_tcgplayer_market != null ? fmt.usd(it.en_tcgplayer_market)
+                      : '—';
+
+    return `<tr>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px;">
+          ${cardThumb(it.image_url, it.name)}
+          <div>
+            <div style="font-weight:500;">${escHtml(it.name)}</div>
+            <div style="color:var(--muted);font-size:11px;">${escHtml(it.card_id)} ${rarityBadge(it.rarity)}</div>
+          </div>
+        </div>
+      </td>
+      <td>${escHtml(it.set_code || '')}</td>
+      <td>${it.quantity}</td>
+      <td>${fmt.eur(it.buy_price)}</td>
+      <td class="col-eu">${marketPrice}</td>
+      <td class="${pnlClass}">${it.pnl_eur != null ? fmt.eur(it.pnl_eur) : '—'}</td>
+      <td class="${roiClass}">${it.roi_pct != null ? fmt.pct(it.roi_pct) : '—'}</td>
+      <td>
+        <button class="btn-icon" title="Remove" onclick="deletePortfolioItem(${it.id})">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 4h8l-.75 8.25a1 1 0 01-1 .75h-4.5a1 1 0 01-1-.75L3 4z" stroke="currentColor" stroke-width="1.2"/><path d="M2 4h10M5.5 2h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ─── Add Card Modal ────────────────────────────────────────────────
+
+let _acDebounce = null;
+
+function openAddCardModal() {
+  const modal = $('add-card-modal');
+  if (!modal) return;
+  modal.style.display = '';
+  modal.setAttribute('aria-hidden', 'false');
+  // Reset form
+  $('ac-search').value = '';
+  $('ac-dropdown').style.display = 'none';
+  $('ac-selected').style.display = 'none';
+  $('ac-card-id').value = '';
+  $('ac-variant').value = '';
+  $('ac-qty').value = '1';
+  $('ac-price').value = '';
+  $('ac-date').value = '';
+  $('ac-notes').value = '';
+  setTimeout(() => $('ac-search').focus(), 100);
+}
+window.openAddCardModal = openAddCardModal;
+
+function closeAddCardModal() {
+  const modal = $('add-card-modal');
+  if (!modal) return;
+  modal.style.display = 'none';
+  modal.setAttribute('aria-hidden', 'true');
+}
+window.closeAddCardModal = closeAddCardModal;
+
+// Autocomplete search
+function initPortfolioAutocomplete() {
+  const input = $('ac-search');
+  if (!input) return;
+
+  input.addEventListener('input', () => {
+    clearTimeout(_acDebounce);
+    const q = input.value.trim();
+    if (q.length < 2) {
+      $('ac-dropdown').style.display = 'none';
+      return;
+    }
+    _acDebounce = setTimeout(async () => {
+      try {
+        const data = await apiFetch(`/api/cards/search-autocomplete?q=${encodeURIComponent(q)}`);
+        renderAutocomplete(data.results || []);
+      } catch (_) {
+        $('ac-dropdown').style.display = 'none';
+      }
+    }, 300);
+  });
+
+  // Close dropdown on outside click
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#ac-search') && !e.target.closest('#ac-dropdown')) {
+      $('ac-dropdown').style.display = 'none';
+    }
+  });
+}
+
+function renderAutocomplete(results) {
+  const dd = $('ac-dropdown');
+  if (!results.length) {
+    dd.innerHTML = '<div class="autocomplete-empty">No cards found</div>';
+    dd.style.display = '';
+    return;
+  }
+
+  dd.innerHTML = results.map(r => `
+    <div class="autocomplete-item" onclick="selectCard(${escHtml(JSON.stringify(JSON.stringify(r)))})">
+      ${cardThumb(r.image_url, r.name)}
+      <div class="ac-item-info">
+        <div class="ac-item-name">${escHtml(r.name)}</div>
+        <div class="ac-item-meta">${escHtml(r.card_id)} &middot; ${escHtml(r.set_code || '')} &middot; ${escHtml(r.rarity || '')}</div>
+      </div>
+      <div class="ac-item-price">${r.eu_cardmarket_7d_avg != null ? fmt.eur(r.eu_cardmarket_7d_avg) : '—'}</div>
+    </div>
+  `).join('');
+  dd.style.display = '';
+}
+
+window.selectCard = function(jsonStr) {
+  const card = JSON.parse(jsonStr);
+  $('ac-card-id').value = card.card_id;
+  $('ac-variant').value = card.variant || 'Normal';
+  $('ac-search').value = card.name;
+  $('ac-dropdown').style.display = 'none';
+
+  // Show selected card details
+  $('ac-card-thumb').innerHTML = cardThumb(card.image_url, card.name);
+  $('ac-card-info').innerHTML = `
+    <div style="font-weight:600;">${escHtml(card.name)}</div>
+    <div style="color:var(--muted);font-size:12px;">${escHtml(card.card_id)} &middot; ${escHtml(card.set_code || '')} &middot; ${escHtml(card.rarity || '')} &middot; ${escHtml(card.variant || 'Normal')}</div>
+    <div style="margin-top:4px;font-size:13px;">Market: ${card.eu_cardmarket_7d_avg != null ? fmt.eur(card.eu_cardmarket_7d_avg) : '—'}</div>
+  `;
+  $('ac-selected').style.display = '';
+
+  // Pre-fill price with market price
+  if (card.eu_cardmarket_7d_avg != null) {
+    $('ac-price').value = Number(card.eu_cardmarket_7d_avg).toFixed(2);
+  }
+  // Default date to today
+  if (!$('ac-date').value) {
+    $('ac-date').value = new Date().toISOString().slice(0, 10);
+  }
+};
+
+async function confirmAddCard() {
+  const cardId = $('ac-card-id').value;
+  if (!cardId) { showToast('Please search and select a card first.', 'warning'); return; }
+
+  const qty   = parseInt($('ac-qty').value, 10) || 1;
+  const price = parseFloat($('ac-price').value);
+  if (isNaN(price) || price < 0) { showToast('Please enter a valid buy price.', 'warning'); return; }
+
+  const body = {
+    card_id: cardId,
+    variant: $('ac-variant').value || 'Normal',
+    quantity: qty,
+    buy_price: price,
+    buy_currency: 'EUR',
+    buy_date: $('ac-date').value || null,
+    notes: $('ac-notes').value || null,
+  };
+
+  try {
+    const res = await apiFetchMut(`/api/portfolio/${State.portfolio.id}/items`, 'POST', body);
+    showToast(`Card ${res.action}: ${cardId} x${res.quantity}`, 'success');
+    closeAddCardModal();
+    loadPortfolioData();
+  } catch (err) {
+    showToast('Add card failed: ' + err.message, 'error');
+  }
+}
+window.confirmAddCard = confirmAddCard;
+
+async function deletePortfolioItem(itemId) {
+  if (!confirm('Remove this card from your portfolio?')) return;
+  try {
+    await apiFetchMut(`/api/portfolio/${State.portfolio.id}/items/${itemId}`, 'DELETE');
+    showToast('Card removed', 'success');
+    loadPortfolioData();
+  } catch (err) {
+    showToast('Delete failed: ' + err.message, 'error');
+  }
+}
+window.deletePortfolioItem = deletePortfolioItem;
+
+async function exportPortfolioCSV() {
+  try {
+    const res = await apiFetchMut(`/api/portfolio/${State.portfolio.id}/export`, 'GET');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `portfolio_export_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('CSV downloaded', 'success');
+  } catch (err) {
+    showToast('Export failed: ' + err.message, 'error');
+  }
+}
+window.exportPortfolioCSV = exportPortfolioCSV;
+
+
+/* ══════════════════════════════════════════════════════════════════
    INIT ALL FILTERS once DOM is ready
    ══════════════════════════════════════════════════════════════════ */
 document.addEventListener('DOMContentLoaded', () => {
@@ -1198,4 +1527,14 @@ document.addEventListener('DOMContentLoaded', () => {
   initSealedFilters();
   initArbitrageFilters();
   initPriceModal();
+  initPortfolioAutocomplete();
+
+  // Portfolio buttons
+  $('add-card-btn')?.addEventListener('click', openAddCardModal);
+  $('export-csv-btn')?.addEventListener('click', exportPortfolioCSV);
+
+  // Close add-card modal on overlay click
+  $('add-card-modal')?.addEventListener('click', (e) => {
+    if (e.target === $('add-card-modal')) closeAddCardModal();
+  });
 });
