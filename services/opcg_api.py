@@ -39,10 +39,13 @@ def _headers() -> dict:
 
 
 def _cents_to_eur(v) -> Optional[float]:
-    """Convert RapidAPI Eurocent value to EUR.
+    """Normalize RapidAPI price to EUR.
 
-    RapidAPI one-piece-tcg-prices returns ALL prices in Eurocent.
-    E.g. 7d_average: 3013.57 means €30.14, lowest_near_mint: 1999 means €19.99.
+    RapidAPI is inconsistent:
+    - Booster sets (OP01–OP09): prices in Eurocent (e.g. 3013.57 = €30.14)
+    - Starter decks (ST01–ST20): prices in EUR (e.g. 6.33 = €6.33)
+
+    Heuristic: values >= 50 are Eurocent (÷100), values < 50 are EUR.
     """
     if v is None:
         return None
@@ -50,7 +53,9 @@ def _cents_to_eur(v) -> Optional[float]:
         f = float(v)
         if f <= 0:
             return None
-        return round(f / 100.0, 2)
+        if f >= 50:
+            return round(f / 100.0, 2)
+        return round(f, 2)
     except (ValueError, TypeError):
         return None
 
