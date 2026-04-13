@@ -77,7 +77,7 @@ def _normalize_variant(variant: str) -> str:
     if not variant:
         return "Normal"
     v = variant.strip().lower()
-    if v in ("normal", "standard", "regular", ""):
+    if v in ("normal", "standard", "regular", "singles", ""):
         return "Normal"
     if "foil" in v or "holo" in v:
         return "Foil"
@@ -88,28 +88,48 @@ def _normalize_variant(variant: str) -> str:
     return variant.strip().title()
 
 
+def _variant_from_rapidapi(card: dict) -> str:
+    """Derive variant from RapidAPI card data.
+
+    RapidAPI uses 'version' (v1 = Normal, v2+ = Alt Art), not 'variant'.
+    The 'type' field is always 'singles' and MUST NOT be used as variant.
+    """
+    version = (card.get("version") or "").strip().lower()
+    if version in ("", "v1"):
+        return "Normal"
+    if version == "v2":
+        return "Alternate Art"
+    if version == "v3":
+        return "Alternate Art 2"
+    return _normalize_variant(version)
+
+
+def _cents_to_eur(v) -> Optional[float]:
+    """Convert RapidAPI Eurocent value to EUR.
+
+    RapidAPI one-piece-tcg-prices returns ALL prices in Eurocent.
+    E.g. 7d_average: 3013.57 means €30.14, lowest_near_mint: 1999 means €19.99.
+    """
+    if v is None:
+        return None
+    try:
+        f = float(v)
+        if f <= 0:
+            return None
+        return round(f / 100.0, 2)
+    except (ValueError, TypeError):
+        return None
+
+
 def _extract_eu_card_prices(card: dict) -> dict:
     """Extract EU (Cardmarket) prices from a RapidAPI card dict."""
     prices = card.get("prices", {}) or {}
     cm = prices.get("cardmarket", {}) or {}
 
-    def _safe_float(v) -> Optional[float]:
-        if v is None:
-            return None
-        try:
-            f = float(v)
-            # RapidAPI returns prices in cents for some fields — detect by magnitude
-            # Typical card prices: 0.01 to 500 EUR. If > 1000, assume cents.
-            if f > 1000:
-                return round(f / 100.0, 2)
-            return f
-        except (ValueError, TypeError):
-            return None
-
     return {
-        "eu_cardmarket_7d_avg": _safe_float(cm.get("7d_average")),
-        "eu_cardmarket_30d_avg": _safe_float(cm.get("30d_average")),
-        "eu_cardmarket_lowest": _safe_float(cm.get("lowest") or cm.get("lowest_near_mint")),
+        "eu_cardmarket_7d_avg": _cents_to_eur(cm.get("7d_average")),
+        "eu_cardmarket_30d_avg": _cents_to_eur(cm.get("30d_average")),
+        "eu_cardmarket_lowest": _cents_to_eur(cm.get("lowest_near_mint") or cm.get("lowest")),
     }
 
 
@@ -118,20 +138,9 @@ def _extract_eu_product_prices(product: dict) -> dict:
     prices = product.get("prices", {}) or {}
     cm = prices.get("cardmarket", {}) or {}
 
-    def _safe_float(v) -> Optional[float]:
-        if v is None:
-            return None
-        try:
-            f = float(v)
-            if f > 10000:
-                return round(f / 100.0, 2)
-            return f
-        except (ValueError, TypeError):
-            return None
-
-    lowest = _safe_float(cm.get("lowest") or cm.get("lowest_near_mint"))
-    avg_30 = _safe_float(cm.get("30d_average"))
-    avg_7 = _safe_float(cm.get("7d_average"))
+    lowest = _cents_to_eur(cm.get("lowest_near_mint") or cm.get("lowest"))
+    avg_30 = _cents_to_eur(cm.get("30d_average"))
+    avg_7 = _cents_to_eur(cm.get("7d_average"))
 
     # Determine trend
     trend = "stable"
@@ -174,27 +183,32 @@ async def aggregate_set(set_code: str, set_name: str) -> int:
     if rapidapi_id:
         try:
             eu_cards = await opcg_api.get_cards(rapidapi_id, tier="elite")
-            logger.info(f"Aggregator [{set_code}]: {len(eu_cards)} EU cards from RapidAPI")
+            # Debug: check first EU card's price structure
+            if eu_cards:
+                sample = eu_cards[0]
+                sample_prices = sample.get("prices", {})
+                sample_cm = (sample_prices or {}).get("cardmarket", {})
+                logger.info(
+                    f"Aggregator [{set_code}]: {len(eu_cards)} EU cards from RapidAPI. "
+                    f"Sample card_number={sample.get('card_number')}, "
+                    f"7d_avg={sample_cm.get('7d_average') if sample_cm else 'N/A'}, "
+                    f"version={sample.get('version')}"
+                )
+            else:
+                logger.info(f"Aggregator [{set_code}]: 0 EU cards from RapidAPI")
         except Exception as e:
             logger.warning(f"Aggregator [{set_code}]: EU fetch failed: {e}")
 
     # ── Build EU lookup: card_id + normalized_variant → card dict ───────────
     eu_lookup: dict[tuple, dict] = {}
     for card in eu_cards:
-        # RapidAPI uses various field names for card number
-        card_num = (
-            card.get("card_number")
-            or card.get("number")
-            or card.get("code")
-            or card.get("id", "")
-        )
-        card_num = str(card_num).upper()
-        variant = _normalize_variant(card.get("variant", "") or card.get("type", "") or "Normal")
-        if card_num:
-            eu_lookup[(card_num, variant)] = card
-            # Also index with "Normal" fallback for unvariant EU cards
-            if variant != "Normal":
-                eu_lookup.setdefault((card_num, "Normal"), card)
+        card_num = str(card.get("card_number") or "").upper()
+        if not card_num:
+            continue
+        variant = _variant_from_rapidapi(card)
+        eu_lookup[(card_num, variant)] = card
+        # Also index with "Normal" fallback so EN cards always find a match
+        eu_lookup.setdefault((card_num, "Normal"), card)
 
     # ── Merge and upsert into cards_unified ────────────────────────────────
     pool = await get_pool()
@@ -287,19 +301,16 @@ async def aggregate_set(set_code: str, set_name: str) -> int:
             for c in en_cards
         }
         for eu_card in eu_cards:
-            card_num = (
-                str(eu_card.get("card_number") or eu_card.get("number") or eu_card.get("code") or "")
-                .upper()
-            )
+            card_num = str(eu_card.get("card_number") or "").upper()
             if not card_num:
                 continue
-            variant = _normalize_variant(eu_card.get("variant", "") or "Normal")
+            variant = _variant_from_rapidapi(eu_card)
             if (card_num, variant) in en_known:
                 continue  # Already handled above
 
             eu_prices = _extract_eu_card_prices(eu_card)
             name = eu_card.get("name") or eu_card.get("card_name") or ""
-            image_url = eu_card.get("image_url") or eu_card.get("image") or ""
+            image_url = eu_card.get("image") or eu_card.get("image_url") or ""
             rarity = eu_card.get("rarity") or ""
             rapidapi_card_id = str(eu_card.get("id") or eu_card.get("_id") or "")
 
@@ -325,6 +336,9 @@ async def aggregate_set(set_code: str, set_name: str) -> int:
                     NOW()
                 )
                 ON CONFLICT(card_id, variant) DO UPDATE SET
+                    name=COALESCE(NULLIF(EXCLUDED.name,''), cards_unified.name),
+                    image_url=COALESCE(NULLIF(EXCLUDED.image_url,''), cards_unified.image_url),
+                    rarity=COALESCE(NULLIF(EXCLUDED.rarity,''), cards_unified.rarity),
                     eu_cardmarket_7d_avg=EXCLUDED.eu_cardmarket_7d_avg,
                     eu_cardmarket_30d_avg=EXCLUDED.eu_cardmarket_30d_avg,
                     eu_cardmarket_lowest=EXCLUDED.eu_cardmarket_lowest,
@@ -429,12 +443,23 @@ async def aggregate_sealed(set_code: str, set_name: str) -> int:
 async def seed_all_unified():
     """Background task: aggregate all sets from both sources.
 
-    1. Fetch EN sets from TCG Price Lookup.
-    2. Augment with EU sets from RapidAPI.
-    3. For each known set, run aggregate_set() + aggregate_sealed().
-    4. Rate limit: 0.5s between sets.
+    1. Flush stale caches so we fetch fresh API data.
+    2. Fetch EN sets from TCG Price Lookup.
+    3. Augment with EU sets from RapidAPI.
+    4. For each known set, run aggregate_set() + aggregate_sealed().
+    5. Rate limit: 3.5s between sets.
     """
     logger.info("seed_all_unified: starting multi-source data seed...")
+
+    # Flush stale caches to force fresh API fetches
+    try:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute("DELETE FROM cards_cache")
+            await conn.execute("DELETE FROM products_cache")
+            logger.info("seed_all_unified: flushed cards_cache + products_cache")
+    except Exception as e:
+        logger.warning(f"seed_all_unified: could not flush caches: {e}")
 
     # Collect sets to process — start from mapping, augment with live EN set list
     sets_to_process: dict[str, str] = {}  # code → name
@@ -470,24 +495,45 @@ async def seed_all_unified():
     total_cards = 0
     total_sealed = 0
     processed = 0
+    errors = []
 
     for code, name in sets_to_process.items():
         try:
             cards_count = await aggregate_set(code, name)
             total_cards += cards_count
+        except Exception as e:
+            logger.error(f"seed_all_unified: card error for {code}: {e}")
+            errors.append(f"{code}/cards: {e}")
+            cards_count = 0
+
+        try:
             sealed_count = await aggregate_sealed(code, name)
             total_sealed += sealed_count
-            processed += 1
-            logger.info(
-                f"seed_all_unified: [{processed}/{len(sets_to_process)}] {code} "
-                f"— {cards_count} cards, {sealed_count} sealed"
-            )
         except Exception as e:
-            logger.error(f"seed_all_unified: error for {code}: {e}")
+            logger.error(f"seed_all_unified: sealed error for {code}: {e}")
+            errors.append(f"{code}/sealed: {e}")
+            sealed_count = 0
 
-        await asyncio.sleep(3.5)  # Rate limit: TCG Price Lookup Free = 200 req/day = ~1 req/3s safe
+        processed += 1
+        logger.info(
+            f"seed_all_unified: [{processed}/{len(sets_to_process)}] {code} "
+            f"— {cards_count} cards, {sealed_count} sealed"
+        )
+
+        await asyncio.sleep(3.5)  # Rate limit: TCG Price Lookup Free = 200 req/day
+
+    # Log final summary
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        total = await conn.fetchval("SELECT COUNT(*) FROM cards_unified")
+        with_eu = await conn.fetchval("SELECT COUNT(*) FROM cards_unified WHERE eu_cardmarket_7d_avg IS NOT NULL")
+        with_en = await conn.fetchval("SELECT COUNT(*) FROM cards_unified WHERE en_tcgplayer_market IS NOT NULL")
 
     logger.info(
-        f"seed_all_unified complete: {total_cards} cards, {total_sealed} sealed "
-        f"across {processed}/{len(sets_to_process)} sets"
+        f"seed_all_unified complete: {total_cards} upserts across {processed}/{len(sets_to_process)} sets. "
+        f"DB totals: {total} cards, {with_eu} with EU prices, {with_en} with EN prices. "
+        f"Errors: {len(errors)}"
     )
+    if errors:
+        for err in errors[:10]:
+            logger.warning(f"  - {err}")

@@ -47,7 +47,11 @@ SEALED_SORT_COLUMNS = {
 
 
 def _row_to_card(row: dict) -> dict:
-    """Convert a cards_unified DB row to a clean API response dict."""
+    """Convert a cards_unified DB row to a flat API response dict.
+
+    Fields are kept flat so the frontend can access card.en_tcgplayer_market
+    directly without nesting.
+    """
     return {
         "card_id": row.get("card_id"),
         "name": row.get("name"),
@@ -56,45 +60,40 @@ def _row_to_card(row: dict) -> dict:
         "rarity": row.get("rarity"),
         "variant": row.get("variant"),
         "image_url": row.get("image_url"),
-        "en_prices": {
-            "tcgplayer_market_usd": row.get("en_tcgplayer_market"),
-            "tcgplayer_low_usd": row.get("en_tcgplayer_low"),
-            "ebay_avg_7d_usd": row.get("en_ebay_avg_7d"),
-            "source": row.get("en_source", "TCG Price Lookup"),
-            "updated_at": str(row.get("en_updated_at")) if row.get("en_updated_at") else None,
-        },
-        "eu_prices": {
-            "cardmarket_7d_avg_eur": row.get("eu_cardmarket_7d_avg"),
-            "cardmarket_30d_avg_eur": row.get("eu_cardmarket_30d_avg"),
-            "cardmarket_lowest_eur": row.get("eu_cardmarket_lowest"),
-            "source": row.get("eu_source", "Cardmarket"),
-            "updated_at": str(row.get("eu_updated_at")) if row.get("eu_updated_at") else None,
-        },
-        "ids": {
-            "tcg_price_lookup_id": row.get("tcg_price_lookup_id"),
-            "rapidapi_card_id": row.get("rapidapi_card_id"),
-            "tcgplayer_id": row.get("tcgplayer_id"),
-            "cardmarket_id": row.get("cardmarket_id"),
-        },
+        # EN prices (flat)
+        "en_tcgplayer_market": row.get("en_tcgplayer_market"),
+        "en_tcgplayer_low": row.get("en_tcgplayer_low"),
+        "en_ebay_avg_7d": row.get("en_ebay_avg_7d"),
+        "en_source": row.get("en_source", "TCG Price Lookup"),
+        "en_updated_at": str(row.get("en_updated_at")) if row.get("en_updated_at") else None,
+        # EU prices (flat)
+        "eu_cardmarket_7d_avg": row.get("eu_cardmarket_7d_avg"),
+        "eu_cardmarket_30d_avg": row.get("eu_cardmarket_30d_avg"),
+        "eu_cardmarket_lowest": row.get("eu_cardmarket_lowest"),
+        "eu_source": row.get("eu_source", "Cardmarket"),
+        "eu_updated_at": str(row.get("eu_updated_at")) if row.get("eu_updated_at") else None,
+        # IDs
+        "tcg_price_lookup_id": row.get("tcg_price_lookup_id"),
+        "rapidapi_card_id": row.get("rapidapi_card_id"),
+        "tcgplayer_id": row.get("tcgplayer_id"),
+        "cardmarket_id": row.get("cardmarket_id"),
     }
 
 
 def _row_to_sealed(row: dict) -> dict:
-    """Convert a sealed_unified DB row to a clean API response dict."""
+    """Convert a sealed_unified DB row to a flat API response dict."""
     return {
         "product_name": row.get("product_name"),
         "set_code": row.get("set_code"),
         "set_name": row.get("set_name"),
         "product_type": row.get("product_type"),
         "image_url": row.get("image_url"),
-        "eu_prices": {
-            "price_eur": row.get("eu_price"),
-            "avg_30d_eur": row.get("eu_30d_avg"),
-            "avg_7d_eur": row.get("eu_7d_avg"),
-            "trend": row.get("eu_trend"),
-            "source": row.get("eu_source", "Cardmarket"),
-            "updated_at": str(row.get("eu_updated_at")) if row.get("eu_updated_at") else None,
-        },
+        "eu_price": row.get("eu_price"),
+        "eu_30d_avg": row.get("eu_30d_avg"),
+        "eu_7d_avg": row.get("eu_7d_avg"),
+        "eu_trend": row.get("eu_trend"),
+        "eu_source": row.get("eu_source", "Cardmarket"),
+        "eu_updated_at": str(row.get("eu_updated_at")) if row.get("eu_updated_at") else None,
         "rapidapi_product_id": row.get("rapidapi_product_id"),
     }
 
@@ -137,6 +136,8 @@ def _arbitrage_calc(card_row: dict, min_profit_pct: float) -> Optional[dict]:
     if profit_pct < min_profit_pct:
         return None
 
+    signal = "BUY" if profit_pct >= 15 else "WATCH"
+
     return {
         "card_id": card_row.get("card_id"),
         "name": card_row.get("name"),
@@ -145,18 +146,17 @@ def _arbitrage_calc(card_row: dict, min_profit_pct: float) -> Optional[dict]:
         "rarity": card_row.get("rarity"),
         "variant": card_row.get("variant"),
         "image_url": card_row.get("image_url"),
-        "en_tcgplayer_market_usd": en_usd,
-        "en_tcgplayer_market_eur": round(en_eur, 2),
-        "eu_cardmarket_7d_avg_eur": eu_eur,
+        # Flat field names expected by frontend
+        "en_price_usd": en_usd,
+        "en_price_eur": round(en_eur, 2),
+        "eu_price_eur": eu_eur,
         "profit_eur": round(profit_eur, 2),
         "profit_pct": round(profit_pct, 2),
         "cost_eur": round(cost_eur, 2),
         "revenue_eur": round(revenue_eur, 2),
-        "signal": "BUY" if profit_pct >= 15 else "WATCH",
-        "sources": {
-            "en": "TCG Price Lookup",
-            "eu": "Cardmarket",
-        },
+        "signal": signal,
+        "sell_market": "TCGPlayer",
+        "buy_market": "Cardmarket",
     }
 
 
@@ -236,8 +236,8 @@ async def browse_cards(
     # Free tier: mask some price details
     if not user.can_access("pro"):
         for card in cards:
-            card["en_prices"]["ebay_avg_7d_usd"] = None  # eBay prices = Trader plan
-            card["en_prices"]["tcgplayer_low_usd"] = None
+            card["en_ebay_avg_7d"] = None  # eBay prices = Trader plan
+            card["en_tcgplayer_low"] = None
 
     return {
         "total": total,

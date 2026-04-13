@@ -13,7 +13,7 @@ from db.init import get_pool
 logger = logging.getLogger(__name__)
 
 RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY", "")
-RAPIDAPI_HOST = os.getenv("RAPIDAPI_HOST", "one-piece-card-game1.p.rapidapi.com")
+RAPIDAPI_HOST = os.getenv("RAPIDAPI_HOST", "one-piece-tcg-prices.p.rapidapi.com")
 BASE_URL = f"https://{RAPIDAPI_HOST}"
 
 # Cache durations
@@ -38,13 +38,32 @@ def _headers() -> dict:
     }
 
 
+def _cents_to_eur(v) -> Optional[float]:
+    """Convert RapidAPI Eurocent value to EUR.
+
+    RapidAPI one-piece-tcg-prices returns ALL prices in Eurocent.
+    E.g. 7d_average: 3013.57 means €30.14, lowest_near_mint: 1999 means €19.99.
+    """
+    if v is None:
+        return None
+    try:
+        f = float(v)
+        if f <= 0:
+            return None
+        return round(f / 100.0, 2)
+    except (ValueError, TypeError):
+        return None
+
+
 def _extract_price(item: dict, source: str) -> Optional[float]:
     """Extract price from API response item for a given source.
+
+    All RapidAPI prices are in Eurocent and must be divided by 100.
 
     Cards:
         prices.cardmarket.7d_average (preferred, most realistic)
     Products:
-        prices.cardmarket.lowest or prices.cardmarket.30d_average
+        prices.cardmarket.lowest_near_mint or prices.cardmarket.30d_average
     TCGPlayer:
         prices.tcg_player.market_price
 
@@ -52,14 +71,13 @@ def _extract_price(item: dict, source: str) -> Optional[float]:
     "prices": {
         "cardmarket": {
             "currency": "EUR",
-            "lowest_near_mint": 16500,
-            "lowest": 15000,
-            "30d_average": 8011.11,
-            "7d_average": 8585.71
+            "lowest_near_mint": 1999,     <- €19.99
+            "30d_average": 2347.69,       <- €23.48
+            "7d_average": 3013.57         <- €30.14
         },
         "tcg_player": {
-            "currency": "USD",
-            "market_price": 6892.48
+            "currency": "EUR",
+            "market_price": 1742.62       <- €17.43
         }
     }
     """
@@ -70,32 +88,22 @@ def _extract_price(item: dict, source: str) -> Optional[float]:
     if source == "cardmarket":
         cm = prices.get("cardmarket", {})
         if isinstance(cm, dict):
-            # Prefer 7d_average (most realistic market price), then 30d_average,
-            # then lowest_near_mint/lowest (can be skewed by single listings)
             for key in ["7d_average", "30d_average", "lowest_near_mint", "lowest"]:
                 v = cm.get(key)
                 if v is not None:
-                    try:
-                        return float(v)
-                    except (ValueError, TypeError):
-                        pass
-        # If cm is a number directly
+                    return _cents_to_eur(v)
         if isinstance(cm, (int, float)):
-            return float(cm)
+            return _cents_to_eur(cm)
 
     elif source == "tcgplayer":
-        # API uses "tcg_player" (with underscore)
         for k in ["tcg_player", "tcgplayer", "tcgPlayer"]:
             tcg = prices.get(k, {})
             if isinstance(tcg, dict):
                 v = tcg.get("market_price")
                 if v is not None:
-                    try:
-                        return float(v)
-                    except (ValueError, TypeError):
-                        pass
+                    return _cents_to_eur(v)
             elif isinstance(tcg, (int, float)):
-                return float(tcg)
+                return _cents_to_eur(tcg)
 
     return None
 
