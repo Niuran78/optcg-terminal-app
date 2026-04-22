@@ -30,6 +30,7 @@ from api.unified import router as unified_router
 from api.portfolio import router as portfolio_router
 from api.alerts import router as alerts_router
 from api.widget_public import router as widget_router
+from api.admin import router as admin_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -151,6 +152,7 @@ app.include_router(billing_router)
 app.include_router(scraper_router)
 app.include_router(portfolio_router)
 app.include_router(alerts_router)
+app.include_router(admin_router)
 
 
 # Health check

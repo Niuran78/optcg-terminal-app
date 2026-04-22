@@ -548,11 +548,38 @@ async def seed_all_unified():
     total_cards = 0
     total_sealed = 0
     processed = 0
+    skipped = 0
     errors = []
     en_requests_made = 0
     EN_REQUEST_LIMIT = 190  # Stay below TCG Price Lookup free plan (200 req/day)
 
+    # Pre-check existing card counts per set for skip logic
+    existing_counts: dict[str, int] = {}
+    try:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT set_code, COUNT(*) as cnt FROM cards_unified GROUP BY set_code"
+            )
+            existing_counts = {r["set_code"]: r["cnt"] for r in rows}
+    except Exception as e:
+        logger.warning(f"seed_all_unified: could not check existing counts: {e}")
+
     for code, name in sets_to_process.items():
+        # Skip sets that already have ≥10 cards (fast re-seed)
+        if existing_counts.get(code, 0) >= 10:
+            skipped += 1
+            logger.info(
+                f"seed_all_unified: [{processed + skipped}/{len(sets_to_process)}] "
+                f"SKIP {code} ({existing_counts[code]} cards already in DB)"
+            )
+            continue
+
+        logger.info(
+            f"seed_all_unified: [{processed + skipped + 1}/{len(sets_to_process)}] "
+            f"Processing {code} ({name})..."
+        )
+
         skip_en = en_requests_made >= EN_REQUEST_LIMIT
         try:
             cards_count = await aggregate_set(code, name, skip_en=skip_en)
@@ -574,7 +601,7 @@ async def seed_all_unified():
 
         processed += 1
         logger.info(
-            f"seed_all_unified: [{processed}/{len(sets_to_process)}] {code} "
+            f"seed_all_unified: [{processed + skipped}/{len(sets_to_process)}] {code} "
             f"— {cards_count} cards, {sealed_count} sealed "
             f"(EN reqs: {en_requests_made}/{EN_REQUEST_LIMIT})"
         )
@@ -589,7 +616,8 @@ async def seed_all_unified():
         with_en = await conn.fetchval("SELECT COUNT(*) FROM cards_unified WHERE en_tcgplayer_market IS NOT NULL")
 
     logger.info(
-        f"seed_all_unified complete: {total_cards} upserts across {processed}/{len(sets_to_process)} sets. "
+        f"seed_all_unified complete: {total_cards} upserts across {processed}/{len(sets_to_process)} sets "
+        f"({skipped} skipped). "
         f"DB totals: {total} cards, {with_eu} with EU prices, {with_en} with EN prices. "
         f"Errors: {len(errors)}"
     )

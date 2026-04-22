@@ -3,12 +3,47 @@ import asyncio
 import json
 import os
 import logging
+import time
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
 import httpx
 
 from db.init import get_pool
+
+
+# ─── In-memory TTL Cache ────────────────────────────────────────────────────
+
+class TTLCache:
+    """Simple in-memory cache with per-key TTL. Thread-safe for async use."""
+
+    def __init__(self, ttl_seconds: int = 86400):
+        self._store: dict[str, tuple[float, Any]] = {}
+        self._ttl = ttl_seconds
+
+    def get(self, key: str) -> Optional[Any]:
+        if key not in self._store:
+            return None
+        expires, value = self._store[key]
+        if time.time() > expires:
+            del self._store[key]
+            return None
+        return value
+
+    def set(self, key: str, value: Any):
+        self._store[key] = (time.time() + self._ttl, value)
+
+    def clear(self):
+        self._store.clear()
+
+    def __len__(self):
+        return len(self._store)
+
+
+# Global in-memory caches (complement the DB cache)
+_cards_memory_cache = TTLCache(ttl_seconds=3600)      # 1 hour
+_products_memory_cache = TTLCache(ttl_seconds=86400)   # 24 hours (sealed rarely changes)
+_sets_memory_cache = TTLCache(ttl_seconds=3600)        # 1 hour
 
 logger = logging.getLogger(__name__)
 
@@ -152,6 +187,11 @@ def _card_from_cache(row) -> dict:
 
 async def get_sets(tier: str = "free") -> list[dict]:
     """Fetch all sets/episodes from API or cache."""
+    cache_key = f"sets:{tier}"
+    mem = _sets_memory_cache.get(cache_key)
+    if mem is not None:
+        return mem
+
     threshold = _cache_age_threshold(tier)
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -160,7 +200,9 @@ async def get_sets(tier: str = "free") -> list[dict]:
             threshold
         )
         if cached:
-            return [dict(row) for row in cached]
+            result = [dict(row) for row in cached]
+            _sets_memory_cache.set(cache_key, result)
+            return result
 
     # Fetch from API (with pagination)
     episodes = []
@@ -209,7 +251,9 @@ async def get_sets(tier: str = "free") -> list[dict]:
             """, api_id, name, code, release_date, card_count, lang)
 
         rows = await conn.fetch("SELECT * FROM sets ORDER BY release_date DESC")
-        return [dict(row) for row in rows]
+        result = [dict(row) for row in rows]
+        _sets_memory_cache.set(cache_key, result)
+        return result
 
 
 def _detect_language(name: str, code: str, ep: dict) -> str:
@@ -219,6 +263,12 @@ def _detect_language(name: str, code: str, ep: dict) -> str:
 
 async def get_cards(set_id: str, tier: str = "free") -> list[dict]:
     """Fetch ALL cards for a set from API or cache, with full pagination."""
+    # Check in-memory cache first
+    mem_key = f"cards:{set_id}:{tier}"
+    mem = _cards_memory_cache.get(mem_key)
+    if mem is not None:
+        return mem
+
     set_code = _set_code_from_id(set_id)
     threshold = _cache_age_threshold(tier)
     pool = await get_pool()
@@ -235,6 +285,7 @@ async def get_cards(set_id: str, tier: str = "free") -> list[dict]:
                 item["_tcgplayer_price"] = row["tcgplayer_price"]
                 item["_region"] = _classify_region(row["cardmarket_price"], row["tcgplayer_price"])
                 result.append(item)
+            _cards_memory_cache.set(mem_key, result)
             return result
 
     # Fetch ALL pages from API
@@ -265,7 +316,10 @@ async def get_cards(set_id: str, tier: str = "free") -> list[dict]:
         # Return stale cache
         async with pool.acquire() as conn:
             stale = await conn.fetch("SELECT * FROM cards_cache WHERE set_api_id=$1", set_id)
-            return [_card_from_cache(row) for row in stale]
+            result = [_card_from_cache(row) for row in stale]
+            if result:
+                _cards_memory_cache.set(mem_key, result)
+            return result
 
     # Store in cache
     async with pool.acquire() as conn:
@@ -300,11 +354,18 @@ async def get_cards(set_id: str, tier: str = "free") -> list[dict]:
         card["_tcgplayer_price"] = tcp_price
         card["_region"] = _classify_region(cm_price, tcp_price)
         result.append(card)
+    _cards_memory_cache.set(mem_key, result)
     return result
 
 
 async def get_products(set_id: str, tier: str = "free") -> list[dict]:
     """Fetch ALL sealed products for a set from API or cache, with full pagination."""
+    # Check in-memory cache first
+    mem_key = f"products:{set_id}:{tier}"
+    mem = _products_memory_cache.get(mem_key)
+    if mem is not None:
+        return mem
+
     set_code = _set_code_from_id(set_id)
     threshold = _cache_age_threshold(tier)
     pool = await get_pool()
@@ -320,6 +381,7 @@ async def get_products(set_id: str, tier: str = "free") -> list[dict]:
                 item["_cardmarket_price"] = row["cardmarket_price"]
                 item["_tcgplayer_price"] = row["tcgplayer_price"]
                 result.append(item)
+            _products_memory_cache.set(mem_key, result)
             return result
 
     # Fetch ALL pages from API
@@ -358,6 +420,8 @@ async def get_products(set_id: str, tier: str = "free") -> list[dict]:
                 item["_cardmarket_price"] = row["cardmarket_price"]
                 item["_tcgplayer_price"] = row["tcgplayer_price"]
                 result.append(item)
+            if result:
+                _products_memory_cache.set(mem_key, result)
             return result
 
     # Store in cache
@@ -390,6 +454,7 @@ async def get_products(set_id: str, tier: str = "free") -> list[dict]:
         product["_cardmarket_price"] = cm_price
         product["_tcgplayer_price"] = tcp_price
         result.append(product)
+    _products_memory_cache.set(mem_key, result)
     return result
 
 
