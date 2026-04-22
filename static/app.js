@@ -164,13 +164,26 @@ function bindNav() {
       e.stopPropagation();
       userMenu.classList.toggle('open');
     });
-    document.addEventListener('click', () => userMenu.classList.remove('open'));
+    // Close menu only on clicks OUTSIDE the menu
+    document.addEventListener('click', (e) => {
+      if (userMenu.contains(e.target)) return;
+      userMenu.classList.remove('open');
+    });
   }
 
-  // Logout
-  $('logout-btn')?.addEventListener('click', () => {
+  // Logout — stopPropagation so the outside-click handler doesn't
+  // interfere, and force-clear localStorage before redirect.
+  $('logout-btn')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      localStorage.removeItem('optcg_token');
+      // Also clear any legacy keys just in case
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+    } catch (err) { /* private mode */ }
     if (typeof Auth !== 'undefined') Auth.logout();
-    else { localStorage.clear(); window.location.href = '/login.html'; }
+    else window.location.href = '/login.html';
   });
 }
 

@@ -648,10 +648,12 @@
 <script src="app.js"></script>
 
 <script>
-  // Close user dropdown on outside click (handled by app.js renderNavUser for open/toggle)
-  document.addEventListener('click', function() {
+  // Close user dropdown only on clicks OUTSIDE the menu
+  document.addEventListener('click', function(e) {
     const menu = document.getElementById('user-menu');
-    if (menu) menu.classList.remove('open');
+    if (!menu) return;
+    if (menu.contains(e.target)) return; // click inside menu — don't close
+    menu.classList.remove('open');
   });
 </script>
 </body>
