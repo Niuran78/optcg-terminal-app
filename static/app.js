@@ -126,13 +126,16 @@ function bindNav() {
     });
   });
 
-  // FX toggle
+  // FX toggle — re-render current tab for currency conversion
   $$('[data-fx]').forEach(btn => {
     btn.addEventListener('click', () => {
       State.displayCurrency = btn.dataset.fx;
       $$('[data-fx]').forEach(b => b.classList.toggle('active', b.dataset.fx === State.displayCurrency));
-      // Re-render current tab to reflect currency change in arbitrage
+      // Re-render whichever tab is active
+      if (State.activeTab === 'browser' && State.browser.lastData) renderBrowserTable(State.browser.lastData);
+      if (State.activeTab === 'sealed' && State.sealed.lastData) renderSealedGrid(State.sealed.lastData);
       if (State.activeTab === 'arbitrage') renderArbitrageTable();
+      if (State.activeTab === 'portfolio') { renderPortfolioSummary(State.portfolio.summary); renderPortfolioItems(State.portfolio.items); }
     });
   });
 
@@ -249,6 +252,17 @@ const fmt = {
   eur: (v) => v == null ? '—' : `€${Number(v).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
   pct: (v) => v == null ? '—' : `${v >= 0 ? '+' : ''}${Number(v).toFixed(1)}%`,
   int: (v) => v == null ? '—' : Number(v).toLocaleString(),
+  // Currency-aware: converts EUR↔USD based on State.displayCurrency
+  eurAuto: (v) => {
+    if (v == null) return '—';
+    if (State.displayCurrency === 'USD') return fmt.usd(v / State.usdToEur);
+    return fmt.eur(v);
+  },
+  usdAuto: (v) => {
+    if (v == null) return '—';
+    if (State.displayCurrency === 'EUR') return fmt.eur(v * State.usdToEur);
+    return fmt.usd(v);
+  },
 };
 
 function spreadClass(pct) {
@@ -449,6 +463,7 @@ async function loadBrowserData() {
       populateSetSelects();
     }
 
+    State.browser.lastData = data;
     renderBrowserTable(data);
   } catch (err) {
     showToast(err.message, 'error');
@@ -538,14 +553,14 @@ function renderBrowserTable(data) {
         <td>${rarityBadge(card.rarity)}</td>
         <td class="col-en">
           <div class="price-cell">
-            <div class="price-val">${fmt.usd(card.en_tcgplayer_market)}</div>
-            ${card.en_tcgplayer_low != null ? `<div class="price-sub">Low ${fmt.usd(card.en_tcgplayer_low)}</div>` : ''}
+            <div class="price-val">${fmt.usdAuto(card.en_tcgplayer_market)}</div>
+            ${card.en_tcgplayer_low != null ? `<div class="price-sub">Low ${fmt.usdAuto(card.en_tcgplayer_low)}</div>` : ''}
           </div>
         </td>
         <td class="col-eu">
           <div class="price-cell">
-            <div class="price-val">${fmt.eur(card.eu_cardmarket_7d_avg)}</div>
-            ${card.eu_cardmarket_30d_avg != null ? `<div class="price-sub">30d ${fmt.eur(card.eu_cardmarket_30d_avg)}</div>` : ''}
+            <div class="price-val">${fmt.eurAuto(card.eu_cardmarket_7d_avg)}</div>
+            ${card.eu_cardmarket_30d_avg != null ? `<div class="price-sub">30d ${fmt.eurAuto(card.eu_cardmarket_30d_avg)}</div>` : ''}
           </div>
         </td>
         <td>
@@ -676,6 +691,7 @@ async function loadSealedData() {
     const data = await apiFetch(`/api/cards/sealed?${params}`);
     State.sealed.products = data.products || [];
     State.sealed.total    = data.total || 0;
+    State.sealed.lastData = data;
     renderSealedGrid(data);
   } catch (err) {
     showToast(err.message, 'error');
@@ -726,13 +742,13 @@ function renderSealedGrid(data) {
         </div>
         <div class="product-price-section">
           <div class="product-price-label">
-            <span>🇪🇺</span>
-            <span>EU PRICE</span>
+            <span>${State.displayCurrency === 'USD' ? '🇺🇸' : '🇪🇺'}</span>
+            <span>${State.displayCurrency === 'USD' ? 'USD PRICE' : 'EU PRICE'}</span>
           </div>
-          <div class="product-price-main">${fmt.eur(p.eu_price)}</div>
+          <div class="product-price-main">${fmt.eurAuto(p.eu_price)}</div>
           <div class="product-price-stats">
-            ${p.eu_30d_avg != null ? `<span>30d ${fmt.eur(p.eu_30d_avg)}</span>` : ''}
-            ${p.eu_7d_avg  != null ? `<span>7d ${fmt.eur(p.eu_7d_avg)}</span>`  : ''}
+            ${p.eu_30d_avg != null ? `<span>30d ${fmt.eurAuto(p.eu_30d_avg)}</span>` : ''}
+            ${p.eu_7d_avg  != null ? `<span>7d ${fmt.eurAuto(p.eu_7d_avg)}</span>`  : ''}
             ${p.eu_trend   ? trendIcon(p.eu_trend) : ''}
           </div>
           ${p.eu_source ? `<div style="font-family:var(--font-mono);font-size:9px;color:var(--muted);margin-top:4px;">${escHtml(p.eu_source)}</div>` : ''}
@@ -892,13 +908,13 @@ function renderArbitrageTable(opps) {
         </td>
         <td class="col-en">
           <div class="price-cell">
-            <div class="price-val">${fmt.usd(o.en_price_usd)}</div>
+            <div class="price-val">${fmt.usdAuto(o.en_price_usd)}</div>
             <div class="price-sub">${escHtml(o.sell_market || 'TCGPlayer')}</div>
           </div>
         </td>
         <td class="col-eu">
           <div class="price-cell">
-            <div class="price-val">${fmt.eur(o.eu_price_eur)}</div>
+            <div class="price-val">${fmt.eurAuto(o.eu_price_eur)}</div>
             <div class="price-sub">${escHtml(o.buy_market || 'Cardmarket')}</div>
           </div>
         </td>
@@ -1311,9 +1327,9 @@ function renderPortfolioSummary(s) {
   const roiClass = (s.total_roi_pct || 0) >= 0 ? 'pnl-positive' : 'pnl-negative';
 
   grid.innerHTML = `
-    <div class="stat-card"><div class="stat-label">Invested</div><div class="stat-value">${fmt.eur(s.total_invested_eur)}</div></div>
-    <div class="stat-card"><div class="stat-label">Current Value</div><div class="stat-value">${fmt.eur(s.current_value_eur)}</div></div>
-    <div class="stat-card"><div class="stat-label">P&L</div><div class="stat-value ${pnlClass}">${fmt.eur(s.total_pnl_eur)}</div></div>
+    <div class="stat-card"><div class="stat-label">Invested</div><div class="stat-value">${fmt.eurAuto(s.total_invested_eur)}</div></div>
+    <div class="stat-card"><div class="stat-label">Current Value</div><div class="stat-value">${fmt.eurAuto(s.current_value_eur)}</div></div>
+    <div class="stat-card"><div class="stat-label">P&L</div><div class="stat-value ${pnlClass}">${fmt.eurAuto(s.total_pnl_eur)}</div></div>
     <div class="stat-card"><div class="stat-label">ROI</div><div class="stat-value ${roiClass}">${fmt.pct(s.total_roi_pct)}</div></div>
   `;
 }
@@ -1333,8 +1349,8 @@ function renderPortfolioItems(items) {
   tbody.innerHTML = items.map((it, idx) => {
     const pnlClass = (it.pnl_eur || 0) >= 0 ? 'pnl-positive' : 'pnl-negative';
     const roiClass = (it.roi_pct || 0) >= 0 ? 'pnl-positive' : 'pnl-negative';
-    const marketPrice = it.eu_cardmarket_7d_avg != null ? fmt.eur(it.eu_cardmarket_7d_avg)
-                      : it.en_tcgplayer_market != null ? fmt.usd(it.en_tcgplayer_market)
+    const marketPrice = it.eu_cardmarket_7d_avg != null ? fmt.eurAuto(it.eu_cardmarket_7d_avg)
+                      : it.en_tcgplayer_market != null ? fmt.usdAuto(it.en_tcgplayer_market)
                       : '—';
 
     return `<tr>
@@ -1349,9 +1365,9 @@ function renderPortfolioItems(items) {
       </td>
       <td>${escHtml(it.set_code || '')}</td>
       <td>${it.quantity}</td>
-      <td>${fmt.eur(it.buy_price)}</td>
+      <td>${fmt.eurAuto(it.buy_price)}</td>
       <td class="col-eu">${marketPrice}</td>
-      <td class="${pnlClass}">${it.pnl_eur != null ? fmt.eur(it.pnl_eur) : '—'}</td>
+      <td class="${pnlClass}">${it.pnl_eur != null ? fmt.eurAuto(it.pnl_eur) : '—'}</td>
       <td class="${roiClass}">${it.roi_pct != null ? fmt.pct(it.roi_pct) : '—'}</td>
       <td>
         <button class="btn-icon" title="Remove" onclick="deletePortfolioItem(${it.id})">
@@ -1632,9 +1648,9 @@ async function loadAlertsList() {
 
     container.innerHTML = `<div class="alerts-grid">${alerts.map(a => {
       const statusClass = a.is_active ? 'alert-active' : 'alert-triggered';
-      const statusLabel = a.is_active ? 'Active' : `Triggered at €${Number(a.triggered_price).toFixed(2)}`;
+      const statusLabel = a.is_active ? 'Active' : `Triggered at ${fmt.eurAuto(a.triggered_price)}`;
       const dirIcon = a.direction === 'below' ? '↓' : '↑';
-      const currentDisplay = a.current_price_eur != null ? fmt.eur(a.current_price_eur) : '—';
+      const currentDisplay = a.current_price_eur != null ? fmt.eurAuto(a.current_price_eur) : '—';
 
       return `<div class="alert-card ${statusClass}">
         <div class="alert-card-header">
@@ -1650,7 +1666,7 @@ async function loadAlertsList() {
           </button>` : ''}
         </div>
         <div class="alert-card-body">
-          <span class="alert-direction">${dirIcon} ${a.direction} ${fmt.eur(a.target_price)}</span>
+          <span class="alert-direction">${dirIcon} ${a.direction} ${fmt.eurAuto(a.target_price)}</span>
           <span style="color:var(--muted);font-size:12px;">Now: ${currentDisplay}</span>
           <span class="alert-status ${statusClass}">${statusLabel}</span>
         </div>

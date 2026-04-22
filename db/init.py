@@ -153,6 +153,8 @@ async def init_db():
                 eu_source TEXT DEFAULT 'Cardmarket',
                 eu_updated_at TIMESTAMPTZ,
                 rapidapi_product_id TEXT,
+                language VARCHAR(10) DEFAULT 'JP',
+                en_price_usd REAL,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 UNIQUE(product_name, set_code)
             );
@@ -183,6 +185,12 @@ async def init_db():
             CREATE INDEX IF NOT EXISTS idx_cards_unified_set ON cards_unified(set_code);
             CREATE INDEX IF NOT EXISTS idx_cards_unified_card_id ON cards_unified(card_id);
             CREATE INDEX IF NOT EXISTS idx_sealed_unified_set ON sealed_unified(set_code);
+
+            -- Sealed language columns (added for JP/EN price separation)
+            ALTER TABLE sealed_unified ADD COLUMN IF NOT EXISTS language VARCHAR(10) DEFAULT 'JP';
+            ALTER TABLE sealed_unified ADD COLUMN IF NOT EXISTS en_price_usd REAL;
+            CREATE UNIQUE INDEX IF NOT EXISTS sealed_unified_set_type_lang
+                ON sealed_unified(set_code, product_type, language);
             CREATE INDEX IF NOT EXISTS idx_tcg_en_cards_set ON tcg_en_cards_cache(set_slug);
 
             -- ═══ Phase 2 Tables ═══

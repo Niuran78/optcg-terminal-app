@@ -44,11 +44,32 @@ PC_SET_SLUGS: dict[str, str] = {
     "PRB02": "premium-booster-2",
 }
 
+# Canonical product names per type+language
+_PRODUCT_NAMES: dict[str, dict[str, str]] = {
+    "booster box": {"JP": "{name} Booster Box (JP)", "EN": "{name} Booster Box (EN)"},
+    "booster": {"JP": "{name} Booster Pack (JP)", "EN": "{name} Booster Pack (EN)"},
+    "case": {"JP": "{name} Case (JP)", "EN": "{name} Case (EN)"},
+}
+
 # Product type → URL slug
 _PT_SLUGS: dict[str, str] = {
     "booster box": "booster-box",
     "booster": "booster-pack",
     "case": "booster-box-case",
+}
+
+# Set code → canonical set name (for product_name generation)
+_SET_NAMES: dict[str, str] = {
+    "OP01": "Romance Dawn", "OP02": "Paramount War", "OP03": "Pillars of Strength",
+    "OP04": "Kingdoms of Intrigue", "OP05": "Awakening of the New Era",
+    "OP06": "Wings of the Captain", "OP07": "500 Years in the Future",
+    "OP08": "Two Legends", "OP09": "Emperors in the New World",
+    "OP10": "Royal Blood", "OP11": "Fist of Divine Speed",
+    "OP12": "Legacy of the Master", "OP13": "Carrying on His Will",
+    "OP14": "The Azure Sea's Seven", "OP15": "Adventure on Kami's Island",
+    "EB01": "Memorial Collection", "EB02": "Anime 25th Collection",
+    "EB03": "Heroines Edition", "EB04": "Egghead Crisis",
+    "PRB01": "Premium Booster", "PRB02": "Premium Booster 2",
 }
 
 
@@ -150,6 +171,120 @@ async def fetch_sealed_price(
     }
 
 
+async def backfill_all_sealed() -> dict:
+    """Backfill all sealed products from PriceCharting into sealed_unified.
+
+    For each set, fetches JP and EN prices for booster box, booster pack, and case.
+    Uses UPSERT keyed on (set_code, product_type, language).
+    """
+    from db.init import get_pool
+
+    pool = await get_pool()
+
+    # Ensure language column and new unique index exist
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "ALTER TABLE sealed_unified ADD COLUMN IF NOT EXISTS language VARCHAR(10) DEFAULT 'JP'"
+        )
+        await conn.execute(
+            "ALTER TABLE sealed_unified ADD COLUMN IF NOT EXISTS en_price_usd REAL"
+        )
+        # Drop old unique constraint if it exists (product_name, set_code)
+        # and create new one on (set_code, product_type, language)
+        try:
+            await conn.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS sealed_unified_set_type_lang
+                ON sealed_unified(set_code, product_type, language)
+            """)
+        except Exception as e:
+            logger.warning(f"Could not create new unique index: {e}")
+
+    inserted = 0
+    updated = 0
+    errors = []
+    product_types = ["booster box", "booster", "case"]
+    languages = ["JP", "EN"]
+
+    total_requests = len(PC_SET_SLUGS) * len(product_types) * len(languages)
+    request_num = 0
+
+    for set_code, slug in PC_SET_SLUGS.items():
+        set_name = _SET_NAMES.get(set_code, set_code)
+
+        for product_type in product_types:
+            for lang in languages:
+                request_num += 1
+
+                try:
+                    result = await fetch_sealed_price(set_code, product_type, lang)
+                except Exception as e:
+                    errors.append(f"{set_code}/{product_type}/{lang}: {e}")
+                    logger.error(f"backfill_all_sealed: error {set_code}/{product_type}/{lang}: {e}")
+                    await asyncio.sleep(1.2)
+                    continue
+
+                if not result:
+                    await asyncio.sleep(1.2)
+                    continue
+
+                # Build canonical product name
+                name_tpl = _PRODUCT_NAMES.get(product_type, {}).get(lang, "{name} " + product_type)
+                product_name = name_tpl.format(name=set_name)
+                source = f"PriceCharting {lang}"
+
+                try:
+                    async with pool.acquire() as conn:
+                        # Try upsert on new unique index (set_code, product_type, language)
+                        status = await conn.execute("""
+                            INSERT INTO sealed_unified (
+                                product_name, set_code, set_name, product_type,
+                                eu_price, eu_7d_avg, en_price_usd,
+                                eu_source, eu_updated_at, language, created_at
+                            ) VALUES ($1, $2, $3, $4, $5, $5, $6, $7, NOW(), $8, NOW())
+                            ON CONFLICT (set_code, product_type, language) DO UPDATE SET
+                                product_name = EXCLUDED.product_name,
+                                set_name = EXCLUDED.set_name,
+                                eu_price = EXCLUDED.eu_price,
+                                eu_7d_avg = EXCLUDED.eu_7d_avg,
+                                en_price_usd = EXCLUDED.en_price_usd,
+                                eu_source = EXCLUDED.eu_source,
+                                eu_updated_at = EXCLUDED.eu_updated_at
+                        """,
+                            product_name, set_code, set_name, product_type,
+                            result["price_eur"], result["price_usd"],
+                            source, lang,
+                        )
+
+                        if "INSERT" in status:
+                            inserted += 1
+                        else:
+                            updated += 1
+
+                except Exception as e:
+                    errors.append(f"{set_code}/{product_type}/{lang} DB: {e}")
+                    logger.error(f"backfill_all_sealed: DB error {set_code}/{product_type}/{lang}: {e}")
+
+                logger.info(
+                    f"backfill_all_sealed: [{request_num}/{total_requests}] "
+                    f"{set_code} {lang} {product_type} = "
+                    f"${result['price_usd']} / €{result['price_eur']}"
+                )
+
+                await asyncio.sleep(1.2)
+
+    logger.info(
+        f"backfill_all_sealed complete: {inserted} inserted, {updated} updated, "
+        f"{len(errors)} errors"
+    )
+
+    return {
+        "inserted": inserted,
+        "updated": updated,
+        "total_fetched": inserted + updated,
+        "errors": errors[:20],
+    }
+
+
 async def test_all_sets() -> list[dict]:
     """Test fetching all known sets — JP booster boxes only (fast scan).
 
@@ -170,10 +305,9 @@ async def test_all_sets() -> list[dict]:
             if result:
                 entry.update(result)
             results.append(entry)
-            logger.info(
-                f"PriceCharting test: {set_code} {lang} box = "
-                f"${entry['price_usd']}" if entry["price_usd"] else
-                f"PriceCharting test: {set_code} {lang} box = N/A"
-            )
+            if entry["price_usd"]:
+                logger.info(f"PriceCharting test: {set_code} {lang} box = ${entry['price_usd']}")
+            else:
+                logger.info(f"PriceCharting test: {set_code} {lang} box = N/A")
             await asyncio.sleep(1.2)
     return results

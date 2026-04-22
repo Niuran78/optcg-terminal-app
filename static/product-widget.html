@@ -90,39 +90,52 @@
   /* ── Body ───────────────────────────────────────────────────── */
   .ptw-body { padding: 24px; }
 
-  /* ── Stats grid ─────────────────────────────────────────────── */
-  .ptw-stats {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 12px;
-    margin-bottom: 28px;
+  /* ── Sealed product rows ─────────────────────────────────────── */
+  .ptw-sealed-section { margin-bottom: 28px; }
+  .ptw-sealed-row {
+    margin-bottom: 16px;
   }
-  .ptw-stat {
+  .ptw-sealed-row:last-child { margin-bottom: 0; }
+  .ptw-sealed-type {
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: #888888;
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #1a1a1a;
+  }
+  .ptw-sealed-cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .ptw-lang-card {
     background: #141414;
     border: 1px solid #2a2a2a;
     border-radius: 6px;
-    padding: 16px 12px;
-    text-align: center;
+    padding: 14px 12px;
   }
-  .ptw-stat.highlight {
-    border-color: rgba(201,168,76,0.3);
-    background: rgba(201,168,76,0.03);
+  .ptw-lang-card.jp { border-left: 3px solid #c9a84c; }
+  .ptw-lang-card.en { border-left: 3px solid #666666; }
+  .ptw-lang-label {
+    font-size: 9px; font-weight: 700;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    margin-bottom: 6px;
   }
-  .ptw-stat-label {
-    font-size: 10px; font-weight: 600;
-    letter-spacing: 0.1em; text-transform: uppercase;
-    color: #888888;
-    margin-bottom: 8px;
-  }
-  .ptw-stat-value {
+  .ptw-lang-card.jp .ptw-lang-label { color: #c9a84c; }
+  .ptw-lang-card.en .ptw-lang-label { color: #888888; }
+  .ptw-lang-price {
     font-family: 'Inter', sans-serif;
-    font-size: 22px; font-weight: 700; color: #ffffff; line-height: 1;
+    font-size: 20px; font-weight: 700; color: #ffffff; line-height: 1;
   }
-  .ptw-stat-value.accent { color: #c9a84c; }
-  .ptw-stat-value.positive { color: #c9a84c; }
-  .ptw-stat-value.negative { color: #888888; }
-  .ptw-stat-sub {
-    font-size: 10px; color: #555555; margin-top: 6px;
+  .ptw-lang-price.accent { color: #c9a84c; }
+  .ptw-lang-price.na { color: #333333; font-size: 16px; }
+  .ptw-lang-usd {
+    font-size: 11px; color: #555555; margin-top: 4px;
+    font-family: 'Inter', sans-serif;
+  }
+  .ptw-lang-source {
+    font-size: 9px; color: #444444; margin-top: 4px;
   }
 
   /* ── Section title ──────────────────────────────────────────── */
@@ -282,7 +295,8 @@
 
   /* ── Responsive ─────────────────────────────────────────────── */
   @media (max-width: 560px) {
-    .ptw-stats { grid-template-columns: repeat(2, 1fr); }
+    .ptw-sealed-cols { grid-template-columns: 1fr 1fr; }
+    .ptw-lang-price { font-size: 16px; }
     .ptw-picker { grid-template-columns: repeat(2, 1fr); }
     .ptw-card-name { max-width: 110px; }
     .ptw-header { padding: 14px 16px; }
@@ -318,11 +332,9 @@
 
   <!-- Body -->
   <div class="ptw-body" id="ptw-body">
-    <div class="ptw-stats" id="ptw-stats">
-      <div class="ptw-stat"><div class="ptw-skeleton ptw-skeleton-stat"></div></div>
-      <div class="ptw-stat"><div class="ptw-skeleton ptw-skeleton-stat"></div></div>
-      <div class="ptw-stat"><div class="ptw-skeleton ptw-skeleton-stat"></div></div>
-      <div class="ptw-stat"><div class="ptw-skeleton ptw-skeleton-stat"></div></div>
+    <div class="ptw-sealed-section" id="ptw-sealed">
+      <div class="ptw-skeleton ptw-skeleton-stat" style="height:80px;margin-bottom:12px;"></div>
+      <div class="ptw-skeleton ptw-skeleton-stat" style="height:80px;"></div>
     </div>
     <div id="ptw-cards-section">
       <div class="ptw-skeleton ptw-skeleton-row"></div>
@@ -414,46 +426,55 @@
     return res.json();
   }
 
-  function renderStats(sealed, cards) {
-    var statsEl = $('ptw-stats');
-    var box = sealed.find(function(p) { return p.product_type && p.product_type.toLowerCase().indexOf('booster box') >= 0; });
-    var caseP = sealed.find(function(p) { return p.product_type && p.product_type.toLowerCase().indexOf('case') >= 0; });
+  var fmtUsd = function(v) { return v == null ? null : '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
 
-    var priced = cards.filter(function(c) { return c.eu_cardmarket_7d_avg != null; });
-    var avgTop5 = priced.length > 0
-      ? priced.reduce(function(s, c) { return s + c.eu_cardmarket_7d_avg; }, 0) / priced.length
-      : null;
+  function renderLangCard(lang, data, isJp) {
+    if (!data || data.price_eur == null) {
+      return '<div class="ptw-lang-card ' + (isJp ? 'jp' : 'en') + '">'
+        + '<div class="ptw-lang-label">' + (isJp ? '\uD83C\uDDEF\uD83C\uDDF5 Japanese' : '\uD83C\uDDEC\uD83C\uDDE7 English') + '</div>'
+        + '<div class="ptw-lang-price na">N/A</div>'
+        + '</div>';
+    }
+    var usdLine = data.price_usd != null ? '<div class="ptw-lang-usd">' + fmtUsd(data.price_usd) + ' USD</div>' : '';
+    var sourceLine = data.source ? '<div class="ptw-lang-source">' + esc(data.source) + '</div>' : '';
+    return '<div class="ptw-lang-card ' + (isJp ? 'jp' : 'en') + '">'
+      + '<div class="ptw-lang-label">' + (isJp ? '\uD83C\uDDEF\uD83C\uDDF5 Japanese' : '\uD83C\uDDEC\uD83C\uDDE7 English') + '</div>'
+      + '<div class="ptw-lang-price' + (isJp ? ' accent' : '') + '">' + fmtEur(data.price_eur) + '</div>'
+      + usdLine
+      + sourceLine
+      + '</div>';
+  }
 
-    var trendText = '\u2014';
-    var trendClass = '';
-    if (box && box.eu_7d_avg != null && box.eu_30d_avg != null) {
-      var diff = ((box.eu_7d_avg - box.eu_30d_avg) / box.eu_30d_avg * 100);
-      if (diff > 1) { trendText = '\u2191 +' + diff.toFixed(1) + '%'; trendClass = 'positive'; }
-      else if (diff < -1) { trendText = '\u2193 ' + diff.toFixed(1) + '%'; trendClass = 'negative'; }
-      else { trendText = '\u2192 Stable'; trendClass = ''; }
+  function renderSealed(sealed) {
+    var el = $('ptw-sealed');
+    if (!sealed || !sealed.length) {
+      el.innerHTML = '<div style="text-align:center;color:#444;font-size:12px;padding:16px 0;">No sealed product data available</div>';
+      return;
     }
 
-    statsEl.innerHTML = ''
-      + '<div class="ptw-stat">'
-      +   '<div class="ptw-stat-label">Booster Box</div>'
-      +   '<div class="ptw-stat-value accent">' + (box ? fmtEur(box.eu_price) : '\u2014') + '</div>'
-      +   '<div class="ptw-stat-sub">' + (box && box.eu_source ? esc(box.eu_source) : 'Cardmarket') + '</div>'
-      + '</div>'
-      + '<div class="ptw-stat">'
-      +   '<div class="ptw-stat-label">Case</div>'
-      +   '<div class="ptw-stat-value">' + (caseP ? fmtEur(caseP.eu_price) : '\u2014') + '</div>'
-      +   '<div class="ptw-stat-sub">' + (caseP && caseP.eu_source ? esc(caseP.eu_source) : 'Cardmarket') + '</div>'
-      + '</div>'
-      + '<div class="ptw-stat highlight">'
-      +   '<div class="ptw-stat-label">Avg Top 5</div>'
-      +   '<div class="ptw-stat-value accent">' + (avgTop5 != null ? fmtEur(avgTop5) : '\u2014') + '</div>'
-      +   '<div class="ptw-stat-sub">Highest-value cards</div>'
-      + '</div>'
-      + '<div class="ptw-stat">'
-      +   '<div class="ptw-stat-label">Box Trend</div>'
-      +   '<div class="ptw-stat-value ' + trendClass + '">' + trendText + '</div>'
-      +   '<div class="ptw-stat-sub">7d vs 30d avg</div>'
-      + '</div>';
+    // Display order: booster box first, then case, then booster
+    var order = {'booster box': 0, 'case': 1, 'booster': 2};
+    sealed.sort(function(a, b) {
+      var oa = order[a.product_type] != null ? order[a.product_type] : 9;
+      var ob = order[b.product_type] != null ? order[b.product_type] : 9;
+      return oa - ob;
+    });
+
+    var typeLabels = {'booster box': 'Booster Box', 'case': 'Case (12x Box)', 'booster': 'Booster Pack'};
+
+    var html = '';
+    sealed.forEach(function(item) {
+      var label = typeLabels[item.product_type] || item.product_type;
+      html += '<div class="ptw-sealed-row">'
+        + '<div class="ptw-sealed-type">' + esc(label) + '</div>'
+        + '<div class="ptw-sealed-cols">'
+        +   renderLangCard('JP', item.jp, true)
+        +   renderLangCard('EN', item.en, false)
+        + '</div>'
+        + '</div>';
+    });
+
+    el.innerHTML = html;
   }
 
   function renderCards(cards) {
@@ -506,7 +527,7 @@
     });
     html += '</div>';
 
-    $('ptw-stats').style.display = 'none';
+    $('ptw-sealed').style.display = 'none';
     $('ptw-cards-section').innerHTML = html;
 
     document.querySelectorAll('.ptw-picker-btn').forEach(function(btn) {
@@ -517,8 +538,8 @@
   }
 
   function renderError(msg) {
-    $('ptw-stats').innerHTML = '';
-    $('ptw-stats').style.display = 'none';
+    $('ptw-sealed').innerHTML = '';
+    $('ptw-sealed').style.display = 'none';
     $('ptw-cards-section').innerHTML = '<div class="ptw-error">'
       + '<strong>Unable to Load Data</strong>'
       + esc(msg || 'Please try again later.')
@@ -526,11 +547,8 @@
   }
 
   async function loadSetData(setCode) {
-    $('ptw-stats').style.display = '';
-    $('ptw-stats').innerHTML = '<div class="ptw-stat"><div class="ptw-skeleton ptw-skeleton-stat"></div></div>'
-      + '<div class="ptw-stat"><div class="ptw-skeleton ptw-skeleton-stat"></div></div>'
-      + '<div class="ptw-stat"><div class="ptw-skeleton ptw-skeleton-stat"></div></div>'
-      + '<div class="ptw-stat"><div class="ptw-skeleton ptw-skeleton-stat"></div></div>';
+    $('ptw-sealed').innerHTML = '<div class="ptw-skeleton ptw-skeleton-stat" style="height:80px;margin-bottom:12px;"></div>'
+      + '<div class="ptw-skeleton ptw-skeleton-stat" style="height:80px;"></div>';
     $('ptw-cards-section').innerHTML = '<div class="ptw-skeleton ptw-skeleton-row"></div>'
       + '<div class="ptw-skeleton ptw-skeleton-row short"></div>'
       + '<div class="ptw-skeleton ptw-skeleton-row"></div>';
@@ -549,7 +567,7 @@
           + '<strong>' + esc(setCode) + ' \u2014 ' + esc(data.set_name) + '</strong>';
       }
 
-      renderStats(data.sealed || [], data.cards || []);
+      renderSealed(data.sealed || []);
       renderCards(data.cards || []);
 
       $('ptw-timestamp').textContent = 'Updated ' + new Date().toLocaleString('en-GB', {

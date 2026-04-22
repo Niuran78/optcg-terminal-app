@@ -27,22 +27,24 @@ async def widget_set_data(
 
     Returns:
       - set info (code, name)
-      - sealed products (booster box, case, booster pack)
+      - sealed products grouped by product_type with JP and EN prices
       - top N cards by EU market price
     """
     set_code = set_code.upper()
     pool = await get_pool()
 
     async with pool.acquire() as conn:
-        # Sealed products for this set
+        # Sealed products for this set — fetch all languages
         sealed_rows = await conn.fetch(
             """
             SELECT product_name, set_code, set_name, product_type, image_url,
                    eu_price, eu_30d_avg, eu_7d_avg, eu_trend, eu_source,
-                   eu_updated_at, rapidapi_product_id
+                   eu_updated_at, rapidapi_product_id,
+                   COALESCE(language, 'JP') as language,
+                   en_price_usd
             FROM sealed_unified
             WHERE set_code = $1
-            ORDER BY eu_price DESC NULLS LAST
+            ORDER BY product_type, language
             """,
             set_code,
         )
@@ -70,24 +72,39 @@ async def widget_set_data(
         elif card_rows:
             set_name = card_rows[0]["set_name"]
 
-    # Flatten sealed
-    sealed = [
-        {
-            "product_name": r["product_name"],
-            "set_code": r["set_code"],
-            "set_name": r["set_name"],
-            "product_type": r["product_type"],
-            "image_url": r["image_url"],
-            "eu_price": r["eu_price"],
-            "eu_30d_avg": r["eu_30d_avg"],
+    # Group sealed products by product_type with JP and EN sub-objects
+    sealed_by_type: dict[str, dict] = {}
+    for r in sealed_rows:
+        pt = r["product_type"] or "other"
+        lang = (r["language"] or "JP").upper()
+
+        if pt not in sealed_by_type:
+            sealed_by_type[pt] = {
+                "product_type": pt,
+                "product_name": r["product_name"],
+                "image_url": r["image_url"],
+                "jp": None,
+                "en": None,
+            }
+
+        price_obj = {
+            "price_eur": r["eu_price"],
+            "price_usd": r["en_price_usd"],
             "eu_7d_avg": r["eu_7d_avg"],
+            "eu_30d_avg": r["eu_30d_avg"],
             "eu_trend": r["eu_trend"],
-            "eu_source": r["eu_source"] or "Cardmarket",
-            "eu_updated_at": str(r["eu_updated_at"]) if r["eu_updated_at"] else None,
-            "rapidapi_product_id": r["rapidapi_product_id"],
+            "source": r["eu_source"] or "Cardmarket",
+            "updated_at": str(r["eu_updated_at"]) if r["eu_updated_at"] else None,
         }
-        for r in sealed_rows
-    ]
+
+        if lang == "JP":
+            sealed_by_type[pt]["jp"] = price_obj
+            # Use JP product name as default
+            sealed_by_type[pt]["product_name"] = r["product_name"]
+        elif lang == "EN":
+            sealed_by_type[pt]["en"] = price_obj
+
+    sealed = list(sealed_by_type.values())
 
     # Flatten cards
     cards = [

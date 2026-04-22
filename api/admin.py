@@ -1,11 +1,12 @@
 """Admin API — manual triggers for data operations.
 
 Endpoints:
-    POST /admin/refresh-cardmarket  — trigger Cardmarket CSV price update
-    POST /admin/backfill-en-prices  — backfill EN prices from TCG Price Lookup
-    POST /admin/seed-missing-sets   — seed sets with < 10 cards
-    GET  /admin/status              — DB stats dashboard
-    GET  /admin/pricecharting-test  — test PriceCharting scraping accuracy
+    POST /admin/refresh-cardmarket              — trigger Cardmarket CSV price update
+    POST /admin/backfill-en-prices              — backfill EN prices from TCG Price Lookup
+    POST /admin/seed-missing-sets               — seed sets with < 10 cards
+    POST /admin/backfill-sealed-from-pricecharting — backfill JP/EN sealed prices
+    GET  /admin/status                          — DB stats dashboard
+    GET  /admin/pricecharting-test              — test PriceCharting scraping accuracy
 """
 import asyncio
 import logging
@@ -328,6 +329,28 @@ async def admin_status():
             "eu_newest": newest_eu.isoformat() if newest_eu else None,
         },
     }
+
+
+# ── Backfill sealed from PriceCharting ─────────────────────────────────────────
+
+@router.post("/admin/backfill-sealed-from-pricecharting")
+async def admin_backfill_sealed(user: UserInfo = Depends(get_current_user)):
+    """Backfill JP and EN sealed product prices from PriceCharting.
+
+    Fetches booster box, booster pack, and case prices for all mapped sets.
+    Inserts/updates sealed_unified with language='JP' or 'EN'.
+    """
+    if user.tier != "elite":
+        raise HTTPException(403, "Elite tier required")
+
+    from services.pricecharting_scraper import backfill_all_sealed
+
+    try:
+        result = await backfill_all_sealed()
+        return result
+    except Exception as e:
+        logger.error(f"PriceCharting sealed backfill failed: {e}")
+        raise HTTPException(500, f"Backfill failed: {e}")
 
 
 # ── PriceCharting test ────────────────────────────────────────────────────────
