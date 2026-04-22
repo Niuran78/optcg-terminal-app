@@ -133,6 +133,21 @@ def _arbitrage_calc(card_row: dict, min_profit_pct: float) -> Optional[dict]:
     # Convert EN price to EUR
     en_eur = en_usd * USD_TO_EUR
 
+    # Sanity filter: skip cards where EU/EN ratio is wildly inconsistent.
+    # A real Normal-variant card should trade within 0.3–3× range across markets.
+    # Ratios above 10× almost always indicate mismatched variants in our data
+    # (Normal-row in DB actually storing Alt-Art price). These are not real
+    # arbitrage — they're data bugs that would mislead the user.
+    ratio = eu_eur / en_eur if en_eur > 0 else 0
+    if ratio > 10 or ratio < 0.1:
+        return None
+
+    # Also require a sane 30d confirmation (if present) — 7d spike alone is noise
+    eu_30d = card_row.get("eu_cardmarket_30d_avg")
+    if eu_30d is not None and eu_30d > 0:
+        if eu_eur / eu_30d > 3 or eu_30d / eu_eur > 3:
+            return None  # 7d vs 30d divergence > 3× = unreliable
+
     # Selling on Cardmarket: subtract CM seller fee (5%)
     cm_fee_pct = 0.05
     # Shipping EU→US or buying EN and shipping to EU:
