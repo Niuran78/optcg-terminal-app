@@ -313,9 +313,28 @@ function signalBadge(signal) {
 
 function rarityBadge(rarity) {
   if (!rarity) return '';
-  const r = rarity.toLowerCase();
-  const cls = r === 'sec' ? 'sec' : r === 'sr' ? 'sr' : r === 'leader' ? 'leader' : r === 'rare' ? 'rare' : '';
-  return `<span class="rarity-badge ${cls}">${rarity}</span>`;
+  const r = String(rarity).toLowerCase();
+  // Normalized short codes: L, R, C, UC, SR, SEC, TR, P
+  const map = {
+    'l': { cls: 'leader', label: 'LEADER' },
+    'leader': { cls: 'leader', label: 'LEADER' },
+    'sr': { cls: 'sr', label: 'SR' },
+    'super rare': { cls: 'sr', label: 'SR' },
+    'sec': { cls: 'sec', label: 'SEC' },
+    'secret rare': { cls: 'sec', label: 'SEC' },
+    'tr': { cls: 'sec', label: 'TR' },
+    'treasure rare': { cls: 'sec', label: 'TR' },
+    'r': { cls: 'rare', label: 'R' },
+    'rare': { cls: 'rare', label: 'R' },
+    'uc': { cls: '', label: 'UC' },
+    'uncommon': { cls: '', label: 'UC' },
+    'c': { cls: '', label: 'C' },
+    'common': { cls: '', label: 'C' },
+    'p': { cls: '', label: 'PROMO' },
+    'promo': { cls: '', label: 'PROMO' },
+  };
+  const entry = map[r] || { cls: '', label: rarity };
+  return `<span class="rarity-badge ${entry.cls}">${entry.label}</span>`;
 }
 
 function trendIcon(trend) {
