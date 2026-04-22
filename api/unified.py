@@ -79,9 +79,12 @@ def _row_to_card(row: dict) -> dict:
         "rapidapi_card_id": row.get("rapidapi_card_id"),
         "tcgplayer_id": row.get("tcgplayer_id"),
         "cardmarket_id": row.get("cardmarket_id"),
-        "pricecharting_id": row.get("pricecharting_id"),
-        # JP sibling price (populated by JOIN in browse)
+        "pricecharting_id": row.get("pricecharting_id") or row.get("en_pricecharting_id"),
+        # JP + EN sibling prices (populated by browse JOIN)
         "jp_pc_price_usd": row.get("jp_pc_price_usd"),
+        "en_pc_price_usd": row.get("en_pc_price_usd"),
+        "jp_pricecharting_id": row.get("jp_pricecharting_id"),
+        "en_pricecharting_id": row.get("en_pricecharting_id"),
         "links": _build_card_links(row),
     }
 
@@ -494,13 +497,41 @@ async def browse_cards(
         params.append(rarity)
         param_idx += 1
 
-    # Price range filters — default hides serialized/prize cards >€1000
-    if not include_extreme and max_price_eur is not None:
-        conditions.append(f"eu_cardmarket_7d_avg < ${param_idx}")
-        params.append(max_price_eur)
-        param_idx += 1
+    # Price range filters — these need to look at BOTH language prices
+    # (EN and JP) so they're applied on the outer SELECT after the join.
+    price_conditions: list[str] = []
+
+    # Price range filters — hide serialized/prize cards by default
+    if not include_extreme:
+        # Exclude common prize/championship/manga/serialized variants
+        # These are 1-of-N tournament prizes, not tradable regular cards.
+        PRIZE_VARIANT_LIST = [
+            "V5", "V6", "V7", "V8", "V9", "V10",
+            "SP", "SP Gold", "SP Silver",
+            "Manga", "Red Manga", "Magazine",
+            "Championship 2023 Winner", "Championship 25-26",
+            "Serial Prize", "Serialized",
+            "Pre-Release", "2nd Anniversary", "Wanted",
+            "Top Prize", "Top 16", "Top 64", "Flagship Battle", "Treasure Cup", "Treasure Cup 2025",
+        ]
+        placeholders = ",".join(f"${param_idx + i}" for i in range(len(PRIZE_VARIANT_LIST)))
+        conditions.append(f"(variant NOT IN ({placeholders}))")
+        params.extend(PRIZE_VARIANT_LIST)
+        param_idx += len(PRIZE_VARIANT_LIST)
+
+        if max_price_eur is not None:
+            # Cap max of (EN-price-eur, JP-price-eur) — either side exceeding is dropped
+            price_conditions.append(
+                f"COALESCE(GREATEST(en.eu_cardmarket_7d_avg, jp.pc_price_usd * 0.92), "
+                f"en.eu_cardmarket_7d_avg, jp.pc_price_usd * 0.92) < ${param_idx}"
+            )
+            params.append(max_price_eur)
+            param_idx += 1
     if min_price_eur is not None and min_price_eur > 0:
-        conditions.append(f"eu_cardmarket_7d_avg >= ${param_idx}")
+        # At least one side needs to hit min_price
+        price_conditions.append(
+            f"COALESCE(en.eu_cardmarket_7d_avg, jp.pc_price_usd * 0.92, 0) >= ${param_idx}"
+        )
         params.append(min_price_eur)
         param_idx += 1
 
@@ -510,30 +541,76 @@ async def browse_cards(
     # (apply after other conditions so set_code/search still work)
     # Note: conditions list is already built; we extend below.
 
-    # Prefix all conditions with 'en.' for the JOIN query
-    en_conditions = [f"en.{c}" if not c.startswith("(") else c for c in conditions]
-    en_conditions.append("en.language = 'EN'")
-    en_where = "WHERE " + " AND ".join(en_conditions)
+    # Build a 'distinct (card_id, variant)' base set that includes rows from
+    # EITHER language. This way a JP-only card (e.g. Zoro Flagship Battle) is
+    # still visible in the Browser, not just EN-side cards.
+    # Conditions apply to the card-metadata fields (card_id, name, rarity,
+    # variant, set_code) — these are language-agnostic so we don't prefix.
+    base_conditions = list(conditions)  # no language filter
+    base_where = ("WHERE " + " AND ".join(base_conditions)) if base_conditions else ""
 
-    # Also a simple where_clause (unqualified) for COUNT query that only sees EN side
-    simple_conditions = list(conditions) + ["language = 'EN'"]
-    simple_where = "WHERE " + " AND ".join(simple_conditions)
+    # Outer WHERE — requires at least one price AND price-range bounds
+    outer_conditions = ["(en.pc_price_usd IS NOT NULL OR jp.pc_price_usd IS NOT NULL)"]
+    outer_conditions.extend(price_conditions)
+    outer_where = "WHERE " + " AND ".join(outer_conditions)
 
-    count_query = f"SELECT COUNT(*) FROM cards_unified {simple_where}"
+    # Build sort column with EN-first fallback to JP for sorting when EN missing
+    if sort.startswith("eu_") or sort == "en_tcgplayer_market":
+        sort_expr = f"COALESCE(en.{sort}, jp.pc_price_usd * 0.92)"
+    else:
+        sort_expr = f"COALESCE(en.{sort}, jp.{sort})"
+
+    count_query = f"""
+        WITH base AS (
+            SELECT DISTINCT card_id, variant
+            FROM cards_unified
+            {base_where}
+        )
+        SELECT COUNT(*)
+        FROM base b
+        LEFT JOIN cards_unified en
+          ON en.card_id = b.card_id AND en.variant = b.variant AND en.language = 'EN'
+        LEFT JOIN cards_unified jp
+          ON jp.card_id = b.card_id AND jp.variant = b.variant AND jp.language = 'JP'
+        {outer_where}
+    """
 
     data_query = f"""
+        WITH base AS (
+            SELECT DISTINCT card_id, variant
+            FROM cards_unified
+            {base_where}
+        )
         SELECT
-            en.*,
+            COALESCE(en.id, jp.id) AS id,
+            b.card_id,
+            b.variant,
+            COALESCE(en.set_code, jp.set_code) AS set_code,
+            COALESCE(en.set_name, jp.set_name) AS set_name,
+            COALESCE(en.name, jp.name) AS name,
+            COALESCE(en.rarity, jp.rarity) AS rarity,
+            COALESCE(en.image_url, jp.image_url) AS image_url,
+            en.en_tcgplayer_market,
+            en.en_tcgplayer_low,
+            en.eu_cardmarket_7d_avg,
+            en.eu_cardmarket_30d_avg,
+            en.eu_cardmarket_lowest,
+            en.eu_source,
+            en.eu_updated_at,
+            en.pc_price_usd AS en_pc_price_usd,
+            en.pricecharting_id AS en_pricecharting_id,
             jp.pc_price_usd AS jp_pc_price_usd,
             jp.pricecharting_id AS jp_pricecharting_id,
-            jp.id AS jp_card_db_id
-        FROM cards_unified en
+            jp.id AS jp_card_db_id,
+            en.id AS en_card_db_id,
+            'EN' AS language  -- legacy field
+        FROM base b
+        LEFT JOIN cards_unified en
+          ON en.card_id = b.card_id AND en.variant = b.variant AND en.language = 'EN'
         LEFT JOIN cards_unified jp
-          ON jp.card_id = en.card_id
-         AND jp.variant = en.variant
-         AND jp.language = 'JP'
-        {en_where}
-        ORDER BY en.{sort} {order_sql} NULLS LAST
+          ON jp.card_id = b.card_id AND jp.variant = b.variant AND jp.language = 'JP'
+        {outer_where}
+        ORDER BY {sort_expr} {order_sql} NULLS LAST
         LIMIT ${param_idx} OFFSET ${param_idx + 1}
     """
 

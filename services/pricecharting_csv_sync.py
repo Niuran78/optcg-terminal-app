@@ -454,10 +454,43 @@ async def sync_from_csv() -> dict:
     languages = [c.get("language", "EN") for c in priced_cards]
 
     async with pool.acquire() as conn:
+        # Phantom-cleanup: a given PriceCharting ID (pc_id) belongs to exactly
+        # ONE language (a listing is either English or Japanese, never both).
+        # If rows exist where the DB language differs from the authoritative
+        # language encoded in the CSV, those rows are phantoms left over from
+        # a previous sync that overwrote the pc_id under the wrong language.
+        # Delete them before the upsert so they don't reappear with wrong prices.
+        if priced_cards:
+            clean_pcs = [c["pc_id"] for c in priced_cards]
+            clean_langs = [c["language"] for c in priced_cards]
+            removed = await conn.fetchval("""
+                WITH truth AS (
+                    SELECT * FROM UNNEST($1::text[], $2::text[])
+                    AS t(pc_id, real_lang)
+                ),
+                phantoms AS (
+                    DELETE FROM cards_unified c
+                    USING truth t
+                    WHERE c.pricecharting_id = t.pc_id
+                      AND c.language <> t.real_lang
+                    RETURNING 1
+                )
+                SELECT COUNT(*) FROM phantoms
+            """, clean_pcs, clean_langs)
+            if removed:
+                logger.info(f"pricecharting_csv_sync: removed {removed} phantom rows (pc_id ↔ wrong language)")
+
         # Upsert by (set_code, card_id, variant)
         #   - Update existing rows' prices
         #   - Insert missing rows with minimal metadata (name + PC price)
         #     (enrichment with rarity, image etc happens in card_aggregator)
+        #
+        # Language-semantic rules:
+        #   EN row: pc_price_usd = EN price, en_tcgplayer_market = EN price,
+        #           eu_cardmarket_* = EN price * FX (approximate EU baseline)
+        #   JP row: pc_price_usd = JP price ONLY.
+        #           en_tcgplayer_market / eu_cardmarket_* are NULL so the
+        #           browser JOIN never picks up JP prices in EN columns.
         upd_count = await conn.fetchval("""
             WITH input AS (
                 SELECT * FROM UNNEST($1::text[], $2::text[], $3::text[], $4::real[], $5::text[], $6::text[], $7::text[])
@@ -474,9 +507,12 @@ async def sync_from_csv() -> dict:
                 SELECT
                     set_code, card_id, variant, name, language,
                     pc_price_usd, pricecharting_id, NOW(),
-                    pc_price_usd,
-                    pc_price_usd * 0.92, pc_price_usd * 0.92, pc_price_usd * 0.92 * 0.85,
-                    'PriceCharting', NOW()
+                    CASE WHEN language = 'EN' THEN pc_price_usd ELSE NULL END,
+                    CASE WHEN language = 'EN' THEN pc_price_usd * 0.92 ELSE NULL END,
+                    CASE WHEN language = 'EN' THEN pc_price_usd * 0.92 ELSE NULL END,
+                    CASE WHEN language = 'EN' THEN pc_price_usd * 0.92 * 0.85 ELSE NULL END,
+                    CASE WHEN language = 'EN' THEN 'PriceCharting' ELSE 'PriceCharting JP' END,
+                    NOW()
                 FROM input
                 ON CONFLICT (card_id, variant, language) DO UPDATE SET
                     set_code = EXCLUDED.set_code,
@@ -484,11 +520,26 @@ async def sync_from_csv() -> dict:
                     pc_price_usd = EXCLUDED.pc_price_usd,
                     pricecharting_id = EXCLUDED.pricecharting_id,
                     pc_updated_at = NOW(),
-                    en_tcgplayer_market = EXCLUDED.en_tcgplayer_market,
-                    eu_cardmarket_7d_avg = EXCLUDED.eu_cardmarket_7d_avg,
-                    eu_cardmarket_30d_avg = EXCLUDED.eu_cardmarket_30d_avg,
-                    eu_cardmarket_lowest = EXCLUDED.eu_cardmarket_lowest,
-                    eu_source = 'PriceCharting',
+                    en_tcgplayer_market = CASE
+                        WHEN EXCLUDED.language = 'EN' THEN EXCLUDED.pc_price_usd
+                        ELSE NULL
+                    END,
+                    eu_cardmarket_7d_avg = CASE
+                        WHEN EXCLUDED.language = 'EN' THEN EXCLUDED.pc_price_usd * 0.92
+                        ELSE NULL
+                    END,
+                    eu_cardmarket_30d_avg = CASE
+                        WHEN EXCLUDED.language = 'EN' THEN EXCLUDED.pc_price_usd * 0.92
+                        ELSE NULL
+                    END,
+                    eu_cardmarket_lowest = CASE
+                        WHEN EXCLUDED.language = 'EN' THEN EXCLUDED.pc_price_usd * 0.92 * 0.85
+                        ELSE NULL
+                    END,
+                    eu_source = CASE
+                        WHEN EXCLUDED.language = 'EN' THEN 'PriceCharting'
+                        ELSE 'PriceCharting JP'
+                    END,
                     eu_updated_at = NOW()
                 RETURNING 1
             )
