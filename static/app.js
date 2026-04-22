@@ -117,6 +117,20 @@ async function loadMarketSummary() {
 /* ══════════════════════════════════════════════════════════════════
    NAV
    ══════════════════════════════════════════════════════════════════ */
+// ============================================================
+// Dynamic currency headers — update column labels when toggle changes
+// ============================================================
+function updateCurrencyHeaders() {
+  const sym = State.displayCurrency === 'USD' ? '$' : '€';
+  // Browser tab & Arbitrage tab: EN / EU price columns
+  document.querySelectorAll('th.col-en .th-main').forEach(el => {
+    el.innerHTML = `EN Price (${sym})${el.querySelector('.th-sort-icon') ? ' <span class="th-sort-icon" aria-hidden="true">↕</span>' : ''}`;
+  });
+  document.querySelectorAll('th.col-eu .th-main').forEach(el => {
+    el.innerHTML = `EU Price (${sym})${el.querySelector('.th-sort-icon') ? ' <span class="th-sort-icon" aria-hidden="true">↕</span>' : ''}`;
+  });
+}
+
 function bindNav() {
   // Tab buttons
   $$('[data-tab]').forEach(btn => {
@@ -131,6 +145,7 @@ function bindNav() {
     btn.addEventListener('click', () => {
       State.displayCurrency = btn.dataset.fx;
       $$('[data-fx]').forEach(b => b.classList.toggle('active', b.dataset.fx === State.displayCurrency));
+      updateCurrencyHeaders();
       // Re-render whichever tab is active
       if (State.activeTab === 'browser' && State.browser.lastData) renderBrowserTable(State.browser.lastData);
       if (State.activeTab === 'sealed' && State.sealed.lastData) renderSealedGrid(State.sealed.lastData);
@@ -138,6 +153,9 @@ function bindNav() {
       if (State.activeTab === 'portfolio') { renderPortfolioSummary(State.portfolio.summary); renderPortfolioItems(State.portfolio.items); }
     });
   });
+
+  // Apply initial header state on load
+  updateCurrencyHeaders();
 
   // User menu toggle
   const userMenu = $('user-menu');
