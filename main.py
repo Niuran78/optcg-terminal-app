@@ -1,4 +1,4 @@
-"""OPTCG Market Terminal — FastAPI Application Entry Point."""
+"""Holygrade Terminal — FastAPI Application Entry Point."""
 import asyncio
 import os
 import logging
@@ -91,7 +91,7 @@ async def _daily_pricecharting_sync_loop():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown lifecycle."""
-    logger.info("Starting OPTCG Market Terminal...")
+    logger.info("Starting Holygrade Terminal...")
     await init_db()
 
     # Seed sets from API on startup
@@ -150,12 +150,12 @@ async def lifespan(app: FastAPI):
 
     from db.init import close_db
     await close_db()
-    logger.info("OPTCG Market Terminal shutting down.")
+    logger.info("Holygrade Terminal shutting down.")
 
 
 app = FastAPI(
-    title="OPTCG Market Terminal",
-    description="Bloomberg Terminal for One Piece TCG — arbitrage, EV, sealed product tracking.",
+    title="Holygrade Terminal",
+    description="Holygrade Terminal — market intelligence for One Piece TCG. Arbitrage scanner, sealed product tracking, portfolio analytics.",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -188,7 +188,7 @@ app.include_router(admin_router)
 # Health check
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "app": "OPTCG Market Terminal", "version": "1.0.0"}
+    return {"status": "ok", "app": "Holygrade Terminal", "version": "1.0.0"}
 
 
 # Market overview endpoint
