@@ -220,6 +220,10 @@ if os.path.exists(static_dir):
         Usage: /widget?set=OP13 or /widget?sku=OP13-BOX-JP"""
         return FileResponse(os.path.join(static_dir, "product-widget.html"))
 
+    @app.get("/teaser", include_in_schema=False)
+    async def serve_teaser():
+        return FileResponse(os.path.join(static_dir, "teaser.html"))
+
     @app.get("/", include_in_schema=False)
     async def serve_index():
         return FileResponse(os.path.join(static_dir, "index.html"))
