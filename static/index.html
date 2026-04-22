@@ -642,6 +642,73 @@
 <!-- ═══ TOAST CONTAINER ══════════════════════════════════════════ -->
 <div class="toast-container" id="toast-container" aria-live="assertive" role="alert"></div>
 
+<!-- Chart Modal -->
+<div id="chart-modal" class="chart-modal" hidden>
+  <div class="chart-modal-backdrop" onclick="closeChartModal()"></div>
+  <div class="chart-modal-body" role="dialog" aria-modal="true" aria-labelledby="chart-card-name">
+    <div class="chart-modal-header">
+      <div class="chart-head-left">
+        <img id="chart-card-img" src="" alt="" />
+        <div>
+          <div id="chart-card-name" class="chart-card-name">—</div>
+          <div id="chart-card-meta" class="chart-card-meta">—</div>
+        </div>
+      </div>
+      <div class="chart-head-right">
+        <div class="chart-range-tabs" role="tablist">
+          <button data-range="30"  class="range-tab">30D</button>
+          <button data-range="90"  class="range-tab active">90D</button>
+          <button data-range="180" class="range-tab">180D</button>
+          <button data-range="365" class="range-tab">1Y</button>
+        </div>
+        <button class="chart-close" onclick="closeChartModal()" aria-label="Close">×</button>
+      </div>
+    </div>
+
+    <div class="chart-stats">
+      <div class="stat-block"><div class="stat-label">Current EU</div><div id="stat-eu" class="stat-value accent">—</div></div>
+      <div class="stat-block"><div class="stat-label">Current EN</div><div id="stat-en" class="stat-value">—</div></div>
+      <div class="stat-block"><div class="stat-label">7d change</div><div id="stat-7d" class="stat-value">—</div></div>
+      <div class="stat-block"><div class="stat-label">30d change</div><div id="stat-30d" class="stat-value">—</div></div>
+      <div class="stat-block"><div class="stat-label">RSI(14)</div><div id="stat-rsi" class="stat-value">—</div></div>
+      <div class="stat-block"><div class="stat-label">Signal</div><div id="stat-signal" class="stat-value">—</div></div>
+    </div>
+
+    <div class="chart-wrap"><canvas id="price-chart"></canvas></div>
+
+    <div class="chart-indicators">
+      <div class="indicator-card">
+        <div class="ind-title">Moving Averages</div>
+        <div class="ind-row"><span>MA(7)</span> <span id="ind-ma7">—</span></div>
+        <div class="ind-row"><span>MA(30)</span> <span id="ind-ma30">—</span></div>
+        <div class="ind-row"><span>MA(90)</span> <span id="ind-ma90">—</span></div>
+      </div>
+      <div class="indicator-card">
+        <div class="ind-title">Bollinger Bands (20, 2.0)</div>
+        <div class="ind-row"><span>Upper</span> <span id="ind-bb-up">—</span></div>
+        <div class="ind-row"><span>Middle</span> <span id="ind-bb-mid">—</span></div>
+        <div class="ind-row"><span>Lower</span> <span id="ind-bb-lo">—</span></div>
+        <div class="ind-row"><span>%B position</span> <span id="ind-bb-pct">—</span></div>
+      </div>
+      <div class="indicator-card">
+        <div class="ind-title">TCG Signals</div>
+        <div class="ind-row"><span>Reprint Risk</span> <span id="ind-reprint">—</span></div>
+        <div class="ind-row"><span>Set Age</span> <span id="ind-setage">—</span></div>
+        <div class="ind-row"><span>7d Change</span> <span id="ind-chg7">—</span></div>
+        <div class="ind-row"><span>30d Change</span> <span id="ind-chg30">—</span></div>
+      </div>
+      <div class="indicator-card signal-card">
+        <div class="ind-title">Recommendation</div>
+        <div class="signal-reasons" id="signal-reasons">—</div>
+      </div>
+    </div>
+
+    <div class="chart-disclaimer">
+      EU via Cardmarket 7d avg, EN via TCGPlayer market. Indicator history partially synthetic until 90d of real snapshots accumulate. Not financial advice.
+    </div>
+  </div>
+</div>
+
 <!-- ═══ SCRIPTS ══════════════════════════════════════════════════ -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <script src="auth.js"></script>

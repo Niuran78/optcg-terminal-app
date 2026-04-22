@@ -294,6 +294,17 @@ async def card_price_history(
             }
         ]
 
+    # ── Compute technical + TCG-specific indicators ──
+    from services.indicators import build_indicators
+    from services.set_meta import SET_RELEASE_DATES
+
+    set_release = SET_RELEASE_DATES.get((card["set_code"] or "").upper())
+    indicators = build_indicators(
+        history=history,
+        current={"eu_cardmarket_7d_avg": card["eu_cardmarket_7d_avg"]},
+        set_release_date=set_release,
+    )
+
     return {
         "card_id": card["card_id"],
         "name": card["name"],
@@ -302,9 +313,12 @@ async def card_price_history(
         "rarity": card["rarity"],
         "variant": variant,
         "image_url": card["image_url"],
+        "current_eu_price": card["eu_cardmarket_7d_avg"],
+        "current_en_price_usd": card["en_tcgplayer_market"],
         "days": days,
         "tier": user.tier,
         "history": history,
+        "indicators": indicators,
     }
 
 

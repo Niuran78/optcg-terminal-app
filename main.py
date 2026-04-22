@@ -67,11 +67,16 @@ async def seed_all_data():
 
 
 async def _daily_pricecharting_sync_loop():
-    """Run PriceCharting CSV sync once per day.
+    """Run PriceCharting CSV sync once per day + write a daily price snapshot.
 
-    Waits 60s on startup (let app come up), syncs, then sleeps 24h.
+    Order:
+      1. Sleep 60s (let the app come up).
+      2. Sync prices from PriceCharting CSV.
+      3. Write today's snapshot row from current prices (for chart history).
+      4. Sleep 24h, loop.
     """
     from services.pricecharting_csv_sync import sync_from_csv
+    from services.price_history_seeder import daily_snapshot_from_current
 
     await asyncio.sleep(60)  # Let the app finish startup first
     while True:
@@ -84,6 +89,14 @@ async def _daily_pricecharting_sync_loop():
             )
         except Exception as e:
             logger.error(f"[daily sync] failed: {e}")
+
+        try:
+            logger.info("[daily sync] writing daily price snapshot...")
+            snap = await daily_snapshot_from_current()
+            logger.info(f"[daily sync] snapshot written: {snap}")
+        except Exception as e:
+            logger.error(f"[daily sync] snapshot failed: {e}")
+
         # Sleep 24h before next sync
         await asyncio.sleep(24 * 60 * 60)
 

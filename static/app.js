@@ -602,6 +602,9 @@ function renderBrowserTable(data) {
         <td>
           <div style="display:flex;align-items:center;gap:4px;">
             ${signalBadge(signal)}
+            <button class="chart-btn" title="Open price chart & indicators" onclick="event.stopPropagation();openChartModal('${escHtml(card.card_id)}','${escHtml(card.variant || 'Normal')}')" aria-label="Open chart">
+              <svg width="12" height="12" viewBox="0 0 14 14" fill="none" style="vertical-align:-1px;margin-right:2px;"><path d="M2 12h10M3 9l3-3 2 2 3-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>Chart
+            </button>
             <button class="btn-alert-bell" title="Set price alert" onclick="event.stopPropagation();openAlertMini(${i})" aria-label="Set price alert">
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1.5a3.5 3.5 0 00-3.5 3.5c0 2.1-.7 3.3-1.3 4a.5.5 0 00.4.75h8.8a.5.5 0 00.4-.75c-.6-.7-1.3-1.9-1.3-4A3.5 3.5 0 007 1.5z" stroke="currentColor" stroke-width="1.1"/><path d="M5.5 10.5a1.5 1.5 0 003 0" stroke="currentColor" stroke-width="1.1"/></svg>
             </button>
@@ -1772,3 +1775,307 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 });
+
+/* ══════════════════════════════════════════════════════════════════
+   CHART MODAL — price history + TCG indicators
+   ══════════════════════════════════════════════════════════════════ */
+window.ChartModal = (function() {
+  let chartInstance = null;
+  let currentCardId = null;
+  let currentVariant = 'Normal';
+  let currentDays = 90;
+
+  function fmtEur(v) {
+    if (v == null) return '—';
+    return '€' + Number(v).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function fmtPct(v) {
+    if (v == null) return '—';
+    const sign = v >= 0 ? '+' : '';
+    return sign + Number(v).toFixed(1) + '%';
+  }
+  function tintPct(el, v) {
+    el.classList.remove('positive', 'negative', 'neutral');
+    if (v == null) { el.classList.add('neutral'); return; }
+    el.classList.add(v >= 0.5 ? 'positive' : v <= -0.5 ? 'negative' : 'neutral');
+  }
+
+  async function open(cardId, variant = 'Normal', days = 90) {
+    currentCardId = cardId;
+    currentVariant = variant;
+    currentDays = days;
+
+    const modal = document.getElementById('chart-modal');
+    modal.hidden = false;
+    document.body.style.overflow = 'hidden';
+
+    // Set initial loading state
+    document.getElementById('chart-card-name').textContent = 'Loading…';
+    document.getElementById('chart-card-meta').textContent = cardId;
+
+    // Mark active range tab
+    document.querySelectorAll('.range-tab').forEach(t => {
+      t.classList.toggle('active', Number(t.dataset.range) === days);
+    });
+
+    await loadChartData();
+  }
+
+  function close() {
+    document.getElementById('chart-modal').hidden = true;
+    document.body.style.overflow = '';
+    if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+  }
+
+  async function loadChartData() {
+    if (!currentCardId) return;
+    const token = localStorage.getItem('optcg_token');
+    const headers = token ? { 'Authorization': 'Bearer ' + token } : {};
+
+    try {
+      const url = `/api/cards/price-history/${encodeURIComponent(currentCardId)}?variant=${encodeURIComponent(currentVariant)}&days=${currentDays}`;
+      const resp = await fetch(url, { headers });
+      if (!resp.ok) throw new Error(`API ${resp.status}`);
+      const data = await resp.json();
+      renderAll(data);
+    } catch (err) {
+      document.getElementById('chart-card-name').textContent = 'Failed to load';
+      document.getElementById('chart-card-meta').textContent = String(err);
+      console.error('Chart load error:', err);
+    }
+  }
+
+  function renderAll(d) {
+    document.getElementById('chart-card-name').textContent = d.name || d.card_id;
+    const metaParts = [d.card_id, d.set_code, d.rarity, d.variant].filter(Boolean);
+    document.getElementById('chart-card-meta').textContent = metaParts.join(' · ');
+    const img = document.getElementById('chart-card-img');
+    if (d.image_url) { img.src = d.image_url; img.style.display = ''; }
+    else { img.style.display = 'none'; }
+
+    const ind = d.indicators || {};
+
+    // Top stats
+    document.getElementById('stat-eu').textContent = fmtEur(d.current_eu_price);
+    document.getElementById('stat-en').textContent = d.current_en_price_usd != null ? '$' + Number(d.current_en_price_usd).toFixed(2) : '—';
+
+    const s7 = document.getElementById('stat-7d');
+    s7.textContent = fmtPct(ind.change_7d); tintPct(s7, ind.change_7d);
+    const s30 = document.getElementById('stat-30d');
+    s30.textContent = fmtPct(ind.change_30d); tintPct(s30, ind.change_30d);
+
+    const rsiEl = document.getElementById('stat-rsi');
+    if (ind.rsi != null) {
+      rsiEl.textContent = ind.rsi.toFixed(1);
+      rsiEl.className = 'stat-value ' + (ind.rsi < 30 ? 'positive' : ind.rsi > 70 ? 'negative' : 'neutral');
+    } else { rsiEl.textContent = '—'; }
+
+    // Signal badge
+    const sig = ind.signal || {};
+    const sigEl = document.getElementById('stat-signal');
+    sigEl.textContent = sig.action || '—';
+    sigEl.className = 'stat-value signal-' + (sig.action || 'hold').toLowerCase();
+
+    // Indicator panels
+    document.getElementById('ind-ma7').textContent = fmtEur(ind.ma_7d);
+    document.getElementById('ind-ma30').textContent = fmtEur(ind.ma_30d);
+    document.getElementById('ind-ma90').textContent = fmtEur(ind.ma_90d);
+    const bb = ind.bollinger || {};
+    document.getElementById('ind-bb-up').textContent = fmtEur(bb.upper);
+    document.getElementById('ind-bb-mid').textContent = fmtEur(bb.middle);
+    document.getElementById('ind-bb-lo').textContent = fmtEur(bb.lower);
+    document.getElementById('ind-bb-pct').textContent = bb.pct_b != null ? bb.pct_b.toFixed(0) + '%' : '—';
+
+    // TCG indicators
+    const rr = ind.reprint_risk || {};
+    const rrEl = document.getElementById('ind-reprint');
+    rrEl.textContent = rr.level ? (rr.level + ' (' + rr.score + ')') : '—';
+    rrEl.className = 'risk-' + (rr.level || '').toLowerCase();
+    document.getElementById('ind-setage').textContent = rr.months_since_release != null ? rr.months_since_release.toFixed(1) + ' mo' : '—';
+
+    const chg7 = document.getElementById('ind-chg7');
+    chg7.textContent = fmtPct(ind.change_7d);
+    chg7.className = ind.change_7d >= 0 ? 'positive' : 'negative';
+    const chg30 = document.getElementById('ind-chg30');
+    chg30.textContent = fmtPct(ind.change_30d);
+    chg30.className = ind.change_30d >= 0 ? 'positive' : 'negative';
+
+    // Signal reasons
+    const reasonsEl = document.getElementById('signal-reasons');
+    const reasons = sig.reasons || ['No strong signal'];
+    reasonsEl.innerHTML = '<div class="signal-' + (sig.action || 'hold').toLowerCase() + '" style="font-size:14px;margin-bottom:8px;">' +
+      (sig.action || 'HOLD') + ' · strength ' + (sig.strength || 0) + '/100</div>' +
+      reasons.map(r => '<span class="reason">' + r + '</span>').join('');
+
+    renderChart(d.history || [], ind);
+  }
+
+  function renderChart(history, ind) {
+    const ctx = document.getElementById('price-chart').getContext('2d');
+    if (chartInstance) chartInstance.destroy();
+
+    const labels = history.map(h => h.date);
+    const euPrices = history.map(h => h.eu_cardmarket_7d_avg);
+    const enPrices = history.map(h => h.en_tcgplayer_market);
+
+    // Compute rolling MAs for display (overlay)
+    const ma7 = rollingMean(euPrices, 7);
+    const ma30 = rollingMean(euPrices, 30);
+
+    const datasets = [
+      {
+        label: 'EU · Cardmarket 7d',
+        data: euPrices,
+        borderColor: '#c9a84c',
+        backgroundColor: 'rgba(201,168,76,0.08)',
+        fill: true,
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        tension: 0.25,
+      },
+      {
+        label: 'MA(7)',
+        data: ma7,
+        borderColor: '#60a5fa',
+        backgroundColor: 'transparent',
+        fill: false,
+        borderWidth: 1,
+        borderDash: [4, 4],
+        pointRadius: 0,
+        tension: 0.25,
+      },
+      {
+        label: 'MA(30)',
+        data: ma30,
+        borderColor: '#a78bfa',
+        backgroundColor: 'transparent',
+        fill: false,
+        borderWidth: 1,
+        borderDash: [8, 4],
+        pointRadius: 0,
+        tension: 0.25,
+      },
+    ];
+
+    if (enPrices.some(v => v != null)) {
+      datasets.push({
+        label: 'EN · TCGPlayer (USD)',
+        data: enPrices,
+        borderColor: '#4ade80',
+        backgroundColor: 'transparent',
+        fill: false,
+        borderWidth: 1.5,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        tension: 0.25,
+        yAxisID: 'y1',
+      });
+    }
+
+    const hasEn = enPrices.some(v => v != null);
+
+    chartInstance = new Chart(ctx, {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: {
+            position: 'top',
+            labels: {
+              color: '#9ca3af',
+              font: { family: 'IBM Plex Mono, monospace', size: 10 },
+              boxWidth: 14,
+              padding: 12,
+            },
+          },
+          tooltip: {
+            backgroundColor: '#0f1115',
+            borderColor: '#2a2a2a',
+            borderWidth: 1,
+            titleColor: '#c9a84c',
+            bodyColor: '#fff',
+            titleFont: { family: 'IBM Plex Mono, monospace', size: 11 },
+            bodyFont: { family: 'IBM Plex Mono, monospace', size: 11 },
+            padding: 10,
+            callbacks: {
+              label: (ctx) => {
+                const lbl = ctx.dataset.label || '';
+                const v = ctx.parsed.y;
+                if (v == null) return lbl + ': —';
+                const isUsd = lbl.includes('USD');
+                return lbl + ': ' + (isUsd ? '$' + v.toFixed(2) : '€' + v.toFixed(2));
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            ticks: {
+              color: '#6b7280',
+              font: { family: 'IBM Plex Mono, monospace', size: 9 },
+              maxTicksLimit: 8,
+            },
+            grid: { color: 'rgba(255,255,255,0.03)' },
+          },
+          y: {
+            position: 'left',
+            ticks: {
+              color: '#9ca3af',
+              font: { family: 'IBM Plex Mono, monospace', size: 10 },
+              callback: (v) => '€' + v.toFixed(0),
+            },
+            grid: { color: 'rgba(255,255,255,0.04)' },
+          },
+          y1: hasEn ? {
+            position: 'right',
+            ticks: {
+              color: '#4ade80',
+              font: { family: 'IBM Plex Mono, monospace', size: 10 },
+              callback: (v) => '$' + v.toFixed(0),
+            },
+            grid: { drawOnChartArea: false },
+          } : undefined,
+        },
+      },
+    });
+  }
+
+  function rollingMean(arr, period) {
+    const out = new Array(arr.length).fill(null);
+    for (let i = period - 1; i < arr.length; i++) {
+      let sum = 0, count = 0;
+      for (let j = i - period + 1; j <= i; j++) {
+        const v = arr[j];
+        if (v != null) { sum += v; count++; }
+      }
+      if (count === period) out[i] = sum / period;
+    }
+    return out;
+  }
+
+  // Wire range tabs
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.range-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        const d = Number(tab.dataset.range);
+        currentDays = d;
+        document.querySelectorAll('.range-tab').forEach(t => t.classList.toggle('active', t === tab));
+        loadChartData();
+      });
+    });
+    // Escape closes
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !document.getElementById('chart-modal').hidden) close();
+    });
+  });
+
+  return { open, close };
+})();
+
+// Global helper for inline onclick
+window.openChartModal = function(cardId, variant) { window.ChartModal.open(cardId, variant || 'Normal', 90); };
+window.closeChartModal = function() { window.ChartModal.close(); };

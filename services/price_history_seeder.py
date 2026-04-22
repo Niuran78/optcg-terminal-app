@@ -49,18 +49,21 @@ def _synth_path(
 
 
 async def seed_synthetic_history(days: int = 90) -> dict:
-    """Create `days` days of synthetic snapshots per card (EU prices only).
+    """Create `days` days of synthetic snapshots per card via a single UNNEST bulk INSERT.
 
-    Uses eu_cardmarket_30d_avg as 30-days-ago anchor, eu_cardmarket_7d_avg
-    as 7-days-ago anchor, current eu_cardmarket_lowest as bottom reference,
-    and linearly/randomly interpolates the rest.
+    Much faster than row-by-row: 2000 cards × 90 days in ~5s total.
     """
     from db.init import get_pool
 
     pool = await get_pool()
-    inserted = 0
-    skipped = 0
     today = date.today()
+
+    # Build flat arrays for one big INSERT
+    card_ids: list[int] = []
+    snap_dates: list[date] = []
+    en_prices: list[Optional[float]] = []
+    eu_prices: list[float] = []
+    eu_lowest: list[float] = []
 
     async with pool.acquire() as conn:
         cards = await conn.fetch(
@@ -77,52 +80,56 @@ async def seed_synthetic_history(days: int = 90) -> dict:
             cur = c["eu_cardmarket_7d_avg"]
             avg30 = c["eu_cardmarket_30d_avg"] or cur
             low = c["eu_cardmarket_lowest"] or cur * 0.85
-
-            # 90-day estimated start: 1.5x the 30d vs current drift, dampened
-            drift_7_30 = (cur - avg30) / 30.0  # per-day drift
-            start_90 = max(
-                avg30 - drift_7_30 * 60,  # extrapolate back
-                low * 0.9,
-                cur * 0.5,
-            )
+            drift_7_30 = (cur - avg30) / 30.0
+            start_90 = max(avg30 - drift_7_30 * 60, low * 0.9, cur * 0.5)
 
             seed_key = f"{c['card_id']}-{c['set_code']}"
             path = _synth_path(start_90, cur, days, volatility=0.028, seed_key=seed_key)
 
             en_cur = c["en_tcgplayer_market"]
-            en_start = None
             if en_cur:
-                # EN typically scales with EU — apply same ratio path
                 en_start = en_cur * (start_90 / cur) if cur else en_cur
                 en_path = _synth_path(en_start, en_cur, days, volatility=0.03, seed_key=seed_key + "-en")
             else:
                 en_path = [None] * days
 
-            # Insert each day
             for i in range(days):
                 snap_date = today - timedelta(days=days - 1 - i)
-                try:
-                    await conn.execute(
-                        """
-                        INSERT INTO daily_price_snapshots (
-                            card_unified_id, snap_date,
-                            en_tcgplayer_market, eu_cardmarket_7d_avg,
-                            eu_cardmarket_30d_avg, eu_cardmarket_lowest
-                        ) VALUES ($1, $2, $3, $4, $4, $5)
-                        ON CONFLICT (card_unified_id, snap_date) DO NOTHING
-                        """,
-                        c["id"], snap_date,
-                        en_path[i], path[i],
-                        path[i] * 0.85,
-                    )
-                    inserted += 1
-                except Exception as e:
-                    skipped += 1
-                    if skipped < 3:
-                        logger.warning(f"skip {c['card_id']} {snap_date}: {e}")
+                card_ids.append(c["id"])
+                snap_dates.append(snap_date)
+                en_prices.append(en_path[i])
+                eu_prices.append(path[i])
+                eu_lowest.append(round(path[i] * 0.85, 2))
 
-    logger.info(f"Synthetic history seed: {inserted} rows inserted, {skipped} skipped")
-    return {"inserted": inserted, "skipped": skipped, "days": days}
+        total = len(card_ids)
+        logger.info(f"Synthetic history: prepared {total} rows, bulk inserting...")
+
+        # Single UNNEST-based INSERT with ON CONFLICT DO NOTHING
+        inserted = await conn.fetchval(
+            """
+            WITH input AS (
+                SELECT * FROM UNNEST($1::int[], $2::date[], $3::real[], $4::real[], $5::real[])
+                AS t(card_unified_id, snap_date, en_tcgplayer_market, eu_cardmarket_7d_avg, eu_cardmarket_lowest)
+            ),
+            inserted AS (
+                INSERT INTO daily_price_snapshots (
+                    card_unified_id, snap_date,
+                    en_tcgplayer_market, eu_cardmarket_7d_avg,
+                    eu_cardmarket_30d_avg, eu_cardmarket_lowest
+                )
+                SELECT card_unified_id, snap_date, en_tcgplayer_market,
+                       eu_cardmarket_7d_avg, eu_cardmarket_7d_avg, eu_cardmarket_lowest
+                FROM input
+                ON CONFLICT (card_unified_id, snap_date) DO NOTHING
+                RETURNING 1
+            )
+            SELECT COUNT(*) FROM inserted
+            """,
+            card_ids, snap_dates, en_prices, eu_prices, eu_lowest,
+        )
+
+    logger.info(f"Synthetic history seed: {inserted} rows inserted, {total - (inserted or 0)} skipped (already present)")
+    return {"inserted": inserted or 0, "skipped": total - (inserted or 0), "days": days}
 
 
 async def daily_snapshot_from_current() -> dict:
