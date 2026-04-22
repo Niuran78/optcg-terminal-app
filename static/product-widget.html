@@ -138,6 +138,50 @@
     font-size: 9px; color: #444444; margin-top: 4px;
   }
 
+  /* ── Buy-link buttons ───────────────────────────── */
+  .ptw-buy-row {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    margin-top: 10px;
+  }
+  .ptw-buy-btn {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 5px 10px;
+    font-size: 10px; font-weight: 600;
+    letter-spacing: 0.03em;
+    color: #c9a84c;
+    background: rgba(201,168,76,0.08);
+    border: 1px solid rgba(201,168,76,0.25);
+    border-radius: 4px;
+    text-decoration: none;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+  }
+  .ptw-buy-btn:hover {
+    background: rgba(201,168,76,0.16);
+    border-color: rgba(201,168,76,0.45);
+    color: #e8c968;
+  }
+  .ptw-buy-btn.primary {
+    color: #0a0a0a;
+    background: #c9a84c;
+    border-color: #c9a84c;
+  }
+  .ptw-buy-btn.primary:hover {
+    background: #e8c968;
+    border-color: #e8c968;
+  }
+  .ptw-card-price-link {
+    font-weight: 700; color: #c9a84c;
+    text-decoration: none;
+    white-space: nowrap;
+    font-size: 14px;
+    transition: color 0.15s ease;
+  }
+  .ptw-card-price-link:hover {
+    color: #e8c968;
+    text-decoration: underline;
+  }
+
   /* ── Section title ──────────────────────────────────────────── */
   .ptw-section-title {
     font-size: 10px; font-weight: 600;
@@ -428,6 +472,21 @@
 
   var fmtUsd = function(v) { return v == null ? null : '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
 
+  function buyLinksHtml(links) {
+    if (!links) return '';
+    var btns = [];
+    if (links.pricecharting) {
+      btns.push('<a href="' + links.pricecharting + '" target="_blank" rel="noopener nofollow" class="ptw-buy-btn" title="View on PriceCharting">PriceCharting ↗</a>');
+    }
+    if (links.cardmarket) {
+      btns.push('<a href="' + links.cardmarket + '" target="_blank" rel="noopener nofollow" class="ptw-buy-btn primary" title="Buy on Cardmarket">Buy on Cardmarket ↗</a>');
+    }
+    if (links.tcgplayer) {
+      btns.push('<a href="' + links.tcgplayer + '" target="_blank" rel="noopener nofollow" class="ptw-buy-btn primary" title="Buy on TCGPlayer">Buy on TCGPlayer ↗</a>');
+    }
+    return btns.length ? '<div class="ptw-buy-row">' + btns.join('') + '</div>' : '';
+  }
+
   function renderLangCard(lang, data, isJp) {
     if (!data || data.price_eur == null) {
       return '<div class="ptw-lang-card ' + (isJp ? 'jp' : 'en') + '">'
@@ -442,6 +501,7 @@
       + '<div class="ptw-lang-price' + (isJp ? ' accent' : '') + '">' + fmtEur(data.price_eur) + '</div>'
       + usdLine
       + sourceLine
+      + buyLinksHtml(data.links)
       + '</div>';
   }
 
@@ -495,6 +555,15 @@
 
     cards.forEach(function(c) {
       var price = c.eu_cardmarket_7d_avg != null ? fmtEur(c.eu_cardmarket_7d_avg) : '\u2014';
+      // Wrap price in a link if Cardmarket ID available; otherwise TCGPlayer; otherwise plain
+      var priceHtml;
+      if (c.links && c.links.cardmarket) {
+        priceHtml = '<a href="' + c.links.cardmarket + '" target="_blank" rel="noopener nofollow" class="ptw-card-price-link" title="Buy on Cardmarket">' + price + ' ↗</a>';
+      } else if (c.links && c.links.tcgplayer) {
+        priceHtml = '<a href="' + c.links.tcgplayer + '" target="_blank" rel="noopener nofollow" class="ptw-card-price-link" title="Buy on TCGPlayer">' + price + ' ↗</a>';
+      } else {
+        priceHtml = '<span class="ptw-card-price">' + price + '</span>';
+      }
       html += '<tr>'
         + '<td><div class="ptw-card-cell">'
         +   cardImg(c.image_url, c.name)
@@ -505,7 +574,7 @@
         + '</div></td>'
         + '<td><span class="ptw-card-set">' + esc(c.set_code || '') + '</span></td>'
         + '<td>' + esc(c.rarity || '') + rarityBadge(c.rarity) + '</td>'
-        + '<td><span class="ptw-card-price">' + price + '</span></td>'
+        + '<td>' + priceHtml + '</td>'
         + '</tr>';
     });
 

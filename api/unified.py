@@ -79,7 +79,20 @@ def _row_to_card(row: dict) -> dict:
         "rapidapi_card_id": row.get("rapidapi_card_id"),
         "tcgplayer_id": row.get("tcgplayer_id"),
         "cardmarket_id": row.get("cardmarket_id"),
+        "pricecharting_id": row.get("pricecharting_id"),
+        "links": _build_card_links(row),
     }
+
+
+def _build_card_links(row: dict) -> dict:
+    """Inline shim to services.marketplace_urls — avoid extra import at top."""
+    from services.marketplace_urls import build_card_links
+    return build_card_links(row)
+
+
+def _build_sealed_links(row: dict) -> dict:
+    from services.marketplace_urls import build_sealed_links
+    return build_sealed_links(row)
 
 
 def _row_to_sealed(row: dict) -> dict:
@@ -90,6 +103,7 @@ def _row_to_sealed(row: dict) -> dict:
         "set_name": row.get("set_name"),
         "product_type": row.get("product_type"),
         "image_url": row.get("image_url"),
+        "links": _build_sealed_links(row),
         "eu_price": row.get("eu_price"),
         "eu_30d_avg": row.get("eu_30d_avg"),
         "eu_7d_avg": row.get("eu_7d_avg"),
@@ -161,6 +175,7 @@ def _arbitrage_calc(card_row: dict, min_profit_pct: float) -> Optional[dict]:
         "signal": signal,
         "sell_market": "TCGPlayer",
         "buy_market": "Cardmarket",
+        "links": _build_card_links(card_row),
     }
 
 

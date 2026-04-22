@@ -581,13 +581,17 @@ function renderBrowserTable(data) {
         <td>${rarityBadge(card.rarity)}</td>
         <td class="col-en">
           <div class="price-cell">
-            <div class="price-val">${fmt.usdAuto(card.en_tcgplayer_market)}</div>
+            ${card.links?.tcgplayer
+              ? `<a class="price-val price-link" href="${card.links.tcgplayer}" target="_blank" rel="noopener nofollow" title="Buy on TCGPlayer">${fmt.usdAuto(card.en_tcgplayer_market)} ↗</a>`
+              : `<div class="price-val">${fmt.usdAuto(card.en_tcgplayer_market)}</div>`}
             ${card.en_tcgplayer_low != null ? `<div class="price-sub">Low ${fmt.usdAuto(card.en_tcgplayer_low)}</div>` : ''}
           </div>
         </td>
         <td class="col-eu">
           <div class="price-cell">
-            <div class="price-val">${fmt.eurAuto(card.eu_cardmarket_7d_avg)}</div>
+            ${card.links?.cardmarket
+              ? `<a class="price-val price-link" href="${card.links.cardmarket}" target="_blank" rel="noopener nofollow" title="Buy on Cardmarket">${fmt.eurAuto(card.eu_cardmarket_7d_avg)} ↗</a>`
+              : `<div class="price-val">${fmt.eurAuto(card.eu_cardmarket_7d_avg)}</div>`}
             ${card.eu_cardmarket_30d_avg != null ? `<div class="price-sub">30d ${fmt.eurAuto(card.eu_cardmarket_30d_avg)}</div>` : ''}
           </div>
         </td>
@@ -787,9 +791,11 @@ function renderSealedGrid(data) {
           </div>
           ${p.eu_source ? `<div style="font-family:var(--font-mono);font-size:9px;color:var(--muted);margin-top:4px;">${escHtml(p.eu_source)}</div>` : ''}
         </div>
-        <a class="product-link" href="#" onclick="return false;">
-          <span>↗</span> View listing
-        </a>
+        ${p.links?.cardmarket
+          ? `<a class="product-link" href="${p.links.cardmarket}" target="_blank" rel="noopener nofollow" title="Buy on Cardmarket"><span>↗</span> Buy on Cardmarket</a>`
+          : p.links?.pricecharting
+            ? `<a class="product-link" href="${p.links.pricecharting}" target="_blank" rel="noopener nofollow" title="View on PriceCharting"><span>↗</span> View on PriceCharting</a>`
+            : `<span class="product-link" style="opacity:0.4;cursor:default;">No listing available</span>`}
       </div>
     </div>`;
   }).join('');
@@ -942,13 +948,17 @@ function renderArbitrageTable(opps) {
         </td>
         <td class="col-en">
           <div class="price-cell">
-            <div class="price-val">${fmt.usdAuto(o.en_price_usd)}</div>
+            ${o.links?.tcgplayer
+              ? `<a class="price-val price-link" href="${o.links.tcgplayer}" target="_blank" rel="noopener nofollow" title="Buy on TCGPlayer">${fmt.usdAuto(o.en_price_usd)} ↗</a>`
+              : `<div class="price-val">${fmt.usdAuto(o.en_price_usd)}</div>`}
             <div class="price-sub">${escHtml(o.sell_market || 'TCGPlayer')}</div>
           </div>
         </td>
         <td class="col-eu">
           <div class="price-cell">
-            <div class="price-val">${fmt.eurAuto(o.eu_price_eur)}</div>
+            ${o.links?.cardmarket
+              ? `<a class="price-val price-link" href="${o.links.cardmarket}" target="_blank" rel="noopener nofollow" title="Buy on Cardmarket">${fmt.eurAuto(o.eu_price_eur)} ↗</a>`
+              : `<div class="price-val">${fmt.eurAuto(o.eu_price_eur)}</div>`}
             <div class="price-sub">${escHtml(o.buy_market || 'Cardmarket')}</div>
           </div>
         </td>
@@ -962,9 +972,11 @@ function renderArbitrageTable(opps) {
         </td>
         <td>${signalBadge(o.signal)}</td>
         <td>
-          <button class="action-btn" onclick="showToast('Card detail view coming soon', 'info')">
-            ↗ Detail
-          </button>
+          ${o.links?.cardmarket
+            ? `<a class="action-btn" href="${o.links.cardmarket}" target="_blank" rel="noopener nofollow" title="Open on Cardmarket">↗ Open</a>`
+            : o.links?.tcgplayer
+              ? `<a class="action-btn" href="${o.links.tcgplayer}" target="_blank" rel="noopener nofollow" title="Open on TCGPlayer">↗ Open</a>`
+              : `<button class="action-btn" disabled style="opacity:0.4;cursor:not-allowed;">—</button>`}
         </td>
       </tr>
     `;

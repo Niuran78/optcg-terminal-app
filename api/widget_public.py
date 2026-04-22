@@ -41,7 +41,7 @@ async def widget_set_data(
                    eu_price, eu_30d_avg, eu_7d_avg, eu_trend, eu_source,
                    eu_updated_at, rapidapi_product_id,
                    COALESCE(language, 'JP') as language,
-                   en_price_usd
+                   en_price_usd, pricecharting_id
             FROM sealed_unified
             WHERE set_code = $1
             ORDER BY product_type, language
@@ -55,7 +55,8 @@ async def widget_set_data(
             SELECT card_id, name, set_code, set_name, rarity, variant, image_url,
                    en_tcgplayer_market, en_tcgplayer_low, en_ebay_avg_7d,
                    eu_cardmarket_7d_avg, eu_cardmarket_30d_avg, eu_cardmarket_lowest,
-                   eu_source, eu_updated_at
+                   eu_source, eu_updated_at,
+                   tcgplayer_id, cardmarket_id, pricecharting_id
             FROM cards_unified
             WHERE set_code = $1 AND eu_cardmarket_7d_avg IS NOT NULL
             ORDER BY eu_cardmarket_7d_avg DESC
@@ -87,6 +88,9 @@ async def widget_set_data(
                 "en": None,
             }
 
+        from services.marketplace_urls import (
+            pricecharting_url, cardmarket_sealed_url,
+        )
         price_obj = {
             "price_eur": r["eu_price"],
             "price_usd": r["en_price_usd"],
@@ -95,6 +99,10 @@ async def widget_set_data(
             "eu_trend": r["eu_trend"],
             "source": r["eu_source"] or "Cardmarket",
             "updated_at": str(r["eu_updated_at"]) if r["eu_updated_at"] else None,
+            "links": {
+                "pricecharting": pricecharting_url(r["pricecharting_id"]),
+                "cardmarket": cardmarket_sealed_url(r["rapidapi_product_id"]),
+            },
         }
 
         if lang == "JP":
@@ -106,7 +114,8 @@ async def widget_set_data(
 
     sealed = list(sealed_by_type.values())
 
-    # Flatten cards
+    # Flatten cards with buy links
+    from services.marketplace_urls import build_card_links
     cards = [
         {
             "card_id": r["card_id"],
@@ -124,6 +133,7 @@ async def widget_set_data(
             "eu_cardmarket_lowest": r["eu_cardmarket_lowest"],
             "eu_source": r["eu_source"] or "Cardmarket",
             "eu_updated_at": str(r["eu_updated_at"]) if r["eu_updated_at"] else None,
+            "links": build_card_links(dict(r)),
         }
         for r in card_rows
     ]

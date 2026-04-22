@@ -611,6 +611,19 @@ ul { list-style: none; }
   font-weight: 500;
   color: var(--text);
 }
+.price-link {
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+a.price-link {
+  color: var(--text);
+  display: inline-block;
+}
+a.price-link:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
 .price-sub {
   font-family: var(--font-mono);
   font-size: 9px;
