@@ -126,6 +126,16 @@ def _variant_from_rapidapi(card: dict) -> str:
     return _normalize_variant(version)
 
 
+def _safe_int(v) -> Optional[int]:
+    """Convert a value to int, returning None if not possible."""
+    if v is None:
+        return None
+    try:
+        return int(v)
+    except (ValueError, TypeError):
+        return None
+
+
 def _cents_to_eur(v, card_number: Optional[str] = None, set_code: Optional[str] = None) -> Optional[float]:
     """Normalize RapidAPI price to EUR.
 
@@ -286,7 +296,11 @@ async def aggregate_set(set_code: str, set_name: str, skip_en: bool = False) -> 
             cardmarket_id = None
             if eu_card:
                 rapidapi_card_id = str(eu_card.get("id") or eu_card.get("_id") or "")
-                cardmarket_id = eu_card.get("cardmarket_id") or eu_card.get("cardmarketId")
+                cm_id_raw = eu_card.get("cardmarket_id") or eu_card.get("cardmarketId")
+                try:
+                    cardmarket_id = int(cm_id_raw) if cm_id_raw is not None else None
+                except (ValueError, TypeError):
+                    cardmarket_id = None
 
             await conn.execute(
                 """
@@ -343,7 +357,7 @@ async def aggregate_set(set_code: str, set_name: str, skip_en: bool = False) -> 
                 datetime.utcnow() if eu_card else None,
                 en_card.get("tcg_price_lookup_id", ""),
                 rapidapi_card_id,
-                en_card.get("tcgplayer_id"),
+                _safe_int(en_card.get("tcgplayer_id")),
                 cardmarket_id,
             )
             upserted += 1
@@ -404,7 +418,7 @@ async def aggregate_set(set_code: str, set_name: str, skip_en: bool = False) -> 
                 eu_prices["eu_cardmarket_30d_avg"],
                 eu_prices["eu_cardmarket_lowest"],
                 rapidapi_card_id,
-                eu_card.get("cardmarket_id") or eu_card.get("cardmarketId"),
+                _safe_int(eu_card.get("cardmarket_id") or eu_card.get("cardmarketId")),
             )
             upserted += 1
 
