@@ -123,6 +123,17 @@ def _slugify_card(name: str, card_id: str, variant: Optional[str] = None) -> str
     return f"{name_slug}-{card_id}-{variant_suffix}"
 
 
+def _canonical_set_from_card_id(card_id: str) -> Optional[str]:
+    """Derive the original set_code from a card_id like 'OP13-120' → 'OP13'.
+
+    Handles prefixes OP/EB/PRB/ST/P.
+    """
+    if not card_id:
+        return None
+    m = re.match(r"^([A-Z]+\d+)-\d+", card_id.upper())
+    return m.group(1) if m else None
+
+
 def cardmarket_card_url(
     name: Optional[str],
     card_id: Optional[str],
@@ -135,10 +146,19 @@ def cardmarket_card_url(
     Cardmarket uses two separate product pages per card:
       EN: /Singles/{Set-Slug}/{card-slug}
       JP: /Singles/{Set-Slug}-Non-English/{card-slug}
+
+    Uses the card_id prefix (e.g. 'OP13' in OP13-120) as the canonical set,
+    not set_code — because reprints in different sets still use the original
+    card number and Cardmarket lists them under the original set.
     """
     if not name or not card_id or not set_code:
         return None
-    set_slug = CM_SET_SLUGS.get(set_code.upper())
+    # Derive canonical set from card_id (handles reprints correctly)
+    canonical = _canonical_set_from_card_id(card_id) or set_code.upper()
+    set_slug = CM_SET_SLUGS.get(canonical)
+    if not set_slug:
+        # Try DB set_code as fallback
+        set_slug = CM_SET_SLUGS.get(set_code.upper())
     if not set_slug:
         # Unknown set — fall back to search page
         return cardmarket_search_url(f"{name} {card_id}")
