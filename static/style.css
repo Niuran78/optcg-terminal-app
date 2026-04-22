@@ -1497,6 +1497,23 @@ a.price-link:hover {
   background: rgba(0,229,192,0.2);
 }
 
+/* Arbitrage row: compact marketplace buttons — stack vertically */
+.action-btn-tcg,
+.action-btn-cm-en,
+.action-btn-cm-jp {
+  font-size: 10px;
+  padding: 3px 8px;
+  justify-content: center;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.action-btn-tcg { background: rgba(59,130,246,0.10); color: #60a5fa; border-color: rgba(59,130,246,0.25); }
+.action-btn-tcg:hover { background: rgba(59,130,246,0.22); }
+.action-btn-cm-en { background: rgba(201,168,76,0.10); color: #c9a84c; border-color: rgba(201,168,76,0.25); }
+.action-btn-cm-en:hover { background: rgba(201,168,76,0.22); }
+.action-btn-cm-jp { background: rgba(229,92,92,0.10); color: #ff8080; border-color: rgba(229,92,92,0.25); }
+.action-btn-cm-jp:hover { background: rgba(229,92,92,0.22); }
+
 /* ═══════════════════════════════════════════════════════════════
    SECTION SUMMARY BAR (Cards browser)
    ═══════════════════════════════════════════════════════════════ */

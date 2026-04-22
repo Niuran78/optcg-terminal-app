@@ -972,11 +972,11 @@ function renderArbitrageTable(opps) {
         </td>
         <td>${signalBadge(o.signal)}</td>
         <td>
-          ${o.links?.cardmarket
-            ? `<a class="action-btn" href="${o.links.cardmarket}" target="_blank" rel="noopener nofollow" title="Open on Cardmarket">↗ Open</a>`
-            : o.links?.tcgplayer
-              ? `<a class="action-btn" href="${o.links.tcgplayer}" target="_blank" rel="noopener nofollow" title="Open on TCGPlayer">↗ Open</a>`
-              : `<button class="action-btn" disabled style="opacity:0.4;cursor:not-allowed;">—</button>`}
+          <div style="display:flex;flex-direction:column;gap:2px;">
+            ${o.links?.tcgplayer ? `<a class="action-btn action-btn-tcg" href="${o.links.tcgplayer}" target="_blank" rel="noopener nofollow" title="Buy on TCGPlayer (EN)">TCGPlayer ↗</a>` : ''}
+            ${o.links?.cardmarket_en ? `<a class="action-btn action-btn-cm-en" href="${o.links.cardmarket_en}" target="_blank" rel="noopener nofollow" title="Buy on Cardmarket (EN)">CM EN ↗</a>` : ''}
+            ${o.links?.cardmarket_jp ? `<a class="action-btn action-btn-cm-jp" href="${o.links.cardmarket_jp}" target="_blank" rel="noopener nofollow" title="Buy on Cardmarket (JP)">CM JP ↗</a>` : ''}
+          </div>
         </td>
       </tr>
     `;

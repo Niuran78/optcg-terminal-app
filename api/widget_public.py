@@ -102,7 +102,7 @@ async def widget_set_data(
             "links": {
                 "pricecharting": pricecharting_url(r["pricecharting_id"]),
                 "cardmarket": cardmarket_sealed_url(
-                    r["product_type"], r["set_code"], r["set_name"]
+                    r["product_type"], r["set_code"], r["set_name"], lang,
                 ),
             },
         }

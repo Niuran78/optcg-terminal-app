@@ -128,14 +128,23 @@ def cardmarket_card_url(
     card_id: Optional[str],
     set_code: Optional[str],
     variant: Optional[str] = None,
+    language: Optional[str] = None,
 ) -> Optional[str]:
-    """Build Cardmarket single-card URL from our fields."""
+    """Build Cardmarket single-card URL from our fields.
+
+    Cardmarket uses two separate product pages per card:
+      EN: /Singles/{Set-Slug}/{card-slug}
+      JP: /Singles/{Set-Slug}-Non-English/{card-slug}
+    """
     if not name or not card_id or not set_code:
         return None
     set_slug = CM_SET_SLUGS.get(set_code.upper())
     if not set_slug:
         # Unknown set — fall back to search page
         return cardmarket_search_url(f"{name} {card_id}")
+    # Append -Non-English suffix for Japanese products
+    if language and language.upper() == "JP":
+        set_slug = f"{set_slug}-Non-English"
     card_slug = _slugify_card(name, card_id, variant)
     if not card_slug:
         return None
@@ -155,10 +164,13 @@ def cardmarket_sealed_url(
     product_type: Optional[str],
     set_code: Optional[str],
     set_name: Optional[str] = None,
+    language: Optional[str] = None,
 ) -> Optional[str]:
     """Build Cardmarket sealed-product URL.
 
-    Booster Boxes: /en/OnePiece/Products/Booster-Boxes/{set-slug}-Booster-Box
+    Cardmarket uses separate product pages per language:
+      EN: /Booster-Boxes/{set-slug}-Booster-Box
+      JP: /Booster-Boxes/{set-slug}-Booster-Box-Non-English
     """
     if not set_code:
         return None
@@ -166,16 +178,17 @@ def cardmarket_sealed_url(
     if not set_slug:
         return None
 
+    lang_suffix = "-Non-English" if language and language.upper() == "JP" else ""
     ptype = (product_type or "").lower()
     if "booster box" in ptype:
-        return f"https://www.cardmarket.com/en/OnePiece/Products/Booster-Boxes/{set_slug}-Booster-Box"
+        return f"https://www.cardmarket.com/en/OnePiece/Products/Booster-Boxes/{set_slug}-Booster-Box{lang_suffix}"
     if "booster" in ptype or "pack" in ptype:
-        return f"https://www.cardmarket.com/en/OnePiece/Products/Booster/{set_slug}-Booster-Pack"
+        return f"https://www.cardmarket.com/en/OnePiece/Products/Booster/{set_slug}-Booster-Pack{lang_suffix}"
     if "case" in ptype:
         # Cases often sold as bundles; fall back to booster-box page
-        return f"https://www.cardmarket.com/en/OnePiece/Products/Booster-Boxes/{set_slug}-Booster-Box"
+        return f"https://www.cardmarket.com/en/OnePiece/Products/Booster-Boxes/{set_slug}-Booster-Box{lang_suffix}"
     if "starter" in ptype or "deck" in ptype:
-        return f"https://www.cardmarket.com/en/OnePiece/Products/Starter-Decks/{set_slug}"
+        return f"https://www.cardmarket.com/en/OnePiece/Products/Starter-Decks/{set_slug}{lang_suffix}"
     # Generic search fallback
     if set_name:
         return cardmarket_search_url(f"{set_name} {product_type or ''}")
@@ -199,25 +212,29 @@ def pricecharting_url(pricecharting_id: Optional[str]) -> Optional[str]:
 def build_card_links(row: dict) -> dict:
     """Build ALL marketplace links for a card row.
 
-    Prioritizes exact URLs (via ID or slug) over search fallbacks.
-    Returns dict with keys: tcgplayer, cardmarket, pricecharting (any may be None).
+    Returns a dict with TCGPlayer + PriceCharting URLs (language-agnostic)
+    PLUS BOTH Cardmarket URLs (en + jp) so the UI can offer both.
     """
     tcg = tcgplayer_url(row.get("tcgplayer_id"))
     if not tcg:
         tcg = tcgplayer_search_url(row.get("name", ""), row.get("card_id"))
 
-    cm = cardmarket_card_url(
-        row.get("name"),
-        row.get("card_id"),
-        row.get("set_code"),
-        row.get("variant"),
-    )
+    name = row.get("name")
+    cid = row.get("card_id")
+    sc = row.get("set_code")
+    var = row.get("variant")
+
+    cm_en = cardmarket_card_url(name, cid, sc, var, language="EN")
+    cm_jp = cardmarket_card_url(name, cid, sc, var, language="JP")
 
     pc = pricecharting_url(row.get("pricecharting_id"))
 
+    # Default 'cardmarket' = EN (most common on the Browser tab). JP exposed too.
     return {
         "tcgplayer": tcg,
-        "cardmarket": cm,
+        "cardmarket": cm_en,
+        "cardmarket_en": cm_en,
+        "cardmarket_jp": cm_jp,
         "pricecharting": pc,
     }
 
@@ -228,6 +245,7 @@ def build_sealed_links(row: dict) -> dict:
         row.get("product_type"),
         row.get("set_code"),
         row.get("set_name"),
+        row.get("language"),
     )
     pc = pricecharting_url(row.get("pricecharting_id"))
 
