@@ -210,6 +210,12 @@ if os.path.exists(static_dir):
     async def serve_login():
         return FileResponse(os.path.join(static_dir, "login.html"))
 
+    @app.get("/widget", include_in_schema=False)
+    async def serve_widget():
+        """Product-aware widget for Shopify embed via iframe.
+        Usage: /widget?set=OP13 or /widget?sku=OP13-BOX-JP"""
+        return FileResponse(os.path.join(static_dir, "product-widget.html"))
+
     @app.get("/", include_in_schema=False)
     async def serve_index():
         return FileResponse(os.path.join(static_dir, "index.html"))
