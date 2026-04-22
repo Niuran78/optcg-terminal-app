@@ -157,14 +157,11 @@ function bindNav() {
   // Apply initial header state on load
   updateCurrencyHeaders();
 
-  // User menu toggle
+  // User menu: only attach the outside-click closer.
+  // The toggle itself is bound via onclick in renderNavUser() to avoid
+  // double-firing (addEventListener + onclick would cancel each other out).
   const userMenu = $('user-menu');
   if (userMenu) {
-    $('user-btn')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      userMenu.classList.toggle('open');
-    });
-    // Close menu only on clicks OUTSIDE the menu
     document.addEventListener('click', (e) => {
       if (userMenu.contains(e.target)) return;
       userMenu.classList.remove('open');
