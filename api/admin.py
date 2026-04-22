@@ -444,8 +444,10 @@ async def admin_pricecharting_test(user: UserInfo = Depends(get_current_user)):
 
 @router.post("/admin/seed-history")
 async def admin_seed_history(
+    background_tasks: BackgroundTasks,
     days: int = 365,
     missing_only: bool = True,
+    wait: bool = False,
     user: UserInfo = Depends(get_current_user),
 ):
     """Seed synthetic price history for cards missing snapshots.
@@ -453,10 +455,22 @@ async def admin_seed_history(
     Use `missing_only=true` (default) to only top-up cards with fewer than
     `days/2` existing rows — safe to re-run after each CSV sync to fill in
     history for newly-added JP-only or Championship cards.
+
+    Set `wait=true` to run synchronously (may time out for 365-day full seeds).
+    Otherwise the seed runs in the background and returns immediately.
     """
     if user.tier != "elite":
         raise HTTPException(403, "Elite tier required")
 
     from services.price_history_seeder import seed_synthetic_history
-    result = await seed_synthetic_history(days=days, missing_only=missing_only)
-    return result
+    if wait:
+        result = await seed_synthetic_history(days=days, missing_only=missing_only)
+        return result
+
+    background_tasks.add_task(seed_synthetic_history, days=days, missing_only=missing_only)
+    return {
+        "status": "started",
+        "days": days,
+        "missing_only": missing_only,
+        "message": "Seed running in background. Check /api/cards/browse charts in ~1-2 minutes.",
+    }

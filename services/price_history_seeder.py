@@ -126,34 +126,42 @@ async def seed_synthetic_history(days: int = 90, missing_only: bool = False) -> 
                 eu_lowest.append(round(path[i] * 0.85, 2) if has_eu_real else None)
 
         total = len(card_ids)
-        logger.info(f"Synthetic history: prepared {total} rows, bulk inserting...")
+        logger.info(f"Synthetic history: prepared {total} rows, bulk inserting in chunks...")
 
-        # Single UNNEST-based INSERT with ON CONFLICT DO NOTHING
-        inserted = await conn.fetchval(
-            """
-            WITH input AS (
-                SELECT * FROM UNNEST($1::int[], $2::date[], $3::real[], $4::real[], $5::real[])
-                AS t(card_unified_id, snap_date, en_tcgplayer_market, eu_cardmarket_7d_avg, eu_cardmarket_lowest)
-            ),
-            inserted AS (
-                INSERT INTO daily_price_snapshots (
-                    card_unified_id, snap_date,
-                    en_tcgplayer_market, eu_cardmarket_7d_avg,
-                    eu_cardmarket_30d_avg, eu_cardmarket_lowest
+        # Chunked UNNEST INSERT — Supabase statement-timeout caps single queries.
+        # 100k rows/chunk keeps each INSERT under ~5s on pooled connection.
+        CHUNK = 100_000
+        total_inserted = 0
+        for start in range(0, total, CHUNK):
+            end = min(start + CHUNK, total)
+            inserted = await conn.fetchval(
+                """
+                WITH input AS (
+                    SELECT * FROM UNNEST($1::int[], $2::date[], $3::real[], $4::real[], $5::real[])
+                    AS t(card_unified_id, snap_date, en_tcgplayer_market, eu_cardmarket_7d_avg, eu_cardmarket_lowest)
+                ),
+                inserted AS (
+                    INSERT INTO daily_price_snapshots (
+                        card_unified_id, snap_date,
+                        en_tcgplayer_market, eu_cardmarket_7d_avg,
+                        eu_cardmarket_30d_avg, eu_cardmarket_lowest
+                    )
+                    SELECT card_unified_id, snap_date, en_tcgplayer_market,
+                           eu_cardmarket_7d_avg, eu_cardmarket_7d_avg, eu_cardmarket_lowest
+                    FROM input
+                    ON CONFLICT (card_unified_id, snap_date) DO NOTHING
+                    RETURNING 1
                 )
-                SELECT card_unified_id, snap_date, en_tcgplayer_market,
-                       eu_cardmarket_7d_avg, eu_cardmarket_7d_avg, eu_cardmarket_lowest
-                FROM input
-                ON CONFLICT (card_unified_id, snap_date) DO NOTHING
-                RETURNING 1
+                SELECT COUNT(*) FROM inserted
+                """,
+                card_ids[start:end], snap_dates[start:end],
+                en_prices[start:end], eu_prices[start:end], eu_lowest[start:end],
             )
-            SELECT COUNT(*) FROM inserted
-            """,
-            card_ids, snap_dates, en_prices, eu_prices, eu_lowest,
-        )
+            total_inserted += (inserted or 0)
+            logger.info(f"Synthetic history: chunk {start}-{end} → {inserted} inserted ({total_inserted}/{total} so far)")
 
-    logger.info(f"Synthetic history seed: {inserted} rows inserted, {total - (inserted or 0)} skipped (already present)")
-    return {"inserted": inserted or 0, "skipped": total - (inserted or 0), "days": days}
+    logger.info(f"Synthetic history seed: {total_inserted} rows inserted, {total - total_inserted} skipped (already present)")
+    return {"inserted": total_inserted, "skipped": total - total_inserted, "days": days}
 
 
 async def daily_snapshot_from_current() -> dict:
