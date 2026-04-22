@@ -438,3 +438,25 @@ async def admin_pricecharting_test(user: UserInfo = Depends(get_current_user)):
         "success_rate": f"{successful}/{total} ({successful/total*100:.0f}%)" if total else "0/0",
         "results": results,
     }
+
+
+# ── Seed price history ────────────────────────────────────────────────────────
+
+@router.post("/admin/seed-history")
+async def admin_seed_history(
+    days: int = 365,
+    missing_only: bool = True,
+    user: UserInfo = Depends(get_current_user),
+):
+    """Seed synthetic price history for cards missing snapshots.
+
+    Use `missing_only=true` (default) to only top-up cards with fewer than
+    `days/2` existing rows — safe to re-run after each CSV sync to fill in
+    history for newly-added JP-only or Championship cards.
+    """
+    if user.tier != "elite":
+        raise HTTPException(403, "Elite tier required")
+
+    from services.price_history_seeder import seed_synthetic_history
+    result = await seed_synthetic_history(days=days, missing_only=missing_only)
+    return result

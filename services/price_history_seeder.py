@@ -48,10 +48,16 @@ def _synth_path(
     return path
 
 
-async def seed_synthetic_history(days: int = 90) -> dict:
+async def seed_synthetic_history(days: int = 90, missing_only: bool = False) -> dict:
     """Create `days` days of synthetic snapshots per card via a single UNNEST bulk INSERT.
 
     Much faster than row-by-row: 2000 cards × 90 days in ~5s total.
+
+    Args:
+        days: how many days of history to seed per card
+        missing_only: if True, only seed cards that have fewer than `days/2`
+                      existing snapshot rows. Use this for incremental top-ups
+                      after new cards are added by the CSV sync.
     """
     from db.init import get_pool
 
@@ -62,28 +68,42 @@ async def seed_synthetic_history(days: int = 90) -> dict:
     card_ids: list[int] = []
     snap_dates: list[date] = []
     en_prices: list[Optional[float]] = []
-    eu_prices: list[float] = []
-    eu_lowest: list[float] = []
+    eu_prices: list[Optional[float]] = []
+    eu_lowest: list[Optional[float]] = []
 
     async with pool.acquire() as conn:
-        cards = await conn.fetch(
+        # Include JP-only cards too: if pc_price_usd is set but en/eu columns
+        # are NULL, derive a JP-EUR baseline from pc_price_usd * 0.92.
+        query = """
+            SELECT cu.id, cu.card_id, cu.set_code, cu.language,
+                   cu.eu_cardmarket_7d_avg, cu.eu_cardmarket_30d_avg, cu.eu_cardmarket_lowest,
+                   cu.en_tcgplayer_market, cu.en_tcgplayer_low,
+                   cu.pc_price_usd,
+                   COALESCE(cu.eu_cardmarket_7d_avg, cu.pc_price_usd * 0.92) AS eu_current
+            FROM cards_unified cu
+            WHERE (cu.eu_cardmarket_7d_avg IS NOT NULL
+                OR cu.en_tcgplayer_market IS NOT NULL
+                OR cu.pc_price_usd IS NOT NULL)
+        """
+        if missing_only:
+            query += f"""
+              AND (
+                SELECT COUNT(*) FROM daily_price_snapshots d
+                WHERE d.card_unified_id = cu.id
+              ) < {days // 2}
             """
-            SELECT id, card_id, set_code,
-                   eu_cardmarket_7d_avg, eu_cardmarket_30d_avg, eu_cardmarket_lowest,
-                   en_tcgplayer_market, en_tcgplayer_low
-            FROM cards_unified
-            WHERE eu_cardmarket_7d_avg IS NOT NULL
-            """
-        )
+        cards = await conn.fetch(query)
 
         for c in cards:
-            cur = c["eu_cardmarket_7d_avg"]
+            cur = c["eu_current"]
+            if cur is None or cur <= 0:
+                continue
             avg30 = c["eu_cardmarket_30d_avg"] or cur
             low = c["eu_cardmarket_lowest"] or cur * 0.85
             drift_7_30 = (cur - avg30) / 30.0
             start_90 = max(avg30 - drift_7_30 * 60, low * 0.9, cur * 0.5)
 
-            seed_key = f"{c['card_id']}-{c['set_code']}"
+            seed_key = f"{c['card_id']}-{c['set_code']}-{c['language'] or ''}"
             path = _synth_path(start_90, cur, days, volatility=0.028, seed_key=seed_key)
 
             en_cur = c["en_tcgplayer_market"]
@@ -93,13 +113,17 @@ async def seed_synthetic_history(days: int = 90) -> dict:
             else:
                 en_path = [None] * days
 
+            # For JP rows, store the JP-derived path under eu_cardmarket_7d_avg
+            # so the chart modal (which reads that column) can render it.
+            has_eu_real = c["eu_cardmarket_7d_avg"] is not None
+
             for i in range(days):
                 snap_date = today - timedelta(days=days - 1 - i)
                 card_ids.append(c["id"])
                 snap_dates.append(snap_date)
                 en_prices.append(en_path[i])
                 eu_prices.append(path[i])
-                eu_lowest.append(round(path[i] * 0.85, 2))
+                eu_lowest.append(round(path[i] * 0.85, 2) if has_eu_real else None)
 
         total = len(card_ids)
         logger.info(f"Synthetic history: prepared {total} rows, bulk inserting...")
@@ -136,6 +160,10 @@ async def daily_snapshot_from_current() -> dict:
     """Write one snapshot row per card from the CURRENT price state.
 
     Runs daily via cron. Idempotent on (card_unified_id, snap_date).
+
+    Also handles JP-only cards: when language='JP' and eu_cardmarket_7d_avg
+    is NULL, we derive the EUR baseline from pc_price_usd * 0.92 so JP charts
+    have data.
     """
     from db.init import get_pool
 
@@ -152,9 +180,13 @@ async def daily_snapshot_from_current() -> dict:
             )
             SELECT id, $1,
                    en_tcgplayer_market, en_tcgplayer_low,
-                   eu_cardmarket_7d_avg, eu_cardmarket_30d_avg, eu_cardmarket_lowest
+                   COALESCE(eu_cardmarket_7d_avg, pc_price_usd * 0.92),
+                   COALESCE(eu_cardmarket_30d_avg, pc_price_usd * 0.92),
+                   COALESCE(eu_cardmarket_lowest, pc_price_usd * 0.92 * 0.85)
             FROM cards_unified
-            WHERE eu_cardmarket_7d_avg IS NOT NULL OR en_tcgplayer_market IS NOT NULL
+            WHERE eu_cardmarket_7d_avg IS NOT NULL
+               OR en_tcgplayer_market IS NOT NULL
+               OR pc_price_usd IS NOT NULL
             ON CONFLICT (card_unified_id, snap_date) DO UPDATE SET
                 en_tcgplayer_market = EXCLUDED.en_tcgplayer_market,
                 en_tcgplayer_low = EXCLUDED.en_tcgplayer_low,
