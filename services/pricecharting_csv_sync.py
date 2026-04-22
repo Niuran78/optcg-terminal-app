@@ -175,6 +175,47 @@ SEALED_KEYWORDS = [
 # Card ID pattern in product-name: "Luffy OP13-001" / "Ace ST17-008" / etc.
 CARD_ID_RE = re.compile(r'\b([A-Z]+\d+)-(\d+)\b')
 
+# Variant pattern in product-name: e.g. "Luffy [Alternate Art] OP13-001"
+VARIANT_RE = re.compile(r'\[([^\]]+)\]')
+
+
+def _classify_variant(variant_text: str) -> str:
+    """Map PriceCharting variant text to our DB variant names.
+
+    PriceCharting uses labels like:
+      [Alternate Art]             → Alternate Art
+      [Alternate Art Manga]       → Alternate Art 2
+      [Alternate Art PRB01]       → Alternate Art 3
+      [2nd Anniversary]           → V5
+      [Wanted]                    → V6
+      [Manga PRB01]               → V7
+      [PRB01]                     → V8
+    No label                      → Normal
+    """
+    if not variant_text:
+        return "Normal"
+    v = variant_text.strip().lower()
+    if v == "alternate art":
+        return "Alternate Art"
+    if "alternate art" in v and ("manga" in v or "2" in v):
+        return "Alternate Art 2"
+    if "alternate art" in v and "prb" in v:
+        return "Alternate Art 3"
+    if "alternate art" in v:
+        return "Alternate Art"
+    if "anniversary" in v:
+        return "V5"
+    if "wanted" in v:
+        return "V6"
+    if "manga" in v and "prb" in v:
+        return "V7"
+    if "prb" in v:
+        return "V8"
+    if "foil" in v or "parallel" in v:
+        return "Foil"
+    # Fallback: store the raw label
+    return variant_text.strip()
+
 
 def _price_to_cents(price_str: str) -> Optional[int]:
     """'$12.45' → 1245 cents. Returns None if empty/unparseable."""
@@ -268,12 +309,16 @@ def parse_csv(csv_text: str) -> dict:
             if not m:
                 continue
             card_id = f"{m.group(1)}-{m.group(2)}"
-            # Name = product-name with card ID stripped
-            name = CARD_ID_RE.sub('', product).strip()
+            # Extract variant (if bracketed label present)
+            vm = VARIANT_RE.search(product)
+            variant = _classify_variant(vm.group(1) if vm else "")
+            # Name = product-name with ID and [variant] stripped
+            name = CARD_ID_RE.sub('', VARIANT_RE.sub('', product)).strip()
             cards.append({
                 "set_code": set_code,
                 "language": language,
                 "card_id": card_id,
+                "variant": variant,
                 "name": name or card_id,
                 "price_usd_cents": price,
                 "pc_id": pc_id,
@@ -390,45 +435,67 @@ async def sync_from_csv() -> dict:
     cards_missing: list[str] = []
 
     priced_cards = [c for c in cards if c["price_usd_cents"] is not None]
+
+    # Deduplicate on (card_id, variant, language) — matches the DB UNIQUE key.
+    dedup: dict[tuple, dict] = {}
+    for c in priced_cards:
+        key = (c["card_id"], c.get("variant", "Normal"), c.get("language", "EN"))
+        prev = dedup.get(key)
+        if prev is None or (c["price_usd_cents"] or 0) > (prev["price_usd_cents"] or 0):
+            dedup[key] = c
+    priced_cards = list(dedup.values())
+
     set_codes = [c["set_code"] for c in priced_cards]
     card_ids = [c["card_id"] for c in priced_cards]
+    variants = [c.get("variant", "Normal") for c in priced_cards]
     prices   = [c["price_usd_cents"] / 100.0 for c in priced_cards]
     pc_ids   = [c["pc_id"] for c in priced_cards]
+    names_arr = [c.get("name", "") for c in priced_cards]
+    languages = [c.get("language", "EN") for c in priced_cards]
 
     async with pool.acquire() as conn:
-        # Single UPDATE using UNNEST to stream all rows in one query
+        # Upsert by (set_code, card_id, variant)
+        #   - Update existing rows' prices
+        #   - Insert missing rows with minimal metadata (name + PC price)
+        #     (enrichment with rarity, image etc happens in card_aggregator)
         upd_count = await conn.fetchval("""
             WITH input AS (
-                SELECT * FROM UNNEST($1::text[], $2::text[], $3::real[], $4::text[])
-                AS t(set_code, card_id, pc_price_usd, pricecharting_id)
+                SELECT * FROM UNNEST($1::text[], $2::text[], $3::text[], $4::real[], $5::text[], $6::text[], $7::text[])
+                AS t(set_code, card_id, variant, pc_price_usd, pricecharting_id, name, language)
             ),
-            updated AS (
-                UPDATE cards_unified c
-                SET pc_price_usd = i.pc_price_usd,
-                    pricecharting_id = i.pricecharting_id,
-                    pc_updated_at = NOW()
-                FROM input i
-                WHERE c.set_code = i.set_code AND c.card_id = i.card_id
+            upserted AS (
+                INSERT INTO cards_unified (
+                    set_code, card_id, variant, name, language,
+                    pc_price_usd, pricecharting_id, pc_updated_at,
+                    en_tcgplayer_market,
+                    eu_cardmarket_7d_avg, eu_cardmarket_30d_avg, eu_cardmarket_lowest,
+                    eu_source, eu_updated_at
+                )
+                SELECT
+                    set_code, card_id, variant, name, language,
+                    pc_price_usd, pricecharting_id, NOW(),
+                    pc_price_usd,
+                    pc_price_usd * 0.92, pc_price_usd * 0.92, pc_price_usd * 0.92 * 0.85,
+                    'PriceCharting', NOW()
+                FROM input
+                ON CONFLICT (card_id, variant, language) DO UPDATE SET
+                    set_code = EXCLUDED.set_code,
+                    language = EXCLUDED.language,
+                    pc_price_usd = EXCLUDED.pc_price_usd,
+                    pricecharting_id = EXCLUDED.pricecharting_id,
+                    pc_updated_at = NOW(),
+                    en_tcgplayer_market = EXCLUDED.en_tcgplayer_market,
+                    eu_cardmarket_7d_avg = EXCLUDED.eu_cardmarket_7d_avg,
+                    eu_cardmarket_30d_avg = EXCLUDED.eu_cardmarket_30d_avg,
+                    eu_cardmarket_lowest = EXCLUDED.eu_cardmarket_lowest,
+                    eu_source = 'PriceCharting',
+                    eu_updated_at = NOW()
                 RETURNING 1
             )
-            SELECT COUNT(*) FROM updated
-        """, set_codes, card_ids, prices, pc_ids)
+            SELECT COUNT(*) FROM upserted
+        """, set_codes, card_ids, variants, prices, pc_ids, names_arr, languages)
         cards_updated = upd_count or 0
-
-        # Find CSV cards not in DB — use UNNEST again for fast LEFT JOIN
-        miss_rows = await conn.fetch("""
-            WITH input AS (
-                SELECT * FROM UNNEST($1::text[], $2::text[])
-                AS t(set_code, card_id)
-            )
-            SELECT i.set_code, i.card_id
-            FROM input i
-            LEFT JOIN cards_unified c
-              ON c.set_code = i.set_code AND c.card_id = i.card_id
-            WHERE c.id IS NULL
-            LIMIT 100
-        """, set_codes, card_ids)
-        cards_missing = [f"{r['set_code']}-{r['card_id']}" for r in miss_rows]
+        cards_missing = []
 
     logger.info(
         f"pricecharting_csv_sync complete: sealed={sealed_inserted}+{sealed_updated}, "

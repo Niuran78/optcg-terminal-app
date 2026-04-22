@@ -116,6 +116,81 @@ def _row_to_sealed(row: dict) -> dict:
     }
 
 
+def _jp_en_arbitrage_calc(row: dict, min_profit_pct: float) -> Optional[dict]:
+    """Calculate JP→EN arbitrage for a single card-variant.
+
+    Model: Buy the JP version (from Japan, e.g. Yuyutei/Cardrush), ship to EU,
+    sell as JP-sealed or JP-single on Cardmarket/eBay to collectors.
+    """
+    jp_usd = row.get("jp_price_usd")
+    en_usd = row.get("en_price_usd")
+    if not jp_usd or not en_usd or jp_usd <= 0 or en_usd <= 0:
+        return None
+
+    jp_eur = jp_usd * USD_TO_EUR
+    en_eur = en_usd * USD_TO_EUR
+
+    # Costs: JP price + ~15% shipping/customs from Japan
+    shipping_import_pct = 0.15
+    cost_eur = jp_eur * (1 + shipping_import_pct)
+
+    # Revenue: Sell at EN-collector price MINUS CM fees (5%)
+    # Note: JP cards usually sell at ~70-85% of EN equivalent (not full EN price)
+    # because JP-sellers attract JP-collectors, not EN-players.
+    # We use 0.75 as realistic collector-market discount.
+    jp_to_en_sell_factor = 0.75
+    revenue_eur = en_eur * jp_to_en_sell_factor * (1 - 0.05)
+
+    profit_eur = revenue_eur - cost_eur
+    profit_pct = (profit_eur / cost_eur * 100) if cost_eur > 0 else 0
+
+    if profit_pct < min_profit_pct:
+        return None
+
+    spread_ratio = en_eur / jp_eur
+    signal = "BUY" if profit_pct >= 20 else "WATCH"
+
+    # Build links (use JP-specific cardmarket URL when possible)
+    from services.marketplace_urls import (
+        tcgplayer_url, cardmarket_card_url, pricecharting_url,
+    )
+    name = row.get("name")
+    cid = row.get("card_id")
+    sc = row.get("set_code")
+    var = row.get("variant")
+    links = {
+        "tcgplayer": tcgplayer_url(row.get("en_tcgplayer_id")),
+        "cardmarket_en": cardmarket_card_url(name, cid, sc, var, language="EN"),
+        "cardmarket_jp": cardmarket_card_url(name, cid, sc, var, language="JP"),
+        "pricecharting_jp": pricecharting_url(row.get("jp_pricecharting_id")),
+        "pricecharting_en": pricecharting_url(row.get("en_pricecharting_id")),
+    }
+
+    return {
+        "card_id": cid,
+        "name": name,
+        "set_code": sc,
+        "set_name": row.get("set_name"),
+        "rarity": row.get("rarity"),
+        "variant": var,
+        "image_url": row.get("image_url"),
+        "jp_price_usd": round(jp_usd, 2),
+        "jp_price_eur": round(jp_eur, 2),
+        "en_price_usd": round(en_usd, 2),
+        "en_price_eur": round(en_eur, 2),
+        "eu_price_eur": round(en_eur, 2),          # kept for UI back-compat
+        "spread_ratio": round(spread_ratio, 2),
+        "cost_eur": round(cost_eur, 2),
+        "revenue_eur": round(revenue_eur, 2),
+        "profit_eur": round(profit_eur, 2),
+        "profit_pct": round(profit_pct, 2),
+        "signal": signal,
+        "sell_market": "Cardmarket (EN buyers pay premium)",
+        "buy_market": "Yuyutei / Cardrush (JP)",
+        "links": links,
+    }
+
+
 def _arbitrage_calc(card_row: dict, min_profit_pct: float) -> Optional[dict]:
     """Calculate EN→EU arbitrage for a single card.
 
@@ -513,11 +588,13 @@ async def arbitrage_scanner(
     offset: int = Query(0, ge=0),
     user: UserInfo = Depends(get_current_user),
 ):
-    """Find EN↔EU arbitrage opportunities.
+    """Find JP↔EN arbitrage opportunities.
 
-    Compares en_tcgplayer_market (USD, converted to EUR) vs
-    eu_cardmarket_7d_avg (EUR) and calculates profit after fees/shipping.
+    For each card_id + variant that exists in BOTH Japanese and English,
+    computes the price spread. JP is typically cheaper (sourced from Japan)
+    while EN commands premium in Western collector markets.
 
+    Ranking: highest absolute EUR spread first.
     Free tier: limited to the 3 latest sets.
     Pro+: all sets.
     """
@@ -525,18 +602,13 @@ async def arbitrage_scanner(
     if not user.can_access("pro"):
         allowed_sets = FREE_TIER_SETS
 
-    conditions = [
-        "en_tcgplayer_market IS NOT NULL",
-        "eu_cardmarket_7d_avg IS NOT NULL",
-        "en_tcgplayer_market > 0",
-        "eu_cardmarket_7d_avg > 0",
-    ]
     params: list = []
     param_idx = 1
+    set_filter = ""
 
     if allowed_sets is not None:
         placeholders = ",".join(f"${param_idx + i}" for i in range(len(allowed_sets)))
-        conditions.append(f"set_code IN ({placeholders})")
+        set_filter = f"AND jp.set_code IN ({placeholders})"
         params.extend(allowed_sets)
         param_idx += len(allowed_sets)
 
@@ -550,16 +622,34 @@ async def arbitrage_scanner(
                     "upgrade_url": "/login.html#upgrade",
                 },
             )
-        conditions.append(f"set_code = ${param_idx}")
+        set_filter += f" AND jp.set_code = ${param_idx}"
         params.append(set_code.upper())
         param_idx += 1
 
-    where_clause = "WHERE " + " AND ".join(conditions)
-    query = (
-        f"SELECT * FROM cards_unified {where_clause} "
-        f"ORDER BY (eu_cardmarket_7d_avg - en_tcgplayer_market * {USD_TO_EUR}) DESC "
-        f"LIMIT 1000"  # Fetch more than needed; filter by profit_pct in Python
-    )
+    query = f"""
+        SELECT
+            jp.card_id, jp.variant, jp.name, jp.set_code, jp.set_name,
+            jp.rarity, jp.image_url,
+            jp.pc_price_usd AS jp_price_usd,
+            en.pc_price_usd AS en_price_usd,
+            jp.tcgplayer_id AS jp_tcgplayer_id,
+            jp.cardmarket_id AS jp_cardmarket_id,
+            en.tcgplayer_id AS en_tcgplayer_id,
+            en.cardmarket_id AS en_cardmarket_id,
+            jp.pricecharting_id AS jp_pricecharting_id,
+            en.pricecharting_id AS en_pricecharting_id
+        FROM cards_unified jp
+        JOIN cards_unified en
+          ON en.card_id = jp.card_id
+         AND en.variant = jp.variant
+         AND en.language = 'EN'
+        WHERE jp.language = 'JP'
+          AND jp.pc_price_usd > 1.0
+          AND en.pc_price_usd > 1.0
+          {set_filter}
+        ORDER BY (en.pc_price_usd - jp.pc_price_usd) DESC
+        LIMIT 1000
+    """
 
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -567,7 +657,7 @@ async def arbitrage_scanner(
 
     opportunities = []
     for row in rows:
-        arb = _arbitrage_calc(dict(row), min_profit_pct)
+        arb = _jp_en_arbitrage_calc(dict(row), min_profit_pct)
         if arb:
             opportunities.append(arb)
 
