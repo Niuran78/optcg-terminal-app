@@ -336,9 +336,7 @@
   <!-- Footer -->
   <div class="ptw-footer">
     <span class="ptw-footer-note" id="ptw-timestamp">Loading...</span>
-    <a href="https://terminal.holygrade.com" class="ptw-footer-link" target="_blank" rel="noopener">
-      Powered by OPTCG Terminal &rarr;
-    </a>
+    <span class="ptw-footer-link" style="cursor:default;">Powered by OPTCG Terminal</span>
   </div>
 </div>
 
@@ -556,21 +554,20 @@
         hour: '2-digit', minute: '2-digit'
       });
 
-      var footerLink = document.querySelector('.ptw-footer-link');
-      if (footerLink) {
-        footerLink.textContent = 'View full ' + setCode + ' data \u2192';
-      }
     } catch (err) {
       renderError('Could not connect to OPTCG Terminal. ' + (err.message || ''));
     }
   }
 
-  // Init
+  // Init — only show widget if a set was detected from the product.
+  // No fallback picker: widget is product-specific and must hide when not applicable.
   var setCode = getSetFromURL();
   if (setCode) {
     loadSetData(setCode);
   } else {
-    renderPicker();
+    // Hide the entire widget when no set is detected
+    var rootEl = document.querySelector('.ptw');
+    if (rootEl) rootEl.style.display = 'none';
   }
 })();
 </script>
