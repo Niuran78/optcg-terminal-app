@@ -5,6 +5,8 @@ Endpoints:
     POST /admin/backfill-en-prices              — backfill EN prices from TCG Price Lookup
     POST /admin/seed-missing-sets               — seed sets with < 10 cards
     POST /admin/backfill-sealed-from-pricecharting — backfill JP/EN sealed prices
+    POST /admin/sync-pricecharting-csv          — full CSV sync (sealed + cards)
+    GET  /admin/sync-status                     — last CSV sync result
     GET  /admin/status                          — DB stats dashboard
     GET  /admin/pricecharting-test              — test PriceCharting scraping accuracy
 """
@@ -12,7 +14,7 @@ import asyncio
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 
 from db.init import get_pool
 from middleware.tier_gate import get_current_user, UserInfo
@@ -351,6 +353,65 @@ async def admin_backfill_sealed(user: UserInfo = Depends(get_current_user)):
     except Exception as e:
         logger.error(f"PriceCharting sealed backfill failed: {e}")
         raise HTTPException(500, f"Backfill failed: {e}")
+
+
+# ── PriceCharting CSV Sync ────────────────────────────────────────────────
+
+# In-memory last sync status (resets on deploy)
+_last_sync_status: dict = {
+    "running": False,
+    "last_run": None,
+    "last_result": None,
+    "last_error": None,
+}
+
+
+async def _run_csv_sync_in_background():
+    """Background wrapper around sync_from_csv() with status tracking."""
+    import datetime
+    from services.pricecharting_csv_sync import sync_from_csv
+
+    _last_sync_status["running"] = True
+    _last_sync_status["last_error"] = None
+    try:
+        result = await sync_from_csv()
+        _last_sync_status["last_result"] = result
+        _last_sync_status["last_run"] = datetime.datetime.utcnow().isoformat() + "Z"
+        logger.info(f"[admin] CSV sync complete: {result}")
+    except Exception as e:
+        _last_sync_status["last_error"] = str(e)
+        _last_sync_status["last_run"] = datetime.datetime.utcnow().isoformat() + "Z"
+        logger.error(f"[admin] CSV sync failed: {e}")
+    finally:
+        _last_sync_status["running"] = False
+
+
+@router.post("/admin/sync-pricecharting-csv")
+async def admin_sync_pricecharting_csv(
+    background: BackgroundTasks,
+    user: UserInfo = Depends(get_current_user),
+):
+    """Kick off the full PriceCharting CSV sync as a background task.
+
+    Returns immediately; poll GET /admin/sync-status for progress/result.
+    The CSV download is capped at 1/10min by PriceCharting upstream.
+    """
+    if user.tier != "elite":
+        raise HTTPException(403, "Elite tier required")
+
+    if _last_sync_status["running"]:
+        return {"started": False, "reason": "Another sync is already running"}
+
+    background.add_task(_run_csv_sync_in_background)
+    return {"started": True, "poll": "/admin/sync-status"}
+
+
+@router.get("/admin/sync-status")
+async def admin_sync_status(user: UserInfo = Depends(get_current_user)):
+    """Return the last CSV sync status (running/result/error)."""
+    if user.tier != "elite":
+        raise HTTPException(403, "Elite tier required")
+    return _last_sync_status
 
 
 # ── PriceCharting test ────────────────────────────────────────────────────────

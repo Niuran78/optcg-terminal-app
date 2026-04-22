@@ -66,6 +66,28 @@ async def seed_all_data():
     )
 
 
+async def _daily_pricecharting_sync_loop():
+    """Run PriceCharting CSV sync once per day.
+
+    Waits 60s on startup (let app come up), syncs, then sleeps 24h.
+    """
+    from services.pricecharting_csv_sync import sync_from_csv
+
+    await asyncio.sleep(60)  # Let the app finish startup first
+    while True:
+        try:
+            logger.info("[daily sync] starting PriceCharting CSV sync...")
+            result = await sync_from_csv()
+            logger.info(
+                f"[daily sync] complete: sealed={result.get('sealed_total')}, "
+                f"cards={result.get('cards_updated')}"
+            )
+        except Exception as e:
+            logger.error(f"[daily sync] failed: {e}")
+        # Sleep 24h before next sync
+        await asyncio.sleep(24 * 60 * 60)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown lifecycle."""
@@ -115,6 +137,14 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(seed_all_unified())
     else:
         logger.info(f"cards_unified: {count} records, {priced} with prices — skipping seed")
+
+    # Start daily PriceCharting CSV sync loop (runs in background forever)
+    import os
+    if os.getenv("PRICECHARTING_API_TOKEN"):
+        asyncio.create_task(_daily_pricecharting_sync_loop())
+        logger.info("Daily PriceCharting CSV sync loop started (runs every 24h)")
+    else:
+        logger.warning("PRICECHARTING_API_TOKEN not set — skipping daily CSV sync")
 
     yield
 
