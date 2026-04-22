@@ -1,10 +1,11 @@
 """Admin API — manual triggers for data operations.
 
 Endpoints:
-    POST /admin/refresh-cardmarket — trigger Cardmarket CSV price update
-    POST /admin/backfill-en-prices — backfill EN prices from TCG Price Lookup
-    POST /admin/seed-missing-sets  — seed sets with < 10 cards
-    GET  /admin/status             — DB stats dashboard
+    POST /admin/refresh-cardmarket  — trigger Cardmarket CSV price update
+    POST /admin/backfill-en-prices  — backfill EN prices from TCG Price Lookup
+    POST /admin/seed-missing-sets   — seed sets with < 10 cards
+    GET  /admin/status              — DB stats dashboard
+    GET  /admin/pricecharting-test  — test PriceCharting scraping accuracy
 """
 import asyncio
 import logging
@@ -326,4 +327,30 @@ async def admin_status():
             "eu_oldest": oldest_eu.isoformat() if oldest_eu else None,
             "eu_newest": newest_eu.isoformat() if newest_eu else None,
         },
+    }
+
+
+# ── PriceCharting test ────────────────────────────────────────────────────────
+
+@router.get("/admin/pricecharting-test")
+async def admin_pricecharting_test(user: UserInfo = Depends(get_current_user)):
+    """Test PriceCharting scraping for all sets — JP + EN booster boxes.
+
+    Used to verify price accuracy before committing to the paid API.
+    Returns per-set results with USD and EUR prices.
+    """
+    if user.tier != "elite":
+        raise HTTPException(403, "Elite tier required")
+
+    from services.pricecharting_scraper import test_all_sets
+
+    results = await test_all_sets()
+    total = len(results)
+    successful = sum(1 for r in results if r["price_usd"] is not None)
+
+    return {
+        "total_checked": total,
+        "successful": successful,
+        "success_rate": f"{successful}/{total} ({successful/total*100:.0f}%)" if total else "0/0",
+        "results": results,
     }
