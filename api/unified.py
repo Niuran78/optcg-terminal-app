@@ -130,6 +130,16 @@ def _jp_en_arbitrage_calc(row: dict, min_profit_pct: float) -> Optional[dict]:
     jp_eur = jp_usd * USD_TO_EUR
     en_eur = en_usd * USD_TO_EUR
 
+    # Sanity filter: Spreads > 15× are almost always data artifacts.
+    # JP marketplaces often don't list rare Western Prize Cards (V5+), so
+    # our JP price is actually the *regular* card while EN is the Prize.
+    # These would mislead users into "90× arbitrage" that doesn't exist.
+    spread_sanity = en_eur / jp_eur if jp_eur > 0 else 0
+    if spread_sanity > 15:
+        return None
+    if spread_sanity < 0.5:
+        return None  # negative spread (JP > EN) = opposite direction, unusual
+
     # Costs: JP price + ~15% shipping/customs from Japan
     shipping_import_pct = 0.15
     cost_eur = jp_eur * (1 + shipping_import_pct)

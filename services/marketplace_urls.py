@@ -134,6 +134,19 @@ def _canonical_set_from_card_id(card_id: str) -> Optional[str]:
     return m.group(1) if m else None
 
 
+# Variants that are Prize / Promo cards — listed on Cardmarket under
+# /Unnumbered-Promos/ instead of the normal set slug.
+# V5+ are almost always tournament-prize or anniversary promos.
+PROMO_VARIANTS = {"V5", "V6", "V7", "V8", "V9", "V10", "SP", "SP Gold", "SP Silver", "Top Prize",
+                  "Manga", "Red Manga", "Pre-Release", "Magazine", "2nd Anniversary", "Wanted"}
+
+
+def _is_promo_variant(variant: Optional[str]) -> bool:
+    if not variant:
+        return False
+    return variant.strip() in PROMO_VARIANTS
+
+
 def cardmarket_card_url(
     name: Optional[str],
     card_id: Optional[str],
@@ -144,31 +157,36 @@ def cardmarket_card_url(
     """Build Cardmarket single-card URL from our fields.
 
     Cardmarket uses two separate product pages per card:
-      EN: /Singles/{Set-Slug}/{card-slug}
-      JP: /Singles/{Set-Slug}-Non-English/{card-slug}
+      EN regular: /Singles/{Set-Slug}/{card-slug}
+      JP regular: /Singles/{Set-Slug}-Non-English/{card-slug}
+      EN promos:  /Singles/Unnumbered-Promos/{card-slug}
+      JP promos:  /Singles/Unnumbered-Promos-Non-English/{card-slug}
 
-    Uses the card_id prefix (e.g. 'OP13' in OP13-120) as the canonical set,
-    not set_code — because reprints in different sets still use the original
-    card number and Cardmarket lists them under the original set.
+    Uses the card_id prefix (e.g. 'OP13' in OP13-120) as the canonical set.
+    Reprints in other sets share the original card ID's base slug.
+    Prize/Promo variants (V5+) route to /Unnumbered-Promos/.
     """
     if not name or not card_id or not set_code:
         return None
-    # Derive canonical set from card_id (handles reprints correctly)
-    canonical = _canonical_set_from_card_id(card_id) or set_code.upper()
-    set_slug = CM_SET_SLUGS.get(canonical)
-    if not set_slug:
-        # Try DB set_code as fallback
-        set_slug = CM_SET_SLUGS.get(set_code.upper())
-    if not set_slug:
-        # Unknown set — fall back to search page
-        return cardmarket_search_url(f"{name} {card_id}")
+
+    # Promo/prize variants live on a different Cardmarket page
+    if _is_promo_variant(variant):
+        base_slug = "Unnumbered-Promos"
+    else:
+        canonical = _canonical_set_from_card_id(card_id) or set_code.upper()
+        base_slug = CM_SET_SLUGS.get(canonical)
+        if not base_slug:
+            base_slug = CM_SET_SLUGS.get(set_code.upper())
+        if not base_slug:
+            return cardmarket_search_url(f"{name} {card_id}")
+
     # Append -Non-English suffix for Japanese products
     if language and language.upper() == "JP":
-        set_slug = f"{set_slug}-Non-English"
+        base_slug = f"{base_slug}-Non-English"
     card_slug = _slugify_card(name, card_id, variant)
     if not card_slug:
         return None
-    return f"https://www.cardmarket.com/en/OnePiece/Products/Singles/{set_slug}/{card_slug}"
+    return f"https://www.cardmarket.com/en/OnePiece/Products/Singles/{base_slug}/{card_slug}"
 
 
 def cardmarket_search_url(query: str) -> Optional[str]:
