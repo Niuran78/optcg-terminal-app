@@ -1514,6 +1514,27 @@ a.price-link:hover {
 .action-btn-cm-jp { background: rgba(229,92,92,0.10); color: #ff8080; border-color: rgba(229,92,92,0.25); }
 .action-btn-cm-jp:hover { background: rgba(229,92,92,0.22); }
 
+/* Browser tab: small inline JP link under the EU price */
+.cm-jp-mini {
+  display: inline-block;
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(229,92,92,0.10);
+  color: #ff8080;
+  border: 1px solid rgba(229,92,92,0.25);
+  text-decoration: none;
+  transition: background 0.15s ease;
+}
+.cm-jp-mini:hover {
+  background: rgba(229,92,92,0.22);
+  text-decoration: none;
+}
+
 /* ═══════════════════════════════════════════════════════════════
    SECTION SUMMARY BAR (Cards browser)
    ═══════════════════════════════════════════════════════════════ */

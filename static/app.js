@@ -589,10 +589,11 @@ function renderBrowserTable(data) {
         </td>
         <td class="col-eu">
           <div class="price-cell">
-            ${card.links?.cardmarket
-              ? `<a class="price-val price-link" href="${card.links.cardmarket}" target="_blank" rel="noopener nofollow" title="Buy on Cardmarket">${fmt.eurAuto(card.eu_cardmarket_7d_avg)} ↗</a>`
+            ${card.links?.cardmarket_en
+              ? `<a class="price-val price-link" href="${card.links.cardmarket_en}" target="_blank" rel="noopener nofollow" title="Buy on Cardmarket EN">${fmt.eurAuto(card.eu_cardmarket_7d_avg)} ↗</a>`
               : `<div class="price-val">${fmt.eurAuto(card.eu_cardmarket_7d_avg)}</div>`}
             ${card.eu_cardmarket_30d_avg != null ? `<div class="price-sub">30d ${fmt.eurAuto(card.eu_cardmarket_30d_avg)}</div>` : ''}
+            ${card.links?.cardmarket_jp ? `<a class="cm-jp-mini" href="${card.links.cardmarket_jp}" target="_blank" rel="noopener nofollow" title="Also check JP market">JP↗</a>` : ''}
           </div>
         </td>
         <td>

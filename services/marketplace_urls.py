@@ -42,21 +42,21 @@ CM_SET_SLUGS: dict[str, str] = {
     "OP04": "Kingdoms-of-Intrigue",
     "OP05": "Awakening-of-the-New-Era",
     "OP06": "Wings-of-the-Captain",
-    "OP07": "500-Years-in-the-Future",
+    "OP07": "500-Years-into-the-Future",  # verified: 'into', not 'in'
     "OP08": "Two-Legends",
     "OP09": "Emperors-in-the-New-World",
     "OP10": "Royal-Blood",
     "OP11": "A-Fist-of-Divine-Speed",
     "OP12": "Legacy-of-the-Master",
     "OP13": "Carrying-on-his-Will",
-    "OP14": "The-Azure-Sea-s-Seven",
-    "OP15": "Adventure-on-Kami-s-Island",
+    "OP14": "The-Azure-Seas-Seven",  # verified
+    "OP15": "Adventure-on-Kamis-Island",  # verified
     "EB01": "Extra-Booster-Memorial-Collection",
     "EB02": "Extra-Booster-Anime-25th-Collection",
     "EB03": "Extra-Booster-Heroines-Edition",
-    "EB04": "Extra-Booster-Egghead-Crisis",
+    "EB04": "Egghead-Crisis-Asia-Region-Legal",  # verified: no EN version, only JP Asia-Legal
     "PRB01": "Premium-Booster-The-Best",
-    "PRB02": "Premium-Booster-The-Best-Vol2",
+    "PRB02": "The-Best-Vol2",  # verified: short name, not 'Premium-Booster-'
     "ST01": "Starter-Deck-Straw-Hat-Crew",
     "ST02": "Starter-Deck-Worst-Generation",
     "ST03": "Starter-Deck-The-Seven-Warlords-of-the-Sea",
