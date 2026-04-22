@@ -101,7 +101,9 @@ async def widget_set_data(
             "updated_at": str(r["eu_updated_at"]) if r["eu_updated_at"] else None,
             "links": {
                 "pricecharting": pricecharting_url(r["pricecharting_id"]),
-                "cardmarket": cardmarket_sealed_url(r["rapidapi_product_id"]),
+                "cardmarket": cardmarket_sealed_url(
+                    r["product_type"], r["set_code"], r["set_name"]
+                ),
             },
         }
 
