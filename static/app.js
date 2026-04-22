@@ -971,22 +971,22 @@ function renderArbitrageTable(opps) {
         </td>
         <td class="col-en">
           <div class="price-cell">
-            ${o.links?.tcgplayer
-              ? `<a class="price-val price-link" href="${o.links.tcgplayer}" target="_blank" rel="noopener nofollow" title="Buy on TCGPlayer">${fmt.usdAuto(o.en_price_usd)} ↗</a>`
-              : `<div class="price-val">${fmt.usdAuto(o.en_price_usd)}</div>`}
-            <div class="price-sub">${escHtml(o.sell_market || 'TCGPlayer')}</div>
+            ${o.links?.cardmarket_jp
+              ? `<a class="price-val price-link" href="${o.links.cardmarket_jp}" target="_blank" rel="noopener nofollow" title="Buy JP on Cardmarket">${fmt.usdAuto(o.jp_price_usd)} ↗</a>`
+              : `<div class="price-val">${fmt.usdAuto(o.jp_price_usd)}</div>`}
+            <div class="price-sub">🇯🇵 Japanese</div>
           </div>
         </td>
         <td class="col-eu">
           <div class="price-cell">
-            ${o.links?.cardmarket
-              ? `<a class="price-val price-link" href="${o.links.cardmarket}" target="_blank" rel="noopener nofollow" title="Buy on Cardmarket">${fmt.eurAuto(o.eu_price_eur)} ↗</a>`
-              : `<div class="price-val">${fmt.eurAuto(o.eu_price_eur)}</div>`}
-            <div class="price-sub">${escHtml(o.buy_market || 'Cardmarket')}</div>
+            ${o.links?.cardmarket_en
+              ? `<a class="price-val price-link" href="${o.links.cardmarket_en}" target="_blank" rel="noopener nofollow" title="Sell on Cardmarket EN">${fmt.usdAuto(o.en_price_usd)} ↗</a>`
+              : `<div class="price-val">${fmt.usdAuto(o.en_price_usd)}</div>`}
+            <div class="price-sub">🇬🇧 English</div>
           </div>
         </td>
         <td>
-          <span class="${o.profit_pct >= 0 ? 'spread-positive' : 'spread-negative'}">${fmt.pct(o.profit_pct)}</span>
+          <span class="${o.spread_ratio >= 2 ? 'spread-positive' : 'spread-neutral'}" style="font-family:var(--font-mono);font-weight:700;">${o.spread_ratio ? o.spread_ratio.toFixed(1) + 'x' : '—'}</span>
         </td>
         <td>
           <span class="${o.profit_eur >= 0 ? 'spread-positive' : 'spread-negative'}" style="font-family:var(--font-mono);font-size:13px;font-weight:600;">
