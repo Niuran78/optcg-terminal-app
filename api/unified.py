@@ -80,6 +80,8 @@ def _row_to_card(row: dict) -> dict:
         "tcgplayer_id": row.get("tcgplayer_id"),
         "cardmarket_id": row.get("cardmarket_id"),
         "pricecharting_id": row.get("pricecharting_id"),
+        # JP sibling price (populated by JOIN in browse)
+        "jp_pc_price_usd": row.get("jp_pc_price_usd"),
         "links": _build_card_links(row),
     }
 
@@ -401,7 +403,11 @@ async def card_price_history(
     set_release = SET_RELEASE_DATES.get((card["set_code"] or "").upper())
     indicators = build_indicators(
         history=history,
-        current={"eu_cardmarket_7d_avg": card["eu_cardmarket_7d_avg"]},
+        current={
+            "eu_cardmarket_7d_avg": card["eu_cardmarket_7d_avg"],
+            "variant": card.get("variant"),
+            "name": card.get("name"),
+        },
         set_release_date=set_release,
     )
 
@@ -433,9 +439,17 @@ async def browse_cards(
     order: str = Query("desc", description="asc or desc"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    min_price_eur: Optional[float] = Query(None, ge=0, description="Hide cards cheaper than this"),
+    max_price_eur: Optional[float] = Query(1000.0, ge=0, description="Hide cards pricier than this (default €1000 filters out serialized/prize)"),
+    include_extreme: bool = Query(False, description="Include serialized/prize cards above €1000"),
     user: UserInfo = Depends(get_current_user),
 ):
-    """Browse all cards with EN + EU prices from both sources."""
+    """Browse all cards with EN + EU prices from both sources.
+
+    By default, excludes serialized/prize cards above €1000 to keep the
+    browser focused on typical tradable cards. Pass include_extreme=true
+    to see the Kaido Serialized / Championship cards.
+    """
     # Validate sort/order
     if sort not in CARD_SORT_COLUMNS:
         sort = "eu_cardmarket_7d_avg"
@@ -480,13 +494,48 @@ async def browse_cards(
         params.append(rarity)
         param_idx += 1
 
-    where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
-    count_query = f"SELECT COUNT(*) FROM cards_unified {where_clause}"
-    data_query = (
-        f"SELECT * FROM cards_unified {where_clause} "
-        f"ORDER BY {sort} {order_sql} NULLS LAST "
-        f"LIMIT ${param_idx} OFFSET ${param_idx + 1}"
-    )
+    # Price range filters — default hides serialized/prize cards >€1000
+    if not include_extreme and max_price_eur is not None:
+        conditions.append(f"eu_cardmarket_7d_avg < ${param_idx}")
+        params.append(max_price_eur)
+        param_idx += 1
+    if min_price_eur is not None and min_price_eur > 0:
+        conditions.append(f"eu_cardmarket_7d_avg >= ${param_idx}")
+        params.append(min_price_eur)
+        param_idx += 1
+
+    # Price-range filter — hide ultra-rare serialized/prize cards by default
+    # unless user explicitly requests them via min_price / max_price query.
+    # Default max €1000 keeps the browser usable for typical trading cards.
+    # (apply after other conditions so set_code/search still work)
+    # Note: conditions list is already built; we extend below.
+
+    # Prefix all conditions with 'en.' for the JOIN query
+    en_conditions = [f"en.{c}" if not c.startswith("(") else c for c in conditions]
+    en_conditions.append("en.language = 'EN'")
+    en_where = "WHERE " + " AND ".join(en_conditions)
+
+    # Also a simple where_clause (unqualified) for COUNT query that only sees EN side
+    simple_conditions = list(conditions) + ["language = 'EN'"]
+    simple_where = "WHERE " + " AND ".join(simple_conditions)
+
+    count_query = f"SELECT COUNT(*) FROM cards_unified {simple_where}"
+
+    data_query = f"""
+        SELECT
+            en.*,
+            jp.pc_price_usd AS jp_pc_price_usd,
+            jp.pricecharting_id AS jp_pricecharting_id,
+            jp.id AS jp_card_db_id
+        FROM cards_unified en
+        LEFT JOIN cards_unified jp
+          ON jp.card_id = en.card_id
+         AND jp.variant = en.variant
+         AND jp.language = 'JP'
+        {en_where}
+        ORDER BY en.{sort} {order_sql} NULLS LAST
+        LIMIT ${param_idx} OFFSET ${param_idx + 1}
+    """
 
     pool = await get_pool()
     async with pool.acquire() as conn:

@@ -169,19 +169,44 @@ def sealed_to_singles_ratio(
     }
 
 
+# Variants that are unique/serialized/championship cards — NEVER reprinted.
+# These are 1-of-1 prize cards that stay rare forever.
+NEVER_REPRINTED_VARIANTS = {
+    "V5", "V6", "V7", "V8", "V9", "V10",
+    "SP", "SP Gold", "SP Silver",
+    "Top Prize", "Manga", "Red Manga", "Magazine",
+    "Championship 2023 Winner", "Championship 25-26",
+    "Serial Prize", "Serialized",
+    "Pre-Release", "2nd Anniversary", "Wanted",
+}
+
+
 def reprint_risk(
     set_release_date: Optional[date],
     today: Optional[date] = None,
+    variant: Optional[str] = None,
+    card_name: Optional[str] = None,
 ) -> Optional[dict]:
     """Heuristic: older sets have higher reprint risk.
 
-    OPTCG history shows sets aged 18-30 months often get reprinted
-    (Romance Dawn 2024 reprint, EB01 reprint, etc.).
+    Exception: Serialized/prize/championship variants are NEVER reprinted —
+    they're unique tournament prizes. These get score=0 regardless of age.
 
     Returns:
       score 0-100, where 100 = imminent reprint risk
       level: LOW | MODERATE | HIGH | IMMINENT
     """
+    # Exempt: serialized/prize variants never get reprinted
+    if variant and variant.strip() in NEVER_REPRINTED_VARIANTS:
+        return {"score": 0, "level": "NONE", "months_since_release": None,
+                "note": "Serialized/prize card — no reprint risk"}
+    # Also detect by name patterns (e.g. 'Championship', 'Serial Prize' in name)
+    if card_name:
+        lower = card_name.lower()
+        if any(kw in lower for kw in ("championship", "serial", "prize", "winner")):
+            return {"score": 0, "level": "NONE", "months_since_release": None,
+                    "note": "Championship/serial card — no reprint risk"}
+
     if not set_release_date:
         return None
     if today is None:
@@ -361,8 +386,11 @@ def build_indicators(
         "data_points": len(prices),
     }
 
-    if set_release_date:
-        ind["reprint_risk"] = reprint_risk(set_release_date)
+    ind["reprint_risk"] = reprint_risk(
+        set_release_date,
+        variant=(current or {}).get("variant"),
+        card_name=(current or {}).get("name"),
+    )
 
     ind["signal"] = generate_signal(ind)
     return ind

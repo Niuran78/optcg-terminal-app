@@ -117,19 +117,8 @@ async function loadMarketSummary() {
 /* ══════════════════════════════════════════════════════════════════
    NAV
    ══════════════════════════════════════════════════════════════════ */
-// ============================================================
-// Dynamic currency headers — update column labels when toggle changes
-// ============================================================
-function updateCurrencyHeaders() {
-  const sym = State.displayCurrency === 'USD' ? '$' : '€';
-  // Browser tab & Arbitrage tab: EN / EU price columns
-  document.querySelectorAll('th.col-en .th-main').forEach(el => {
-    el.innerHTML = `EN Price (${sym})${el.querySelector('.th-sort-icon') ? ' <span class="th-sort-icon" aria-hidden="true">↕</span>' : ''}`;
-  });
-  document.querySelectorAll('th.col-eu .th-main').forEach(el => {
-    el.innerHTML = `EU Price (${sym})${el.querySelector('.th-sort-icon') ? ' <span class="th-sort-icon" aria-hidden="true">↕</span>' : ''}`;
-  });
-}
+// Headers are now static language-based (🇯🇵 JP / 🇬🇧 EN) — no dynamic updates needed.
+function updateCurrencyHeaders() { /* no-op: JP/EN headers are static */ }
 
 function bindNav() {
   // Tab buttons
@@ -578,12 +567,17 @@ function renderBrowserTable(data) {
 
   let rows = '';
   cards.forEach((card, i) => {
-    const spread = computeSpread(card.en_tcgplayer_market, card.eu_cardmarket_7d_avg);
+    // JP/EN spread computation using both language-prices
+    const enUsd = card.en_tcgplayer_market;
+    const jpUsd = card.jp_pc_price_usd;
+    const jpEur = jpUsd != null ? jpUsd * 0.92 : null;
+    const enEur = enUsd != null ? enUsd * 0.92 : null;
+    const spreadRatio = (jpUsd && enUsd && jpUsd > 0) ? (enUsd / jpUsd) : null;
     const signal = card.arbitrage?.signal || null;
     const variant = card.variant && card.variant !== 'Normal' ? ` <span style="font-size:10px;color:var(--muted);">(${escHtml(card.variant)})</span>` : '';
 
     rows += `
-      <tr data-idx="${i}" class="clickable-row ${i >= limit ? 'blurred-rows' : ''}" onclick="openPriceHistory(${i})" title="Click for price history">
+      <tr data-idx="${i}" class="clickable-row ${i >= limit ? 'blurred-rows' : ''}" title="Click Chart for history">
         <td>
           <div class="card-cell">
             ${cardThumb(card.image_url, card.name)}
@@ -600,23 +594,24 @@ function renderBrowserTable(data) {
         <td>${rarityBadge(card.rarity)}</td>
         <td class="col-en">
           <div class="price-cell">
-            ${card.links?.tcgplayer
-              ? `<a class="price-val price-link" href="${card.links.tcgplayer}" target="_blank" rel="noopener nofollow" title="Buy on TCGPlayer">${fmt.usdAuto(card.en_tcgplayer_market)} ↗</a>`
-              : `<div class="price-val">${fmt.usdAuto(card.en_tcgplayer_market)}</div>`}
-            ${card.en_tcgplayer_low != null ? `<div class="price-sub">Low ${fmt.usdAuto(card.en_tcgplayer_low)}</div>` : ''}
+            ${card.links?.cardmarket_jp && jpUsd
+              ? `<a class="price-val price-link" href="${card.links.cardmarket_jp}" target="_blank" rel="noopener nofollow" title="Buy JP on Cardmarket">${fmt.eurAuto(jpEur)} ↗</a>`
+              : `<div class="price-val" style="color:var(--muted);">${jpEur != null ? fmt.eurAuto(jpEur) : '—'}</div>`}
+            <div class="price-sub">🇯🇵 Japanese</div>
           </div>
         </td>
         <td class="col-eu">
           <div class="price-cell">
             ${card.links?.cardmarket_en
-              ? `<a class="price-val price-link" href="${card.links.cardmarket_en}" target="_blank" rel="noopener nofollow" title="Buy on Cardmarket EN">${fmt.eurAuto(card.eu_cardmarket_7d_avg)} ↗</a>`
-              : `<div class="price-val">${fmt.eurAuto(card.eu_cardmarket_7d_avg)}</div>`}
-            ${card.eu_cardmarket_30d_avg != null ? `<div class="price-sub">30d ${fmt.eurAuto(card.eu_cardmarket_30d_avg)}</div>` : ''}
-            ${card.links?.cardmarket_jp ? `<a class="cm-jp-mini" href="${card.links.cardmarket_jp}" target="_blank" rel="noopener nofollow" title="Also check JP market">JP↗</a>` : ''}
+              ? `<a class="price-val price-link" href="${card.links.cardmarket_en}" target="_blank" rel="noopener nofollow" title="Buy EN on Cardmarket">${fmt.eurAuto(enEur)} ↗</a>`
+              : `<div class="price-val">${fmt.eurAuto(enEur)}</div>`}
+            <div class="price-sub">🇬🇧 English</div>
           </div>
         </td>
         <td>
-          <span class="${spreadClass(spread)}">${spread != null ? fmt.pct(spread) : '<span class="spread-neutral">—</span>'}</span>
+          ${spreadRatio != null
+            ? `<span class="${spreadRatio >= 2 ? 'spread-positive' : 'spread-neutral'}" style="font-family:var(--font-mono);font-weight:700;">${spreadRatio.toFixed(1)}x</span>`
+            : '<span class="spread-neutral">—</span>'}
         </td>
         <td>
           <div style="display:flex;align-items:center;gap:4px;">
