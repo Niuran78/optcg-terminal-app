@@ -29,6 +29,7 @@ from api.scraper import router as scraper_router
 from api.unified import router as unified_router
 from api.portfolio import router as portfolio_router
 from api.alerts import router as alerts_router
+from api.widget_public import router as widget_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -140,6 +141,7 @@ app.add_middleware(
 # API Routers
 app.include_router(auth_router)
 app.include_router(unified_router)  # unified multi-source endpoints (new)
+app.include_router(widget_router)  # public widget endpoints (no auth)
 app.include_router(cards_router)    # legacy single-source endpoints (kept for compat)
 app.include_router(sets_router)
 app.include_router(arbitrage_router)

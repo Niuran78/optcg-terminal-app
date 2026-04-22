@@ -541,13 +541,16 @@
       + '<strong>' + esc(setCode) + ' \u2014 ' + esc(setName) + '</strong>';
 
     try {
-      var results = await Promise.all([
-        fetchJSON(API_BASE + '/api/cards/sealed?set_code=' + encodeURIComponent(setCode) + '&limit=20'),
-        fetchJSON(API_BASE + '/api/cards/browse?set_code=' + encodeURIComponent(setCode) + '&limit=5&sort=eu_cardmarket_7d_avg&order=desc'),
-      ]);
+      // Use public widget endpoint — no auth, no tier gate, always works
+      var data = await fetchJSON(API_BASE + '/api/widget/set/' + encodeURIComponent(setCode));
 
-      renderStats(results[0].products || [], results[1].cards || []);
-      renderCards(results[1].cards || []);
+      if (data.set_name) {
+        $('ptw-set-bar').innerHTML = '<span class="ptw-set-bar-label">Showing live data for</span> '
+          + '<strong>' + esc(setCode) + ' \u2014 ' + esc(data.set_name) + '</strong>';
+      }
+
+      renderStats(data.sealed || [], data.cards || []);
+      renderCards(data.cards || []);
 
       $('ptw-timestamp').textContent = 'Updated ' + new Date().toLocaleString('en-GB', {
         day: 'numeric', month: 'short', year: 'numeric',
