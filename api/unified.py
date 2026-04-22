@@ -97,6 +97,8 @@ def _row_to_sealed(row: dict) -> dict:
         "eu_source": row.get("eu_source", "Cardmarket"),
         "eu_updated_at": str(row.get("eu_updated_at")) if row.get("eu_updated_at") else None,
         "rapidapi_product_id": row.get("rapidapi_product_id"),
+        "language": row.get("language") or "JP",
+        "en_price_usd": row.get("en_price_usd"),
     }
 
 
