@@ -388,10 +388,26 @@
     var params = new URLSearchParams(window.location.search);
     var set = params.get('set');
     if (set) return set.toUpperCase();
-    var sku = params.get('sku') || '';
-    var pattern = /(OP\d{2}|EB\d{2}|PRB\d{2}|ST\d{2})/i;
-    var match = sku.match(pattern);
-    return match ? match[1].toUpperCase() : null;
+
+    // Try SKU, handle, then tags (in that order of reliability)
+    var candidates = [
+      params.get('sku') || '',
+      params.get('handle') || '',
+      params.get('tags') || ''
+    ];
+
+    // Match OP13, OP-13, op_13, EB01, PRB02, ST12, etc.
+    // Also match "OP 13" with spaces.
+    var pattern = /\b(OP|EB|PRB|ST)[\s\-_]*(\d{1,2})\b/i;
+    for (var i = 0; i < candidates.length; i++) {
+      var m = candidates[i].match(pattern);
+      if (m) {
+        var prefix = m[1].toUpperCase();
+        var num = m[2].padStart(2, '0');
+        return prefix + num;
+      }
+    }
+    return null;
   }
 
   async function fetchJSON(url) {
