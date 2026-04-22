@@ -3,236 +3,298 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OPTCG Product Terminal Widget</title>
+<title>HOLYGRADE — Live Market Data</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
   body {
-    margin: 0; padding: 24px;
-    background: #080808;
-    font-family: 'Cabinet Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    margin: 0; padding: 20px;
+    background: transparent;
     display: flex; justify-content: center;
   }
 
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
+  /* ── Container ─────────────────────────────────────────────── */
   .ptw {
-    font-family: 'Cabinet Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    background: #0f0f10;
-    border: 1px solid #1e2a28;
-    border-radius: 12px;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #000000;
+    border: 1px solid #222222;
+    border-radius: 6px;
     overflow: hidden;
     max-width: 720px;
     width: 100%;
-    color: #e8e6e0;
+    color: #ffffff;
   }
 
-  /* Header */
+  /* ── Header ────────────────────────────────────────────────── */
   .ptw-header {
-    background: #111614;
-    border-bottom: 1px solid #1e2a28;
-    padding: 14px 20px;
+    background: #000000;
+    border-bottom: 1px solid #222222;
+    padding: 18px 24px;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 14px;
   }
-  .ptw-header-icon {
-    width: 28px; height: 28px;
-    background: #00e5c0;
-    border-radius: 6px;
-    display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0;
+  .ptw-header-brand {
+    display: flex; flex-direction: column; gap: 2px;
   }
-  .ptw-header-text h3 {
-    font-size: 13px; font-weight: 700; color: #e8e6e0;
-    letter-spacing: 0.03em; text-transform: uppercase;
+  .ptw-header-brand h3 {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: 14px; font-weight: 700; color: #c9a84c;
+    letter-spacing: 0.12em; text-transform: uppercase;
   }
-  .ptw-header-text p { font-size: 11px; color: #4a6660; margin-top: 1px; }
+  .ptw-header-brand p {
+    font-size: 10px; font-weight: 600; color: #666666;
+    letter-spacing: 0.14em; text-transform: uppercase;
+  }
   .ptw-live-badge {
     margin-left: auto;
-    background: rgba(0,229,192,0.1);
-    border: 1px solid rgba(0,229,192,0.2);
-    color: #00e5c0;
+    background: rgba(201,168,76,0.08);
+    border: 1px solid rgba(201,168,76,0.25);
+    color: #c9a84c;
     font-size: 10px; font-weight: 700;
-    letter-spacing: 0.08em; text-transform: uppercase;
-    padding: 3px 8px; border-radius: 4px;
-    display: flex; align-items: center; gap: 5px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 4px 10px; border-radius: 4px;
+    display: flex; align-items: center; gap: 6px;
   }
   .ptw-live-dot {
     width: 5px; height: 5px;
-    background: #00e5c0; border-radius: 50%;
+    background: #c9a84c; border-radius: 50%;
     animation: ptw-pulse 2s infinite;
   }
-  @keyframes ptw-pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  @keyframes ptw-pulse { 0%,100%{opacity:1} 50%{opacity:0.25} }
 
-  /* Set detection bar */
+  /* ── Set banner ────────────────────────────────────────────── */
   .ptw-set-bar {
-    padding: 10px 20px;
-    background: rgba(0,229,192,0.04);
-    border-bottom: 1px solid #1e2a28;
+    padding: 14px 24px;
+    background: #0a0a0a;
+    border-bottom: 1px solid #222222;
+    border-left: 4px solid #c9a84c;
     font-size: 12px;
-    color: #4a6660;
-    display: flex; align-items: center; gap: 6px;
+    color: #666666;
+    display: flex; align-items: baseline; gap: 8px;
   }
-  .ptw-set-bar strong { color: #00e5c0; font-weight: 700; }
+  .ptw-set-bar strong {
+    font-family: 'Playfair Display', Georgia, serif;
+    color: #ffffff; font-weight: 500;
+    font-size: 15px;
+  }
+  .ptw-set-bar-label {
+    font-size: 10px; font-weight: 600;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: #666666;
+  }
 
-  /* Body */
-  .ptw-body { padding: 20px; }
+  /* ── Body ───────────────────────────────────────────────────── */
+  .ptw-body { padding: 24px; }
 
-  /* Stats grid */
+  /* ── Stats grid ─────────────────────────────────────────────── */
   .ptw-stats {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 10px;
-    margin-bottom: 20px;
+    gap: 12px;
+    margin-bottom: 28px;
   }
   .ptw-stat {
-    background: #161a19;
-    border: 1px solid #1e2a28;
-    border-radius: 8px;
-    padding: 12px 10px;
+    background: #141414;
+    border: 1px solid #2a2a2a;
+    border-radius: 6px;
+    padding: 16px 12px;
     text-align: center;
   }
   .ptw-stat.highlight {
-    border-color: rgba(0,229,192,0.3);
-    background: rgba(0,229,192,0.04);
+    border-color: rgba(201,168,76,0.3);
+    background: rgba(201,168,76,0.03);
   }
   .ptw-stat-label {
-    font-size: 10px; font-weight: 700;
-    letter-spacing: 0.06em; text-transform: uppercase;
-    color: #4a6660;
-    margin-bottom: 6px;
+    font-size: 10px; font-weight: 600;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: #888888;
+    margin-bottom: 8px;
   }
   .ptw-stat-value {
-    font-size: 18px; font-weight: 800; color: #e8e6e0; line-height: 1;
+    font-family: 'Inter', sans-serif;
+    font-size: 22px; font-weight: 700; color: #ffffff; line-height: 1;
   }
-  .ptw-stat-value.accent { color: #00e5c0; }
-  .ptw-stat-value.positive { color: #00e5c0; }
-  .ptw-stat-value.negative { color: #e55c5c; }
+  .ptw-stat-value.accent { color: #c9a84c; }
+  .ptw-stat-value.positive { color: #c9a84c; }
+  .ptw-stat-value.negative { color: #888888; }
   .ptw-stat-sub {
-    font-size: 10px; color: #4a6660; margin-top: 4px;
+    font-size: 10px; color: #555555; margin-top: 6px;
   }
 
-  /* Cards table */
+  /* ── Section title ──────────────────────────────────────────── */
   .ptw-section-title {
-    font-size: 11px; font-weight: 700;
-    letter-spacing: 0.08em; text-transform: uppercase;
-    color: #4a6660;
-    margin-bottom: 10px;
-    display: flex; align-items: center; gap: 6px;
+    font-size: 10px; font-weight: 600;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: #888888;
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #1a1a1a;
+    display: flex; align-items: center; gap: 8px;
   }
+
+  /* ── Cards table ────────────────────────────────────────────── */
   .ptw-table { width: 100%; border-collapse: collapse; }
   .ptw-table th {
-    font-size: 10px; font-weight: 700;
-    letter-spacing: 0.06em; text-transform: uppercase;
-    color: #2e3d3a; text-align: left;
-    padding: 6px 8px; border-bottom: 1px solid #1e2a28;
+    font-size: 10px; font-weight: 600;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: #555555; text-align: left;
+    padding: 8px 10px; border-bottom: 1px solid #222222;
   }
   .ptw-table th:last-child { text-align: right; }
   .ptw-table td {
-    font-size: 12px; padding: 10px 8px;
-    border-bottom: 1px solid #131a18;
-    color: #a0b0ae;
+    font-size: 13px; padding: 12px 10px;
+    border-bottom: 1px solid #1a1a1a;
+    color: #aaaaaa;
     vertical-align: middle;
   }
   .ptw-table tr:last-child td { border-bottom: none; }
+  .ptw-table tr {
+    transition: background 150ms ease;
+  }
+  .ptw-table tbody tr:hover {
+    background: rgba(201,168,76,0.03);
+  }
   .ptw-table td:last-child { text-align: right; }
 
   .ptw-card-cell {
-    display: flex; align-items: center; gap: 10px;
+    display: flex; align-items: center; gap: 12px;
   }
   .ptw-card-img {
     width: 36px; height: 50px;
     border-radius: 4px; object-fit: cover;
-    background: #161a19;
+    background: #141414;
     flex-shrink: 0;
   }
   .ptw-card-img-placeholder {
     width: 36px; height: 50px;
     border-radius: 4px;
-    background: #161a19;
+    background: #141414;
     display: flex; align-items: center; justify-content: center;
     font-size: 18px; flex-shrink: 0;
+    color: #333333;
   }
   .ptw-card-name {
-    font-weight: 600; color: #e8e6e0;
+    font-weight: 600; color: #ffffff;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     max-width: 200px;
+    font-size: 13px;
   }
-  .ptw-card-meta { font-size: 10px; color: #4a6660; margin-top: 2px; }
-  .ptw-card-price { font-weight: 700; color: #00e5c0; white-space: nowrap; }
+  .ptw-card-meta {
+    font-size: 10px; color: #555555; margin-top: 2px;
+    font-weight: 500;
+  }
+  .ptw-card-set {
+    color: #c9a84c; font-weight: 600; font-size: 12px;
+    letter-spacing: 0.02em;
+  }
+  .ptw-card-price {
+    font-weight: 700; color: #ffffff; white-space: nowrap;
+    font-size: 14px;
+  }
 
+  /* ── Rarity badges ──────────────────────────────────────────── */
   .ptw-rarity {
     display: inline-block; font-size: 9px; font-weight: 700;
-    padding: 2px 5px; border-radius: 3px;
+    padding: 2px 6px; border-radius: 3px;
     margin-left: 4px; vertical-align: middle;
+    letter-spacing: 0.04em;
   }
-  .ptw-rarity-sec    { background: rgba(229,92,92,0.15);   color: #e55c5c; }
-  .ptw-rarity-sr     { background: rgba(100,150,200,0.15); color: #6496c8; }
-  .ptw-rarity-leader { background: rgba(232,160,64,0.15);  color: #e8a040; }
-  .ptw-rarity-rare   { background: rgba(160,80,220,0.15);  color: #a050dc; }
+  .ptw-rarity-sec    { background: rgba(201,168,76,0.12);  color: #c9a84c; }
+  .ptw-rarity-sr     { background: rgba(255,255,255,0.06); color: #999999; }
+  .ptw-rarity-leader { background: rgba(201,168,76,0.08);  color: #d4b35e; }
+  .ptw-rarity-rare   { background: rgba(255,255,255,0.04); color: #777777; }
 
-  /* Set picker fallback */
+  /* ── Set picker ─────────────────────────────────────────────── */
   .ptw-picker {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-    gap: 8px;
-    margin-top: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 10px;
+    margin-top: 16px;
   }
   .ptw-picker-btn {
-    background: #161a19;
-    border: 1px solid #1e2a28;
-    border-radius: 8px;
-    padding: 10px 12px;
+    background: #141414;
+    border: 1px solid #2a2a2a;
+    border-radius: 6px;
+    padding: 14px 14px;
     cursor: pointer;
-    transition: all 180ms ease;
+    transition: all 200ms ease;
     text-align: left;
-    color: #e8e6e0;
-    font-family: inherit;
+    color: #ffffff;
+    font-family: 'Inter', sans-serif;
   }
   .ptw-picker-btn:hover {
-    border-color: rgba(0,229,192,0.3);
-    background: #1a2220;
+    border-color: rgba(201,168,76,0.4);
+    background: #1a1a1a;
   }
-  .ptw-picker-name { font-size: 12px; font-weight: 700; }
-  .ptw-picker-sub { font-size: 10px; color: #4a6660; margin-top: 2px; }
+  .ptw-picker-name {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: 14px; font-weight: 500;
+  }
+  .ptw-picker-sub {
+    font-size: 11px; color: #666666; margin-top: 4px;
+    font-weight: 400;
+  }
 
-  /* Loading skeleton */
+  /* ── Loading skeleton ───────────────────────────────────────── */
   .ptw-skeleton {
-    background: linear-gradient(90deg, #161a19 25%, #1e2a28 50%, #161a19 75%);
+    background: linear-gradient(90deg, #141414 25%, #1e1e1e 50%, #141414 75%);
     background-size: 200% 100%;
-    animation: ptw-shimmer 1.5s infinite;
+    animation: ptw-shimmer 1.8s infinite ease-in-out;
     border-radius: 4px;
   }
   @keyframes ptw-shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
-  .ptw-skeleton-stat { height: 48px; }
-  .ptw-skeleton-row { height: 16px; margin-bottom: 12px; }
-  .ptw-skeleton-row.short { width: 60%; }
+  .ptw-skeleton-stat { height: 52px; }
+  .ptw-skeleton-row { height: 14px; margin-bottom: 14px; }
+  .ptw-skeleton-row.short { width: 55%; }
 
-  /* Error state */
+  /* ── Error state ────────────────────────────────────────────── */
   .ptw-error {
-    text-align: center; padding: 24px 16px;
-    color: #4a6660; font-size: 13px;
+    text-align: center; padding: 32px 16px;
+    color: #666666; font-size: 13px;
   }
-  .ptw-error strong { color: #e55c5c; display: block; margin-bottom: 6px; font-size: 14px; }
+  .ptw-error strong {
+    color: #aaaaaa; display: block;
+    margin-bottom: 8px; font-size: 14px;
+    font-family: 'Playfair Display', Georgia, serif;
+    font-weight: 500;
+  }
 
-  /* Footer */
+  /* ── Footer ─────────────────────────────────────────────────── */
   .ptw-footer {
-    border-top: 1px solid #1e2a28;
-    padding: 10px 20px;
+    border-top: 1px solid rgba(201,168,76,0.15);
+    padding: 12px 24px;
     display: flex; align-items: center; justify-content: space-between;
-    flex-wrap: wrap; gap: 6px;
+    flex-wrap: wrap; gap: 8px;
+    background: #000000;
   }
-  .ptw-footer-note { font-size: 10px; color: #2e3d3a; }
+  .ptw-footer-note { font-size: 10px; color: #444444; }
   .ptw-footer-link {
-    font-size: 11px; font-weight: 700;
-    color: #00e5c0; text-decoration: none;
+    font-size: 11px; font-weight: 600;
+    color: #c9a84c; text-decoration: none;
+    letter-spacing: 0.02em;
+    transition: color 150ms ease;
   }
-  .ptw-footer-link:hover { color: #00c4a4; }
+  .ptw-footer-link:hover { color: #d4b86a; }
 
-  /* Responsive */
+  /* ── Responsive ─────────────────────────────────────────────── */
   @media (max-width: 560px) {
     .ptw-stats { grid-template-columns: repeat(2, 1fr); }
     .ptw-picker { grid-template-columns: repeat(2, 1fr); }
-    .ptw-card-name { max-width: 120px; }
+    .ptw-card-name { max-width: 110px; }
+    .ptw-header { padding: 14px 16px; }
+    .ptw-body { padding: 16px; }
+    .ptw-set-bar { padding: 12px 16px; }
+    .ptw-footer { padding: 10px 16px; }
+    .ptw-stat-value { font-size: 18px; }
+  }
+
+  @media (max-width: 360px) {
+    .ptw-header-brand h3 { font-size: 12px; }
+    .ptw-live-badge { font-size: 9px; padding: 3px 7px; }
   }
 </style>
 </head>
@@ -242,20 +304,16 @@
 
   <!-- Header -->
   <div class="ptw-header">
-    <div class="ptw-header-icon">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+    <div class="ptw-header-brand">
+      <h3>Holygrade &times; OPTCG Terminal</h3>
+      <p>Live Market Data</p>
     </div>
-    <div class="ptw-header-text">
-      <h3>Live Market Data</h3>
-      <p>Prices from OPTCG Terminal</p>
-    </div>
-    <div class="ptw-live-badge"><div class="ptw-live-dot"></div>LIVE</div>
+    <div class="ptw-live-badge"><div class="ptw-live-dot"></div>Live</div>
   </div>
 
-  <!-- Set detection bar -->
+  <!-- Set banner -->
   <div class="ptw-set-bar" id="ptw-set-bar">
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="#4a6660" stroke-width="1.2"/><path d="M6 4v2.5l2 1.5" stroke="#4a6660" stroke-width="1.2" stroke-linecap="round"/></svg>
-    Detecting set...
+    <span class="ptw-set-bar-label">Loading</span>
   </div>
 
   <!-- Body -->
@@ -321,9 +379,9 @@
 
   function cardImg(url, name) {
     if (url) {
-      return '<img class="ptw-card-img" src="' + esc(url) + '" alt="' + esc(name) + '" loading="lazy" onerror="this.outerHTML=\'<div class=ptw-card-img-placeholder>&#127183;</div>\'" />';
+      return '<img class="ptw-card-img" src="' + esc(url) + '" alt="' + esc(name) + '" loading="lazy" onerror="this.outerHTML=\'<div class=ptw-card-img-placeholder>&#9830;</div>\'" />';
     }
-    return '<div class="ptw-card-img-placeholder">&#127183;</div>';
+    return '<div class="ptw-card-img-placeholder">&#9830;</div>';
   }
 
   function getSetFromURL() {
@@ -365,12 +423,12 @@
       + '<div class="ptw-stat">'
       +   '<div class="ptw-stat-label">Booster Box</div>'
       +   '<div class="ptw-stat-value accent">' + (box ? fmtEur(box.eu_price) : '\u2014') + '</div>'
-      +   '<div class="ptw-stat-sub">' + (box && box.eu_source ? esc(box.eu_source) : 'Market price') + '</div>'
+      +   '<div class="ptw-stat-sub">' + (box && box.eu_source ? esc(box.eu_source) : 'Cardmarket') + '</div>'
       + '</div>'
       + '<div class="ptw-stat">'
       +   '<div class="ptw-stat-label">Case</div>'
       +   '<div class="ptw-stat-value">' + (caseP ? fmtEur(caseP.eu_price) : '\u2014') + '</div>'
-      +   '<div class="ptw-stat-sub">' + (caseP && caseP.eu_source ? esc(caseP.eu_source) : 'Market price') + '</div>'
+      +   '<div class="ptw-stat-sub">' + (caseP && caseP.eu_source ? esc(caseP.eu_source) : 'Cardmarket') + '</div>'
       + '</div>'
       + '<div class="ptw-stat highlight">'
       +   '<div class="ptw-stat-label">Avg Top 5</div>'
@@ -380,19 +438,19 @@
       + '<div class="ptw-stat">'
       +   '<div class="ptw-stat-label">Box Trend</div>'
       +   '<div class="ptw-stat-value ' + trendClass + '">' + trendText + '</div>'
-      +   '<div class="ptw-stat-sub">7d vs 30d</div>'
+      +   '<div class="ptw-stat-sub">7d vs 30d avg</div>'
       + '</div>';
   }
 
   function renderCards(cards) {
     var section = $('ptw-cards-section');
     if (!cards.length) {
-      section.innerHTML = '<div class="ptw-error">No card data available for this set.</div>';
+      section.innerHTML = '<div class="ptw-error"><strong>No Data Available</strong>Card pricing data is not yet available for this set.</div>';
       return;
     }
 
     var html = '<div class="ptw-section-title">'
-      + '<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 9L4.5 5.5L7 7L10 2.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+      + '<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1 8L3.5 4.5L6 6L9 2" stroke="#c9a84c" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
       + 'Top Cards by Market Price'
       + '</div>';
 
@@ -410,7 +468,7 @@
         +     '<div class="ptw-card-meta">' + esc(c.card_id) + '</div>'
         +   '</div>'
         + '</div></td>'
-        + '<td>' + esc(c.set_code || '') + '</td>'
+        + '<td><span class="ptw-card-set">' + esc(c.set_code || '') + '</span></td>'
         + '<td>' + esc(c.rarity || '') + rarityBadge(c.rarity) + '</td>'
         + '<td><span class="ptw-card-price">' + price + '</span></td>'
         + '</tr>';
@@ -421,10 +479,11 @@
   }
 
   function renderPicker() {
-    $('ptw-set-bar').innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 2v8M2 6h8" stroke="#e8a040" stroke-width="1.5" stroke-linecap="round"/></svg>'
-      + ' <span style="color:#e8a040;">No set specified.</span> Choose a set or add <code style="background:#161a19;padding:2px 6px;border-radius:3px;font-size:11px;">?set=OP13</code> to the URL.';
+    $('ptw-set-bar').innerHTML = '<span class="ptw-set-bar-label">Select a set to view live pricing</span>';
 
-    var html = '<div class="ptw-section-title">Select a Set</div><div class="ptw-picker">';
+    var html = '<div class="ptw-section-title">'
+      + '<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><rect x="1" y="1" width="8" height="8" rx="1.5" stroke="#c9a84c" stroke-width="1"/></svg>'
+      + 'Available Sets</div><div class="ptw-picker">';
     KNOWN_SETS.forEach(function(s) {
       html += '<button class="ptw-picker-btn" data-set="' + s.code + '">'
         + '<div class="ptw-picker-name">' + esc(s.code) + '</div>'
@@ -447,7 +506,7 @@
     $('ptw-stats').innerHTML = '';
     $('ptw-stats').style.display = 'none';
     $('ptw-cards-section').innerHTML = '<div class="ptw-error">'
-      + '<strong>Unable to load data</strong>'
+      + '<strong>Unable to Load Data</strong>'
       + esc(msg || 'Please try again later.')
       + '</div>';
   }
@@ -463,9 +522,9 @@
       + '<div class="ptw-skeleton ptw-skeleton-row"></div>';
 
     var setInfo = KNOWN_SETS.find(function(s) { return s.code === setCode; });
-    var setName = setInfo ? setCode + ' ' + setInfo.name : setCode;
-    $('ptw-set-bar').innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="2" fill="#00e5c0"/></svg>'
-      + ' Showing live data for: <strong>' + esc(setName) + '</strong>';
+    var setName = setInfo ? setInfo.name : setCode;
+    $('ptw-set-bar').innerHTML = '<span class="ptw-set-bar-label">Showing live data for</span> '
+      + '<strong>' + esc(setCode) + ' \u2014 ' + esc(setName) + '</strong>';
 
     try {
       var results = await Promise.all([
@@ -476,7 +535,7 @@
       renderStats(results[0].products || [], results[1].cards || []);
       renderCards(results[1].cards || []);
 
-      $('ptw-timestamp').textContent = 'Updated: ' + new Date().toLocaleString('en-GB', {
+      $('ptw-timestamp').textContent = 'Updated ' + new Date().toLocaleString('en-GB', {
         day: 'numeric', month: 'short', year: 'numeric',
         hour: '2-digit', minute: '2-digit'
       });
@@ -490,7 +549,7 @@
     }
   }
 
-  // Init: read set from URL params
+  // Init
   var setCode = getSetFromURL();
   if (setCode) {
     loadSetData(setCode);
