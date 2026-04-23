@@ -174,3 +174,118 @@ async def admin_set_tier(body: AdminTierRequest):
         await conn.execute("UPDATE users SET tier=$1 WHERE email=$2", body.tier, body.email)
 
     return {"message": f"User {body.email} tier updated to {body.tier}"}
+
+
+# ─── Shop Bonus: Terminal-Pro als Kaufprämie ───────────────────────────
+#
+# Regel (gemäss Holygrade 90-Tage-Strategie):
+#   - Bestellung >= 300 EUR: 3 Monate Terminal-Pro gratis
+#   - Bestellung >= 1000 EUR: 12 Monate Terminal-Pro gratis
+#
+# Workflow:
+#   1) Kunde bestellt bei holygrade.com
+#   2) Du triggerst diesen Endpoint manuell oder via Shopify-Webhook
+#   3) Endpoint erstellt User falls noch nicht vorhanden (Temp-Passwort zum
+#      Zurücksetzen) oder upgraded bestehenden User
+#   4) Setzt tier auf 'pro' und trackt Ablaufdatum in subscriptions-Tabelle
+#   5) Retournierts das Temp-Passwort für die Welcome-Mail
+
+class ShopBonusRequest(BaseModel):
+    email: EmailStr
+    order_amount_eur: float
+    order_id: str
+    admin_secret: str
+
+
+@router.post("/admin/shop-bonus")
+async def shop_bonus(body: ShopBonusRequest):
+    """Grant Terminal-Pro tier as a purchase bonus.
+
+    - >= 300 EUR = 3 months Pro
+    - >= 1000 EUR = 12 months Pro
+    - < 300 EUR = no bonus (returns 400)
+    """
+    import secrets
+    from datetime import datetime, timedelta, timezone
+    from passlib.context import CryptContext
+
+    if body.admin_secret != ADMIN_SECRET:
+        raise HTTPException(403, "Invalid admin secret.")
+
+    if body.order_amount_eur < 300:
+        raise HTTPException(400, f"Order amount {body.order_amount_eur:.2f} EUR below bonus threshold (300 EUR).")
+
+    # Bestimme Bonus-Dauer
+    if body.order_amount_eur >= 1000:
+        months = 12
+        bonus_label = "12 months"
+    else:
+        months = 3
+        bonus_label = "3 months"
+
+    period_end = datetime.now(timezone.utc) + timedelta(days=months * 30)
+
+    pool = await get_pool()
+    pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    temp_password = None
+
+    async with pool.acquire() as conn:
+        user_row = await conn.fetchrow("SELECT id, email, tier FROM users WHERE email=$1", body.email)
+
+        if user_row is None:
+            # Create user with a random temp password (customer resets via login flow)
+            temp_password = secrets.token_urlsafe(12)
+            pw_hash = pwd.hash(temp_password)
+            user_row = await conn.fetchrow(
+                "INSERT INTO users (email, password_hash, tier) VALUES ($1, $2, 'pro') RETURNING id, email, tier",
+                body.email, pw_hash,
+            )
+            action = "created"
+        else:
+            # Upgrade existing user to pro (only if currently free)
+            if user_row["tier"] == "free":
+                await conn.execute("UPDATE users SET tier='pro' WHERE id=$1", user_row["id"])
+                action = "upgraded_to_pro"
+            else:
+                action = f"kept_{user_row['tier']}"  # Don't downgrade elite to pro
+
+        # Track the bonus in subscriptions (extends existing period if any)
+        existing_sub = await conn.fetchrow(
+            """SELECT id, current_period_end FROM subscriptions
+               WHERE user_id=$1 AND status='active'
+               ORDER BY current_period_end DESC NULLS LAST LIMIT 1""",
+            user_row["id"],
+        )
+
+        if existing_sub and existing_sub["current_period_end"] and existing_sub["current_period_end"] > datetime.now(timezone.utc):
+            # Extend existing period
+            new_end = max(existing_sub["current_period_end"], period_end)
+            new_end = existing_sub["current_period_end"] + timedelta(days=months * 30)
+            await conn.execute(
+                "UPDATE subscriptions SET current_period_end=$1 WHERE id=$2",
+                new_end, existing_sub["id"],
+            )
+            period_end = new_end
+            sub_action = "extended"
+        else:
+            # Create new subscription entry
+            await conn.execute(
+                """INSERT INTO subscriptions
+                   (user_id, stripe_subscription_id, tier, status, current_period_end)
+                   VALUES ($1, $2, 'pro', 'active', $3)""",
+                user_row["id"],
+                f"shop_bonus_{body.order_id}",
+                period_end,
+            )
+            sub_action = "created"
+
+    return {
+        "message": f"Shop bonus granted: {bonus_label} Terminal-Pro",
+        "email": body.email,
+        "user_action": action,
+        "subscription_action": sub_action,
+        "pro_until": period_end.isoformat(),
+        "temp_password": temp_password,  # only set for newly-created users
+        "order_id": body.order_id,
+        "order_amount_eur": body.order_amount_eur,
+    }
