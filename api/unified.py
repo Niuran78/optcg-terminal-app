@@ -589,19 +589,17 @@ async def browse_cards(
     outer_conditions = ["(en.pc_price_usd IS NOT NULL OR jp.pc_price_usd IS NOT NULL)"]
     outer_conditions.extend(price_conditions)
 
-    # TRUST GUARD: hide high-value cards (reference price ≥ €50) that don't yet
-    # have a live Cardmarket price AND aren't known Prize/Serial variants.
-    # This prevents users from seeing wildly wrong reference prices on cards
-    # where PriceCharting USD and Cardmarket EU differ by 10–500x.
-    # Cards under €50: reference is usually close enough; show normally.
-    # Cards skipped by scraper (Prize/Serial variants): always shown.
+    # TRUST GUARD: hide any card whose reference price ≥ €50 if we don't have
+    # a live Cardmarket price to back it up. This includes Prize/Championship
+    # variants — their PriceCharting prices (sometimes €1000+) are speculative
+    # collector values, not actual Cardmarket liquidity, so they'd mislead
+    # traders. Rule: high-price cards MUST have a live Cardmarket trend to be
+    # shown. Sub-€50 cards: reference is usually close enough; show normally.
     outer_conditions.append(
         "("
         "   en.cm_live_trend IS NOT NULL"
         " OR jp.cm_live_trend IS NOT NULL"
         " OR COALESCE(en.eu_cardmarket_7d_avg, jp.pc_price_usd * 0.92, 0) < 50"
-        " OR en.cm_live_status = 'skipped_prize'"
-        " OR jp.cm_live_status = 'skipped_prize'"
         ")"
     )
 
