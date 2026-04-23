@@ -117,7 +117,19 @@ def _build_sealed_links(row: dict) -> dict:
 
 
 def _row_to_sealed(row: dict) -> dict:
-    """Convert a sealed_unified DB row to a flat API response dict."""
+    """Convert a sealed_unified DB row to a flat API response dict.
+
+    Live Cardmarket prices (cm_live_trend) take precedence over the legacy
+    eu_price field (which is PriceCharting USD * 0.92, so not an actual
+    EU market price). Users see the real number whenever we have one.
+    """
+    cm_live_trend = row.get("cm_live_trend")
+    has_live = cm_live_trend is not None
+
+    # Effective price: live trend first, else the legacy reference
+    effective_price = cm_live_trend if has_live else row.get("eu_price")
+    price_source = "Cardmarket LIVE" if has_live else row.get("eu_source", "Reference (PriceCharting)")
+
     return {
         "product_name": row.get("product_name"),
         "set_code": row.get("set_code"),
@@ -125,12 +137,22 @@ def _row_to_sealed(row: dict) -> dict:
         "product_type": row.get("product_type"),
         "image_url": row.get("image_url"),
         "links": _build_sealed_links(row),
-        "eu_price": row.get("eu_price"),
-        "eu_30d_avg": row.get("eu_30d_avg"),
-        "eu_7d_avg": row.get("eu_7d_avg"),
+        # Primary price fields (the ones the frontend should use first)
+        "eu_price": effective_price,
+        "eu_30d_avg": row.get("cm_live_30d_avg") if has_live else row.get("eu_30d_avg"),
+        "eu_7d_avg": row.get("cm_live_7d_avg") if has_live else row.get("eu_7d_avg"),
         "eu_trend": row.get("eu_trend"),
-        "eu_source": row.get("eu_source", "Cardmarket"),
-        "eu_updated_at": str(row.get("eu_updated_at")) if row.get("eu_updated_at") else None,
+        "eu_source": price_source,
+        "eu_updated_at": str(row.get("cm_live_updated_at") or row.get("eu_updated_at")) if (row.get("cm_live_updated_at") or row.get("eu_updated_at")) else None,
+        # Explicit live-data fields for transparency in the UI
+        "cm_live_trend": cm_live_trend,
+        "cm_live_lowest": row.get("cm_live_lowest"),
+        "cm_live_available": row.get("cm_live_available"),
+        "cm_live_url": row.get("cm_live_url"),
+        "cm_live_status": row.get("cm_live_status"),
+        "has_live": has_live,
+        # Keep legacy/reference fields for fallback display
+        "reference_eu_price": row.get("eu_price"),
         "rapidapi_product_id": row.get("rapidapi_product_id"),
         "language": row.get("language") or "JP",
         "en_price_usd": row.get("en_price_usd"),
@@ -729,6 +751,7 @@ async def browse_cards(
 async def browse_sealed(
     set_code: Optional[str] = Query(None, description="Filter by set code"),
     product_type: Optional[str] = Query(None, description="case, booster_box, booster"),
+    language: Optional[str] = Query(None, description="EN or JP"),
     sort: str = Query("eu_price", description="Sort column"),
     order: str = Query("desc", description="asc or desc"),
     limit: int = Query(50, ge=1, le=200),
@@ -772,6 +795,13 @@ async def browse_sealed(
         conditions.append(f"product_type = ${param_idx}")
         params.append(product_type.lower().replace("_", " "))
         param_idx += 1
+
+    if language:
+        lang_norm = language.strip().upper()
+        if lang_norm in ("EN", "JP"):
+            conditions.append(f"language = ${param_idx}")
+            params.append(lang_norm)
+            param_idx += 1
 
     where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
     count_query = f"SELECT COUNT(*) FROM sealed_unified {where_clause}"

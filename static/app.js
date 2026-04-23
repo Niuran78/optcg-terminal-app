@@ -24,7 +24,7 @@ const State = {
     products: [],
     total:    0,
     loading:  false,
-    filters:  { set: 'all', type: 'all' },
+    filters:  { set: 'all', type: 'all', lang: 'all' },
     sort:     'eu_price',
   },
 
@@ -752,6 +752,14 @@ function initSealedFilters() {
     });
   });
 
+  $$('[data-sealed-lang]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      State.sealed.filters.lang = btn.dataset.sealedLang;
+      $$('[data-sealed-lang]').forEach(b => b.classList.toggle('active', b.dataset.sealedLang === btn.dataset.sealedLang));
+      loadSealedData();
+    });
+  });
+
   $$('[data-sort-sealed]').forEach(btn => {
     btn.addEventListener('click', () => {
       State.sealed.sort = btn.dataset.sortSealed;
@@ -773,6 +781,7 @@ async function loadSealedData() {
   const params = new URLSearchParams({ sort, limit: '200' });
   if (filters.set  !== 'all') params.set('set_code', filters.set);
   if (filters.type !== 'all') params.set('product_type', filters.type);
+  if (filters.lang !== 'all') params.set('language', filters.lang);
 
   try {
     const data = await apiFetch(`/api/cards/sealed?${params}`);
@@ -818,6 +827,12 @@ function renderSealedGrid(data) {
     const langBadge = lang === 'EN'
       ? `<span style="background:rgba(59,130,246,0.15);color:#60a5fa;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:0.05em;">🇬🇧 EN</span>`
       : `<span style="background:rgba(201,168,76,0.15);color:#c9a84c;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:0.05em;">🇯🇵 JP</span>`;
+    // LIVE badge: prominently show when we have a real Cardmarket trend
+    const liveBadge = p.has_live
+      ? `<span title="Live Cardmarket price (scraped within 24h)" style="background:rgba(0,229,192,0.18);color:#00e5c0;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:800;letter-spacing:0.08em;border:1px solid rgba(0,229,192,0.35);">🎯 LIVE</span>`
+      : `<span title="Reference price only — no live Cardmarket data yet" style="background:rgba(255,255,255,0.05);color:#9aa0a6;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:0.08em;border:1px solid rgba(255,255,255,0.08);">ref</span>`;
+    // Prefer the direct scraped Cardmarket URL when we have one
+    const cmLink = p.cm_live_url || p.links?.cardmarket;
     return `
     <div class="product-card">
       <div class="product-img-wrap">
@@ -826,7 +841,7 @@ function renderSealedGrid(data) {
           : `<div class="product-img-placeholder">${getTypeEmoji(p.product_type)}</div>`
         }
         <div class="product-type-tag">${escHtml(p.product_type || 'product')}</div>
-        <div style="position:absolute;top:8px;left:8px;">${langBadge}</div>
+        <div style="position:absolute;top:8px;left:8px;display:flex;gap:4px;">${langBadge}${liveBadge}</div>
       </div>
       <div class="product-body">
         <div>
@@ -836,18 +851,20 @@ function renderSealedGrid(data) {
         <div class="product-price-section">
           <div class="product-price-label">
             <span>${lang === 'EN' ? '🇬🇧' : '🇯🇵'}</span>
-            <span>${lang} MARKET</span>
+            <span>${lang} · ${p.has_live ? 'CARDMARKET LIVE' : 'REFERENCE'}</span>
           </div>
           <div class="product-price-main">${fmt.eurAuto(p.eu_price)}</div>
           <div class="product-price-stats">
-            ${p.en_price_usd != null ? `<span>USD ${fmt.usd(p.en_price_usd)}</span>` : ''}
+            ${p.cm_live_lowest != null ? `<span title="Lowest current listing">From ${fmt.eurAuto(p.cm_live_lowest)}</span>` : ''}
+            ${p.cm_live_available != null ? `<span title="Items available on Cardmarket">${p.cm_live_available} offers</span>` : ''}
             ${p.eu_7d_avg != null && p.eu_7d_avg !== p.eu_price ? `<span>7d ${fmt.eurAuto(p.eu_7d_avg)}</span>` : ''}
+            ${!p.has_live && p.en_price_usd != null ? `<span>USD ${fmt.usd(p.en_price_usd)}</span>` : ''}
             ${p.eu_trend ? trendIcon(p.eu_trend) : ''}
           </div>
-          ${p.eu_source ? `<div style="font-family:var(--font-mono);font-size:9px;color:var(--muted);margin-top:4px;">${escHtml(p.eu_source)}</div>` : ''}
+          ${p.eu_source ? `<div style="font-family:var(--font-mono);font-size:9px;color:${p.has_live ? 'var(--accent,#00e5c0)' : 'var(--muted)'};margin-top:4px;">${escHtml(p.eu_source)}</div>` : ''}
         </div>
-        ${p.links?.cardmarket
-          ? `<a class="product-link" href="${p.links.cardmarket}" target="_blank" rel="noopener nofollow" title="Buy on Cardmarket"><span>↗</span> Buy on Cardmarket</a>`
+        ${cmLink
+          ? `<a class="product-link" href="${cmLink}" target="_blank" rel="noopener nofollow" title="Buy on Cardmarket"><span>↗</span> Buy on Cardmarket</a>`
           : p.links?.pricecharting
             ? `<a class="product-link" href="${p.links.pricecharting}" target="_blank" rel="noopener nofollow" title="View on PriceCharting"><span>↗</span> View on PriceCharting</a>`
             : `<span class="product-link" style="opacity:0.4;cursor:default;">No listing available</span>`}

@@ -280,12 +280,21 @@
       </div>
 
       <div class="filter-group">
+        <span class="filter-label" id="lang-sealed-label">Market</span>
+        <div class="pill-group" role="group" aria-labelledby="lang-sealed-label">
+          <button class="pill active" data-sealed-lang="all">All</button>
+          <button class="pill" data-sealed-lang="EN">🇬🇧 EN</button>
+          <button class="pill" data-sealed-lang="JP">🇯🇵 JP</button>
+        </div>
+      </div>
+
+      <div class="filter-group">
         <span class="filter-label" id="type-label">Type</span>
         <div class="pill-group" role="group" aria-labelledby="type-label">
           <button class="pill active" data-type="all">All</button>
-          <button class="pill" data-type="case">📦 Cases</button>
           <button class="pill" data-type="booster box">🎴 Booster Box</button>
-          <button class="pill" data-type="booster">🃏 Booster</button>
+          <button class="pill" data-type="case">📦 Cases</button>
+          <button class="pill" data-type="display">🗃️ Displays</button>
         </div>
       </div>
 
