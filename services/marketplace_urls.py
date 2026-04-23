@@ -35,6 +35,14 @@ def tcgplayer_search_url(card_name: str, card_id: Optional[str] = None) -> Optio
 
 # Hand-curated map from our set_code to Cardmarket set-slug.
 # Based on cardmarket.com/en/OnePiece/Expansions observation.
+# Cardmarket JP-suffix override: most JP sets end with '-Japanese', but a few
+# older Starter Decks use '-Non-English'. Keyed by the EN set slug.
+_JP_SET_SUFFIX_OVERRIDES: dict[str, str] = {
+    "Starter-Deck-The-Seven-Warlords-of-the-Sea": "-Non-English",
+    # (add more exceptions here as we discover them)
+    "Unnumbered-Promos": "-Japanese",  # confirmed Apr 2026
+}
+
 CM_SET_SLUGS: dict[str, str] = {
     "OP01": "Romance-Dawn",
     "OP02": "Paramount-War",
@@ -180,9 +188,12 @@ def cardmarket_card_url(
         if not base_slug:
             return cardmarket_search_url(f"{name} {card_id}")
 
-    # Append -Non-English suffix for Japanese products
+    # Append JP suffix.
+    # Cardmarket is INCONSISTENT about this: most JP sets use '-Japanese', but
+    # a handful of older Starter Decks (notably ST03) use '-Non-English' in the
+    # URL. _JP_SET_SUFFIX_OVERRIDES captures these exceptions.
     if language and language.upper() == "JP":
-        base_slug = f"{base_slug}-Non-English"
+        base_slug = f"{base_slug}{_JP_SET_SUFFIX_OVERRIDES.get(base_slug, '-Japanese')}"
     card_slug = _slugify_card(name, card_id, variant)
     if not card_slug:
         return None
@@ -216,7 +227,11 @@ def cardmarket_sealed_url(
     if not set_slug:
         return None
 
-    lang_suffix = "-Non-English" if language and language.upper() == "JP" else ""
+    # JP suffix for sealed products mirrors the singles logic (see above).
+    if language and language.upper() == "JP":
+        lang_suffix = _JP_SET_SUFFIX_OVERRIDES.get(set_slug, "-Japanese")
+    else:
+        lang_suffix = ""
     ptype = (product_type or "").lower()
     if "booster box" in ptype:
         return f"https://www.cardmarket.com/en/OnePiece/Products/Booster-Boxes/{set_slug}-Booster-Box{lang_suffix}"

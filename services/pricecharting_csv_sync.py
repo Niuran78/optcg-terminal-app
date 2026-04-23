@@ -19,6 +19,24 @@ from typing import Optional
 
 import httpx
 
+# Known CamelCase artifacts from PriceCharting's card names — the site strips
+# quotes and whitespace so 'Eustass "Captain" Kid' becomes 'EustassCaptainKid'.
+# Map them back to their canonical spellings used by Cardmarket/TCGPlayer so
+# the Browser UI and marketplace URL builders can find them.
+_NAME_FIXES: dict[str, str] = {
+    "EustassCaptainKid":          'Eustass"Captain"Kid',
+    "EustassCaptainKidd":         'Eustass"Captain"Kidd',
+    "LittleOars Jr":              'Little Oars Jr.',
+    "LittleOars Jr.":             'Little Oars Jr.',
+    "Miss.MerryChristmas Drophy": 'Miss Merry Christmas & Drophy',
+    "Captain McKinley":           "Captain McKinley",
+}
+
+
+def _clean_card_name(name: str) -> str:
+    n = (name or "").strip()
+    return _NAME_FIXES.get(n, n)
+
 logger = logging.getLogger(__name__)
 
 PRICECHARTING_CSV_URL = (
