@@ -3,7 +3,7 @@ import asyncio
 from fastapi import APIRouter, Depends, Query, HTTPException
 
 from db.init import get_pool
-from middleware.tier_gate import get_current_user, UserInfo, require_pro
+from middleware.tier_gate import get_current_user, require_auth, UserInfo, require_pro
 from services import opcg_api
 
 router = APIRouter(prefix="/api/sealed", tags=["sealed"])
@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api/sealed", tags=["sealed"])
 async def list_sealed_products(
     set_id: str = Query(None, description="Filter by set ID"),
     sort: str = Query("price_highest", description="Sort order"),
-    user: UserInfo = Depends(get_current_user),
+    user: UserInfo = Depends(require_auth),
 ):
     """
     List all sealed products with current Cardmarket prices.

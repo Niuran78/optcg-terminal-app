@@ -12,10 +12,11 @@ _TCG_KEY = os.getenv("TCG_PRICE_LOOKUP_KEY", "")
 if not _TCG_KEY:
     logging.warning("TCG_PRICE_LOOKUP_KEY not set — EN price source will be disabled")
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
+from middleware.tier_gate import require_auth
 
 from db.init import init_db, get_pool
 from api.auth import router as auth_router
@@ -208,7 +209,7 @@ async def health():
 
 # Market overview endpoint
 @app.get("/api/market/overview")
-async def market_overview():
+async def market_overview(user=Depends(require_auth)):
     """Market overview powered entirely by live scraped Cardmarket data.
 
     Returns the data that actually helps an OP TCG trader:

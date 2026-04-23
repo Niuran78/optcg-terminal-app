@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, Query
 
 from db.init import get_pool
-from middleware.tier_gate import get_current_user, UserInfo
+from middleware.tier_gate import get_current_user, require_auth, UserInfo
 from services import opcg_api
 
 router = APIRouter(prefix="/api/sets", tags=["sets"])
@@ -11,7 +11,7 @@ router = APIRouter(prefix="/api/sets", tags=["sets"])
 @router.get("")
 async def list_sets(
     language: str = Query(None, description="Filter by language: JP or EN"),
-    user: UserInfo = Depends(get_current_user),
+    user: UserInfo = Depends(require_auth),
 ):
     """
     List all sets/episodes.
@@ -41,7 +41,7 @@ async def list_sets(
 
 
 @router.get("/{set_id}")
-async def get_set(set_id: str, user: UserInfo = Depends(get_current_user)):
+async def get_set(set_id: str, user: UserInfo = Depends(require_auth)):
     """Get details for a specific set."""
     pool = await get_pool()
     async with pool.acquire() as conn:

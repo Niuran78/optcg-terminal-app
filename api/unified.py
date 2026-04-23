@@ -13,7 +13,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Path, Query, HTTPException
 
 from db.init import get_pool
-from middleware.tier_gate import get_current_user, UserInfo
+from middleware.tier_gate import get_current_user, require_auth, UserInfo
 from services.card_aggregator import USD_TO_EUR, EUR_TO_USD
 
 logger = logging.getLogger(__name__)
@@ -367,7 +367,7 @@ async def card_price_history(
     card_id: str = Path(..., description="Card ID, e.g. OP01-001"),
     variant: str = Query("Normal", description="Card variant"),
     days: int = Query(30, ge=7, le=365, description="Number of days of history"),
-    user: UserInfo = Depends(get_current_user),
+    user: UserInfo = Depends(require_auth),
 ):
     """Daily price history for a card from daily_price_snapshots.
 
@@ -481,7 +481,7 @@ async def browse_cards(
     min_price_eur: Optional[float] = Query(None, ge=0, description="Hide cards cheaper than this"),
     max_price_eur: Optional[float] = Query(1000.0, ge=0, description="Hide cards pricier than this (default €1000 filters out serialized/prize)"),
     include_extreme: bool = Query(False, description="Include serialized/prize cards above €1000"),
-    user: UserInfo = Depends(get_current_user),
+    user: UserInfo = Depends(require_auth),
 ):
     """Browse all cards with EN + EU prices from both sources.
 
@@ -733,7 +733,7 @@ async def browse_sealed(
     order: str = Query("desc", description="asc or desc"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    user: UserInfo = Depends(get_current_user),
+    user: UserInfo = Depends(require_auth),
 ):
     """Browse sealed products with EU Cardmarket prices."""
     if sort not in SEALED_SORT_COLUMNS:
@@ -807,7 +807,7 @@ async def arbitrage_scanner(
     min_profit_pct: float = Query(5.0, ge=0.0, description="Minimum profit percentage"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    user: UserInfo = Depends(get_current_user),
+    user: UserInfo = Depends(require_auth),
 ):
     """Find JP↔EN arbitrage opportunities.
 

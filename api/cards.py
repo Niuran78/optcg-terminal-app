@@ -1,7 +1,7 @@
 """Cards API endpoints."""
 from fastapi import APIRouter, Depends, Query, HTTPException
 
-from middleware.tier_gate import get_current_user, UserInfo
+from middleware.tier_gate import get_current_user, require_auth, UserInfo
 from services import opcg_api
 
 router = APIRouter(prefix="/api/cards", tags=["cards"])
@@ -10,7 +10,7 @@ router = APIRouter(prefix="/api/cards", tags=["cards"])
 @router.get("/search")
 async def search_cards(
     q: str = Query(..., min_length=2, description="Card name search query"),
-    user: UserInfo = Depends(get_current_user),
+    user: UserInfo = Depends(require_auth),
 ):
     """Search cards by name. Available to all tiers."""
     results = await opcg_api.search_cards(q, tier=user.tier)
@@ -25,7 +25,7 @@ async def search_cards(
 async def get_cards_for_set(
     set_id: str,
     sort: str = Query("price_highest", description="Sort order"),
-    user: UserInfo = Depends(get_current_user),
+    user: UserInfo = Depends(require_auth),
 ):
     """
     Get all cards for a set.
@@ -68,7 +68,7 @@ async def get_cards_for_set(
 async def get_card_history(
     card_id: str,
     days: int = Query(30, ge=1, le=365),
-    user: UserInfo = Depends(get_current_user),
+    user: UserInfo = Depends(require_auth),
 ):
     """Get price history for a card. Pro: 30 days, Elite: 1 year."""
     if not user.can_access("pro"):

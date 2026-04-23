@@ -5,6 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Holygrade Terminal</title>
   <meta name="description" content="Holygrade Terminal — market intelligence for One Piece TCG collectors and investors. Live JP + EN pricing, arbitrage scanner, portfolio tracker." />
+  <!-- AUTH GATE: runs BEFORE any page content or styles render. Users
+       without a JWT are redirected to /login.html immediately. -->
+  <script>
+    (function () {
+      try {
+        var token = localStorage.getItem('optcg_token');
+        if (!token) {
+          location.replace('/login.html');
+          // Stop rendering anything else
+          document.documentElement.style.display = 'none';
+        }
+      } catch (e) {
+        location.replace('/login.html');
+      }
+    })();
+  </script>
   <link rel="stylesheet" href="style.css" />
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230a0a0b'/%3E%3Cpath d='M8 10h5l3 9 3-9h5' stroke='%2300e5c0' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
 </head>

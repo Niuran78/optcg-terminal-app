@@ -5,7 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query, HTTPException
 
 from db.init import get_pool
-from middleware.tier_gate import get_current_user, UserInfo
+from middleware.tier_gate import get_current_user, require_auth, UserInfo
 from services import opcg_api
 from services.arbitrage_engine import analyze_items
 
@@ -49,7 +49,7 @@ async def arbitrage_scanner(
     signal: Optional[str] = Query(None, description="Filter by signal: BUY_EU, BUY_US, WATCH, NEUTRAL"),
     language: Optional[str] = Query(None, description="Filter by language: JP or EN"),
     item_type: str = Query("product", description="'product' or 'card'"),
-    user: UserInfo = Depends(get_current_user),
+    user: UserInfo = Depends(require_auth),
 ):
     """
     Top arbitrage opportunities across all sets.
@@ -132,7 +132,7 @@ async def arbitrage_scanner(
 async def arbitrage_for_set(
     set_id: str,
     item_type: str = Query("product", description="'product' or 'card'"),
-    user: UserInfo = Depends(get_current_user),
+    user: UserInfo = Depends(require_auth),
 ):
     """Arbitrage analysis for a specific set. Reads from cache first."""
     # Check free tier set restriction
