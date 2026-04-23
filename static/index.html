@@ -175,6 +175,11 @@
       <span>Loading…</span>
     </div>
 
+    <!-- Data-source disclosure -->
+    <div class="data-source-note" role="note">
+      <strong>Reference prices</strong> shown below. JP prices from <a href="https://www.pricecharting.com" target="_blank" rel="noopener">PriceCharting</a>; EN prices from TCGPlayer market (USD → EUR at €0.92/$). Live Cardmarket EU listings may differ — click any price to open the live Cardmarket page for current offers.
+    </div>
+
     <!-- Table -->
     <div class="table-wrap" id="browser-table-wrap">
       <div class="table-responsive">
@@ -199,19 +204,21 @@
               <th scope="col" class="col-en sortable" data-sort="en_tcgplayer_market">
                 <div class="th-content">
                   <span class="th-main">
-                    🇯🇵 JP Price
+                    🇯🇵 JP Market
+                    <span class="info-tip" title="Source: PriceCharting JP loose-price, USD→EUR at €0.92/$. Updated daily. Cardmarket live offers may differ — click the link to see live EU listings.">ⓘ</span>
                     <span class="th-sort-icon" aria-hidden="true">↕</span>
                   </span>
-                  <span class="th-sub">Japanese version</span>
+                  <span class="th-sub">PriceCharting · daily</span>
                 </div>
               </th>
               <th scope="col" class="col-eu sortable" data-sort="eu_cardmarket_7d_avg">
                 <div class="th-content">
                   <span class="th-main">
-                    🇬🇧 EN Price
+                    🇬🇧 EN Market
+                    <span class="info-tip" title="Source: TCGPlayer market price (USD) converted to EUR at €0.92/$. Updated daily. Cardmarket live offers are typically a separate EU market and may show different prices — click the link to see live EU listings.">ⓘ</span>
                     <span class="th-sort-icon" aria-hidden="true">↕</span>
                   </span>
-                  <span class="th-sub">English version</span>
+                  <span class="th-sub">TCGPlayer → EUR · daily</span>
                 </div>
               </th>
               <th scope="col" class="sortable" data-sort="spread">

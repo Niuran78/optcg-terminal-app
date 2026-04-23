@@ -595,17 +595,17 @@ function renderBrowserTable(data) {
         <td class="col-en">
           <div class="price-cell">
             ${card.links?.cardmarket_jp && jpUsd
-              ? `<a class="price-val price-link" href="${card.links.cardmarket_jp}" target="_blank" rel="noopener nofollow" title="Buy JP on Cardmarket">${fmt.eurAuto(jpEur)} ↗</a>`
+              ? `<a class="price-val price-link" href="${card.links.cardmarket_jp}" target="_blank" rel="noopener nofollow" title="Open live Cardmarket JP listings — prices shown here are PriceCharting reference values and may differ from live EU offers">${fmt.eurAuto(jpEur)} ↗</a>`
               : `<div class="price-val" style="color:var(--muted);">${jpEur != null ? fmt.eurAuto(jpEur) : '—'}</div>`}
-            <div class="price-sub">🇯🇵 Japanese</div>
+            <div class="price-sub" title="Reference price (PriceCharting JP) — click link for live Cardmarket offers">🇯🇵 PriceCharting ref</div>
           </div>
         </td>
         <td class="col-eu">
           <div class="price-cell">
             ${card.links?.cardmarket_en
-              ? `<a class="price-val price-link" href="${card.links.cardmarket_en}" target="_blank" rel="noopener nofollow" title="Buy EN on Cardmarket">${fmt.eurAuto(enEur)} ↗</a>`
+              ? `<a class="price-val price-link" href="${card.links.cardmarket_en}" target="_blank" rel="noopener nofollow" title="Open live Cardmarket EN listings — prices shown here are TCGPlayer→EUR reference values and may differ from live EU offers">${fmt.eurAuto(enEur)} ↗</a>`
               : `<div class="price-val">${fmt.eurAuto(enEur)}</div>`}
-            <div class="price-sub">🇬🇧 English</div>
+            <div class="price-sub" title="Reference: TCGPlayer market USD → EUR at €0.92/$. Click for live Cardmarket EU offers.">🇬🇧 TCGPlayer → EUR</div>
           </div>
         </td>
         <td>
