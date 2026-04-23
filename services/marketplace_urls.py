@@ -142,23 +142,24 @@ def _slugify_card(name: str, card_id: str, variant: Optional[str] = None) -> str
     words = [re.sub(r"[^\w]", "", w) for w in words if w]
     name_slug = "-".join(w for w in words if w)
 
-    # Variant suffix — Cardmarket uses V1, V2, V3, V4…
-    # Rule: Normal=V1, Alternate Art=V2, Alternate Art 2=V3, Alternate Art 3=V4,
-    # Alternate Art 4=V5, and so on. Explicit Vn labels (e.g. 'V4') pass through.
-    variant_suffix = "V1"
+    # Variant suffix — Cardmarket uses V2/V3/V4… for parallel arts and NO
+    # suffix for the Normal (default) printing. Observed Apr 2026 on
+    # Awakening-of-the-New-Era-Japanese and Starter-Deck-*-Non-English.
+    variant_suffix = ""  # Normal / default
     if variant:
         v = variant.lower().strip()
         m_v = re.match(r"^v(\d+)$", v)
         m_alt = re.match(r"^(?:alternate art|alt art|parallel)(?:\s+(\d+))?$", v)
         if m_v:
-            variant_suffix = f"V{m_v.group(1)}"
+            n = int(m_v.group(1))
+            variant_suffix = f"-V{n}" if n >= 2 else ""
         elif m_alt:
             n = int(m_alt.group(1) or 1)  # 'Alternate Art' alone = V2, +1 per counter
-            variant_suffix = f"V{n + 1}"
+            variant_suffix = f"-V{n + 1}"
         elif "foil" in v and "normal" not in v:
             # Foil reprints typically live on the last V slot for that card
-            variant_suffix = "V4"
-    return f"{name_slug}-{card_id}-{variant_suffix}"
+            variant_suffix = "-V4"
+    return f"{name_slug}-{card_id}{variant_suffix}"
 
 
 def _canonical_set_from_card_id(card_id: str) -> Optional[str]:
@@ -211,11 +212,13 @@ def cardmarket_card_url(
     if _is_promo_variant(variant):
         base_slug = "Unnumbered-Promos"
     elif _is_starter_altart(card_id, variant):
-        # Alt-Art reprints of Starter-Deck (STxx) cards don't live in the
-        # original Starter-Deck set on Cardmarket — they're re-released in a
-        # separate 'The Best' compilation. Observed April 2026 for ST03-013
-        # (Boa Hancock V2, V4), ST01 reprints, etc.
-        base_slug = "The-Best"
+        # Alt-Art reprints of Starter-Deck (STxx) cards are fragmented across
+        # multiple Cardmarket compilations ('The Best', 'The Best Vol.2',
+        # 'Saikyou Jump Set') and not every (card_id, variant) combo exists
+        # on both EN and JP sides. Rather than guess and land on 'Invalid
+        # product', route to Cardmarket search so the user always gets a
+        # valid landing page.
+        return cardmarket_search_url(f"{name} {card_id}")
     else:
         canonical = _canonical_set_from_card_id(card_id) or set_code.upper()
         base_slug = CM_SET_SLUGS.get(canonical)
