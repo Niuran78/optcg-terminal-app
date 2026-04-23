@@ -142,22 +142,26 @@ def _slugify_card(name: str, card_id: str, variant: Optional[str] = None) -> str
     words = [re.sub(r"[^\w]", "", w) for w in words if w]
     name_slug = "-".join(w for w in words if w)
 
-    # Variant suffix — Cardmarket uses V2/V3/V4… for parallel arts and NO
-    # suffix for the Normal (default) printing. Observed Apr 2026 on
-    # Awakening-of-the-New-Era-Japanese and Starter-Deck-*-Non-English.
-    variant_suffix = ""  # Normal / default
+    # Variant suffix — Cardmarket convention (verified Apr 2026 on live site):
+    #   OP/EB/PRB regular expansions  : Normal=V1, AltArt=V2, AltArt2=V3 …
+    #   STxx starter-deck (main pages): Normal has NO suffix, alt-arts live
+    #     in other compilation sets (routed to search earlier)
+    # The card_id tells us which rule to apply.
+    prefix = (card_id.split("-", 1)[0] if card_id else "").upper()
+    st_style = prefix.startswith("ST")
+
+    variant_suffix = "" if st_style else "-V1"  # default for Normal
     if variant:
         v = variant.lower().strip()
         m_v = re.match(r"^v(\d+)$", v)
         m_alt = re.match(r"^(?:alternate art|alt art|parallel)(?:\s+(\d+))?$", v)
         if m_v:
             n = int(m_v.group(1))
-            variant_suffix = f"-V{n}" if n >= 2 else ""
+            variant_suffix = f"-V{n}"
         elif m_alt:
             n = int(m_alt.group(1) or 1)  # 'Alternate Art' alone = V2, +1 per counter
             variant_suffix = f"-V{n + 1}"
         elif "foil" in v and "normal" not in v:
-            # Foil reprints typically live on the last V slot for that card
             variant_suffix = "-V4"
     return f"{name_slug}-{card_id}{variant_suffix}"
 
