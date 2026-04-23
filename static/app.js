@@ -1527,9 +1527,21 @@ function renderPortfolioItems(items) {
   tbody.innerHTML = items.map((it, idx) => {
     const pnlClass = (it.pnl_eur || 0) >= 0 ? 'pnl-positive' : 'pnl-negative';
     const roiClass = (it.roi_pct || 0) >= 0 ? 'pnl-positive' : 'pnl-negative';
-    const marketPrice = it.eu_cardmarket_7d_avg != null ? fmt.eurAuto(it.eu_cardmarket_7d_avg)
-                      : it.en_tcgplayer_market != null ? fmt.usdAuto(it.en_tcgplayer_market)
-                      : '—';
+
+    // Prefer live Cardmarket price; fall back to reference
+    let priceHtml = '—';
+    let sourceLabel = '';
+    if (it.cm_live_trend != null) {
+      const href = it.cm_live_url || '#';
+      priceHtml = `<a class="price-link" href="${escHtml(href)}" target="_blank" rel="noopener nofollow" style="color:var(--accent);text-decoration:none;">${fmt.eurAuto(it.cm_live_trend)} ↗</a>`;
+      sourceLabel = '<span class="live-badge" style="font-size:9px;">🎯 LIVE</span>';
+    } else if (it.eu_cardmarket_7d_avg != null) {
+      priceHtml = fmt.eurAuto(it.eu_cardmarket_7d_avg);
+      sourceLabel = '<span style="font-size:9px;color:var(--muted);">Reference</span>';
+    } else if (it.en_tcgplayer_market != null) {
+      priceHtml = fmt.eurAuto(it.en_tcgplayer_market * 0.92);
+      sourceLabel = '<span style="font-size:9px;color:var(--muted);">Reference (EN)</span>';
+    }
 
     return `<tr>
       <td>
@@ -1544,7 +1556,10 @@ function renderPortfolioItems(items) {
       <td>${escHtml(it.set_code || '')}</td>
       <td>${it.quantity}</td>
       <td>${fmt.eurAuto(it.buy_price)}</td>
-      <td class="col-eu">${marketPrice}</td>
+      <td class="col-eu">
+        <div style="line-height:1.3;">${priceHtml}</div>
+        <div style="margin-top:2px;">${sourceLabel}</div>
+      </td>
       <td class="${pnlClass}">${it.pnl_eur != null ? fmt.eurAuto(it.pnl_eur) : '—'}</td>
       <td class="${roiClass}">${it.roi_pct != null ? fmt.pct(it.roi_pct) : '—'}</td>
       <td>

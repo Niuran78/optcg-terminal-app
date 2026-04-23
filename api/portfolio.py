@@ -55,7 +55,16 @@ class UpdateItem(BaseModel):
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
 def _current_value_eur(card_row: dict, quantity: int) -> Optional[float]:
-    """Best-effort current value in EUR for a card."""
+    """Best-effort current value in EUR for a card.
+
+    Priority order (most accurate first):
+      1. cm_live_trend      — scraped LIVE Cardmarket EUR price
+      2. eu_cardmarket_7d_avg — reference EU price (PriceCharting → EUR)
+      3. en_tcgplayer_market — reference EN price (TCGPlayer USD → EUR)
+    """
+    live = card_row.get("cm_live_trend")
+    if live is not None:
+        return round(live * quantity, 2)
     eu = card_row.get("eu_cardmarket_7d_avg")
     if eu is not None:
         return round(eu * quantity, 2)
@@ -63,6 +72,17 @@ def _current_value_eur(card_row: dict, quantity: int) -> Optional[float]:
     if en is not None:
         return round(en * USD_TO_EUR * quantity, 2)
     return None
+
+
+def _price_source(card_row: dict) -> str:
+    """Which price did we use? For transparency in the UI."""
+    if card_row.get("cm_live_trend") is not None:
+        return "live"
+    if card_row.get("eu_cardmarket_7d_avg") is not None:
+        return "reference_eu"
+    if card_row.get("en_tcgplayer_market") is not None:
+        return "reference_en"
+    return "none"
 
 
 def _cost_eur(buy_price: float, buy_currency: str, quantity: int) -> float:
@@ -174,7 +194,9 @@ async def list_items(portfolio_id: int, user: UserInfo = Depends(require_auth)):
                       pi.acquired_at, pi.notes, pi.created_at AS item_created,
                       c.card_id, c.name, c.set_code, c.set_name, c.rarity,
                       c.variant, c.image_url,
-                      c.eu_cardmarket_7d_avg, c.en_tcgplayer_market
+                      c.eu_cardmarket_7d_avg, c.en_tcgplayer_market,
+                      c.cm_live_trend, c.cm_live_updated_at, c.cm_live_url,
+                      c.cm_live_lowest, c.cm_live_available
                FROM portfolio_items pi
                JOIN cards_unified c ON c.id = pi.card_unified_id
                WHERE pi.portfolio_id = $1
@@ -205,6 +227,11 @@ async def list_items(portfolio_id: int, user: UserInfo = Depends(require_auth)):
             "notes": r["notes"],
             "eu_cardmarket_7d_avg": r["eu_cardmarket_7d_avg"],
             "en_tcgplayer_market": r["en_tcgplayer_market"],
+            "cm_live_trend":    r["cm_live_trend"],
+            "cm_live_lowest":   r["cm_live_lowest"],
+            "cm_live_available": r["cm_live_available"],
+            "cm_live_url":      r["cm_live_url"],
+            "price_source":     _price_source(dict(r)),
             "cost_eur": cost,
             "current_value_eur": cur_val,
             "pnl_eur": pnl,
@@ -381,7 +408,9 @@ async def portfolio_summary(portfolio_id: int, user: UserInfo = Depends(require_
 
         rows = await conn.fetch(
             """SELECT pi.quantity, pi.buy_price, pi.buy_currency,
-                      c.card_id, c.name, c.eu_cardmarket_7d_avg, c.en_tcgplayer_market
+                      c.card_id, c.name,
+                      c.eu_cardmarket_7d_avg, c.en_tcgplayer_market,
+                      c.cm_live_trend
                FROM portfolio_items pi
                JOIN cards_unified c ON c.id = pi.card_unified_id
                WHERE pi.portfolio_id = $1""",
@@ -452,7 +481,8 @@ async def export_csv(portfolio_id: int, user: UserInfo = Depends(require_auth)):
             """SELECT pi.quantity, pi.buy_price, pi.buy_currency,
                       pi.acquired_at, pi.notes,
                       c.card_id, c.name, c.set_code, c.rarity, c.variant,
-                      c.eu_cardmarket_7d_avg, c.en_tcgplayer_market
+                      c.eu_cardmarket_7d_avg, c.en_tcgplayer_market,
+                      c.cm_live_trend
                FROM portfolio_items pi
                JOIN cards_unified c ON c.id = pi.card_unified_id
                WHERE pi.portfolio_id = $1
@@ -465,7 +495,7 @@ async def export_csv(portfolio_id: int, user: UserInfo = Depends(require_auth)):
     writer.writerow([
         "card_id", "name", "set_code", "rarity", "variant",
         "quantity", "buy_price", "buy_currency", "acquired_at", "notes",
-        "eu_7d_avg", "en_market_usd",
+        "cm_live_trend", "eu_7d_avg", "en_market_usd", "price_source",
         "cost_eur", "current_value_eur", "pnl_eur", "roi_pct",
     ])
 
@@ -480,8 +510,10 @@ async def export_csv(portfolio_id: int, user: UserInfo = Depends(require_auth)):
             r["quantity"], r["buy_price"], r["buy_currency"],
             str(r["acquired_at"]) if r["acquired_at"] else "",
             r["notes"] or "",
+            r["cm_live_trend"] or "",
             r["eu_cardmarket_7d_avg"] or "",
             r["en_tcgplayer_market"] or "",
+            _price_source(dict(r)),
             cost, cur_val or "", pnl, roi,
         ])
 
