@@ -68,12 +68,28 @@ def _row_to_card(row: dict) -> dict:
         "en_ebay_avg_7d": row.get("en_ebay_avg_7d"),
         "en_source": row.get("en_source", "TCG Price Lookup"),
         "en_updated_at": str(row.get("en_updated_at")) if row.get("en_updated_at") else None,
-        # EU prices (flat)
+        # EU prices (flat) — reference derived from PriceCharting/TCGPlayer
         "eu_cardmarket_7d_avg": row.get("eu_cardmarket_7d_avg"),
         "eu_cardmarket_30d_avg": row.get("eu_cardmarket_30d_avg"),
         "eu_cardmarket_lowest": row.get("eu_cardmarket_lowest"),
         "eu_source": row.get("eu_source", "Cardmarket"),
         "eu_updated_at": str(row.get("eu_updated_at")) if row.get("eu_updated_at") else None,
+        # LIVE Cardmarket prices (scraped directly) — authoritative when present
+        "cm_live_trend":      row.get("cm_live_trend"),
+        "cm_live_30d_avg":    row.get("cm_live_30d_avg"),
+        "cm_live_7d_avg":     row.get("cm_live_7d_avg"),
+        "cm_live_lowest":     row.get("cm_live_lowest"),
+        "cm_live_available":  row.get("cm_live_available"),
+        "cm_live_url":        row.get("cm_live_url"),
+        "cm_live_status":     row.get("cm_live_status"),
+        "cm_live_updated_at": str(row.get("cm_live_updated_at")) if row.get("cm_live_updated_at") else None,
+        # JP-side live prices
+        "jp_cm_live_trend":   row.get("jp_cm_live_trend"),
+        "jp_cm_live_30d_avg": row.get("jp_cm_live_30d_avg"),
+        "jp_cm_live_lowest":  row.get("jp_cm_live_lowest"),
+        "jp_cm_live_available": row.get("jp_cm_live_available"),
+        "jp_cm_live_url":     row.get("jp_cm_live_url"),
+        "jp_cm_live_status":  row.get("jp_cm_live_status"),
         # IDs
         "tcg_price_lookup_id": row.get("tcg_price_lookup_id"),
         "rapidapi_card_id": row.get("rapidapi_card_id"),
@@ -603,6 +619,22 @@ async def browse_cards(
             jp.pricecharting_id AS jp_pricecharting_id,
             jp.id AS jp_card_db_id,
             en.id AS en_card_db_id,
+            -- LIVE Cardmarket scraped prices (EN row)
+            en.cm_live_trend AS cm_live_trend,
+            en.cm_live_30d_avg AS cm_live_30d_avg,
+            en.cm_live_7d_avg AS cm_live_7d_avg,
+            en.cm_live_lowest AS cm_live_lowest,
+            en.cm_live_available AS cm_live_available,
+            en.cm_live_url AS cm_live_url,
+            en.cm_live_status AS cm_live_status,
+            en.cm_live_updated_at AS cm_live_updated_at,
+            -- JP-side live prices
+            jp.cm_live_trend AS jp_cm_live_trend,
+            jp.cm_live_30d_avg AS jp_cm_live_30d_avg,
+            jp.cm_live_lowest AS jp_cm_live_lowest,
+            jp.cm_live_available AS jp_cm_live_available,
+            jp.cm_live_url AS jp_cm_live_url,
+            jp.cm_live_status AS jp_cm_live_status,
             'EN' AS language  -- legacy field
         FROM base b
         LEFT JOIN cards_unified en

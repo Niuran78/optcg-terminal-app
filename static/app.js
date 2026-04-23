@@ -578,12 +578,30 @@ function renderBrowserTable(data) {
 
   let rows = '';
   cards.forEach((card, i) => {
-    // JP/EN spread computation using both language-prices
-    const enUsd = card.en_tcgplayer_market;
-    const jpUsd = card.jp_pc_price_usd;
-    const jpEur = jpUsd != null ? jpUsd * 0.92 : null;
-    const enEur = enUsd != null ? enUsd * 0.92 : null;
-    const spreadRatio = (jpUsd && enUsd && jpUsd > 0) ? (enUsd / jpUsd) : null;
+    // LIVE Cardmarket prices take priority when available (scraped directly).
+    // Fall back to reference prices (PriceCharting/TCGPlayer → EUR) only
+    // when no live data exists yet.
+    const enLive = card.cm_live_trend;          // EN row live trend (€)
+    const jpLive = card.jp_cm_live_trend;       // JP row live trend (€)
+
+    const enRefUsd = card.en_tcgplayer_market;
+    const jpRefUsd = card.jp_pc_price_usd;
+    const jpRefEur = jpRefUsd != null ? jpRefUsd * 0.92 : null;
+    const enRefEur = enRefUsd != null ? enRefUsd * 0.92 : null;
+
+    // Displayed prices — prefer live
+    const enDisplay = enLive != null ? enLive : enRefEur;
+    const jpDisplay = jpLive != null ? jpLive : jpRefEur;
+    const enIsLive = enLive != null;
+    const jpIsLive = jpLive != null;
+
+    // Legacy vars kept for existing code below
+    const enUsd = enRefUsd;
+    const jpUsd = jpRefUsd;
+    const jpEur = jpRefEur;
+    const enEur = enRefEur;
+    // Spread: use live where available, else fall back to reference
+    const spreadRatio = (jpDisplay && enDisplay && jpDisplay > 0) ? (enDisplay / jpDisplay) : null;
     const signal = card.arbitrage?.signal || null;
     const variant = card.variant && card.variant !== 'Normal' ? ` <span style="font-size:10px;color:var(--muted);">(${escHtml(card.variant)})</span>` : '';
 
@@ -605,18 +623,26 @@ function renderBrowserTable(data) {
         <td>${rarityBadge(card.rarity)}</td>
         <td class="col-en">
           <div class="price-cell">
-            ${card.links?.cardmarket_jp && jpUsd
-              ? `<a class="price-val price-link" href="${card.links.cardmarket_jp}" target="_blank" rel="noopener nofollow" title="Open live Cardmarket JP listings — prices shown here are PriceCharting reference values and may differ from live EU offers">${fmt.eurAuto(jpEur)} ↗</a>`
-              : `<div class="price-val" style="color:var(--muted);">${jpEur != null ? fmt.eurAuto(jpEur) : '—'}</div>`}
-            <div class="price-sub" title="Reference price (PriceCharting JP) — click link for live Cardmarket offers">🇯🇵 PriceCharting ref</div>
+            ${jpIsLive
+              ? `<a class="price-val price-link" href="${card.jp_cm_live_url || card.links?.cardmarket_jp || '#'}" target="_blank" rel="noopener nofollow" title="Live Cardmarket JP price · click to open listing">${fmt.eurAuto(jpDisplay)} ↗</a>`
+              : jpDisplay != null && card.links?.cardmarket_jp
+                ? `<a class="price-val price-link" style="opacity:0.55;" href="${card.links.cardmarket_jp}" target="_blank" rel="noopener nofollow" title="Reference price (PriceCharting — may differ from live)">${fmt.eurAuto(jpDisplay)} ↗</a>`
+                : `<div class="price-val" style="color:var(--muted);">—</div>`}
+            <div class="price-sub">${jpIsLive
+              ? '<span class="live-badge">🎯 LIVE</span>'
+              : '🇯🇵 Reference'}</div>
           </div>
         </td>
         <td class="col-eu">
           <div class="price-cell">
-            ${card.links?.cardmarket_en
-              ? `<a class="price-val price-link" href="${card.links.cardmarket_en}" target="_blank" rel="noopener nofollow" title="Open live Cardmarket EN listings — prices shown here are TCGPlayer→EUR reference values and may differ from live EU offers">${fmt.eurAuto(enEur)} ↗</a>`
-              : `<div class="price-val">${fmt.eurAuto(enEur)}</div>`}
-            <div class="price-sub" title="Reference: TCGPlayer market USD → EUR at €0.92/$. Click for live Cardmarket EU offers.">🇬🇧 TCGPlayer → EUR</div>
+            ${enIsLive
+              ? `<a class="price-val price-link" href="${card.cm_live_url || card.links?.cardmarket_en || '#'}" target="_blank" rel="noopener nofollow" title="Live Cardmarket EN price · click to open listing">${fmt.eurAuto(enDisplay)} ↗</a>`
+              : enDisplay != null && card.links?.cardmarket_en
+                ? `<a class="price-val price-link" style="opacity:0.55;" href="${card.links.cardmarket_en}" target="_blank" rel="noopener nofollow" title="Reference price (TCGPlayer→EUR — may differ from live)">${fmt.eurAuto(enDisplay)} ↗</a>`
+                : `<div class="price-val" style="color:var(--muted);">—</div>`}
+            <div class="price-sub">${enIsLive
+              ? '<span class="live-badge">🎯 LIVE</span>'
+              : '🇬🇧 Reference'}</div>
           </div>
         </td>
         <td>
