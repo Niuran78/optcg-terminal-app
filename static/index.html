@@ -499,8 +499,29 @@
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style="display:inline;margin-right:6px;" aria-hidden="true">
               <path d="M2 9 L4.5 5.5 L7 7 L10 2.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-            Top Arbitrage Movers
+            Top Live Alt-Arts
           </span>
+          <span style="font-size:10px;color:var(--muted);">by price</span>
+        </div>
+        <div class="overview-card-body">
+          <div id="overview-valuable" aria-live="polite">
+            <div class="empty-state" style="padding:32px 0;">
+              <div style="color:var(--muted);font-size:13px;">Loading…</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- JP-EN Arbitrage Movers -->
+      <div class="overview-card">
+        <div class="overview-card-header">
+          <span class="overview-card-title">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style="display:inline;margin-right:6px;" aria-hidden="true">
+              <path d="M2 4 L10 4 M8 2 L10 4 L8 6 M10 8 L2 8 M4 6 L2 8 L4 10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Best JP → EN Arbitrage
+          </span>
+          <span style="font-size:10px;color:var(--muted);">live spread</span>
         </div>
         <div class="overview-card-body">
           <div id="overview-movers" aria-live="polite">
@@ -512,15 +533,16 @@
       </div>
 
       <!-- Recent Sets -->
-      <div class="overview-card">
+      <div class="overview-card" style="grid-column:1/-1;">
         <div class="overview-card-header">
           <span class="overview-card-title">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style="display:inline;margin-right:6px;" aria-hidden="true">
               <rect x="1" y="1" width="10" height="10" rx="1.5" stroke="currentColor" stroke-width="1.2"/>
               <path d="M4 5h4M4 7.5h2.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
             </svg>
-            Sets Tracked
+            Sets Coverage
           </span>
+          <span style="font-size:10px;color:var(--muted);">live-price backfill progress</span>
         </div>
         <div class="overview-card-body">
           <div class="set-list" id="overview-sets" aria-live="polite">

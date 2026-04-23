@@ -1055,14 +1055,10 @@ async function loadOverviewData() {
 
     // Merge into a single data object for renderOverview
     const data = {
-      total_sets:    summary?.total_sets || 0,
-      total_cards:   summary?.total_cards || 0,
-      cards_with_eu: summary?.cards_with_eu_prices || 0,
-      cards_with_en: summary?.cards_with_en_prices || 0,
-      last_updated:  summary?.last_updated || null,
-      top_movers:    overview?.top_movers || [],
+      stats:         overview?.stats || summary || {},
+      top_valuable:  overview?.top_valuable || [],
+      arbitrage:     overview?.arbitrage  || [],
       recent_sets:   overview?.recent_sets || [],
-      arb_opportunities: overview?.stats?.arb_opportunities || 0,
     };
 
     State.overview.data = data;
@@ -1082,74 +1078,136 @@ async function loadOverviewData() {
 }
 
 function renderOverview(data) {
+  const stats = data.stats || {};
+
+  // ─── Hero bar: market-wide stats based on LIVE data ──────────────────
   const heroEl = $('overview-hero');
   if (heroEl) {
-    const setsTracked = Number(data.total_sets) || 0;
-    const cardsIndexed = Number(data.total_cards) || 0;
-    const arbOpps = Number(data.arb_opportunities) || 0;
+    const setsTracked = Number(stats.total_sets) || 0;
+    const cardsIndexed = Number(stats.total_cards) || 0;
+    const cardsLive = Number(stats.cards_with_live) || 0;
+    const fresh = Number(stats.fresh_prices) || 0;
+    const coverage = cardsIndexed > 0 ? Math.round((cardsLive / cardsIndexed) * 100) : 0;
+    const lastScrape = stats.last_scrape;
 
     heroEl.innerHTML = `
       <div class="overview-hero-card accent-border">
-        <div class="stat-label">Sets Tracked</div>
-        <div class="stat-value accent">${fmt.int(setsTracked)}</div>
-        <div class="stat-sub">active in market</div>
+        <div class="stat-label">Live Prices</div>
+        <div class="stat-value accent">${fmt.int(cardsLive)}</div>
+        <div class="stat-sub">cards with live Cardmarket data</div>
       </div>
       <div class="overview-hero-card">
-        <div class="stat-label">Cards Indexed</div>
-        <div class="stat-value">${fmt.int(cardsIndexed)}</div>
-        <div class="stat-sub">with price data</div>
+        <div class="stat-label">Fresh (&lt; 48h)</div>
+        <div class="stat-value positive">${fmt.int(fresh)}</div>
+        <div class="stat-sub">scraped in last 2 days</div>
       </div>
       <div class="overview-hero-card">
-        <div class="stat-label">EU Priced</div>
-        <div class="stat-value positive">${fmt.int(Number(data.cards_with_eu) || 0)}</div>
-        <div class="stat-sub">cards with EU prices</div>
+        <div class="stat-label">Sets Covered</div>
+        <div class="stat-value">${fmt.int(setsTracked)}</div>
+        <div class="stat-sub">${fmt.int(cardsIndexed)} cards total</div>
       </div>
       <div class="overview-hero-card">
-        <div class="stat-label">Last Updated</div>
-        <div class="stat-value" style="font-size:14px;">${data.last_updated ? new Date(data.last_updated).toLocaleTimeString() : '—'}</div>
-        <div class="stat-sub">${data.last_updated ? new Date(data.last_updated).toLocaleDateString() : 'Unknown'}</div>
+        <div class="stat-label">Last Scrape</div>
+        <div class="stat-value" style="font-size:14px;">${lastScrape ? _relativeTime(lastScrape) : '—'}</div>
+        <div class="stat-sub">${lastScrape ? new Date(lastScrape).toLocaleString() : 'Never'}</div>
       </div>
     `;
   }
 
-  // Top movers
-  const moversEl = $('overview-movers');
-  if (moversEl) {
-    const movers = data.top_movers || data.top_arbitrage || [];
-    if (movers.length) {
-      moversEl.innerHTML = movers.slice(0,5).map((m, i) => `
-        <div class="overview-mover">
-          <div class="overview-mover-rank">#${i+1}</div>
-          <div class="overview-mover-info">
-            <div class="overview-mover-name">${escHtml(m.name || m.card_name || 'Unknown')}</div>
-            <div class="overview-mover-set">${escHtml(m.set_code || '')} · ${escHtml(m.rarity || '')}</div>
+  // ─── Top valuable live Alt-Arts ──────────────────────────────────────
+  const valEl = $('overview-valuable');
+  if (valEl) {
+    if (data.top_valuable && data.top_valuable.length) {
+      valEl.innerHTML = data.top_valuable.map((c, i) => {
+        const imgProxied = c.image_url ? proxyImg(c.image_url) : '';
+        const thumb = imgProxied
+          ? `<img class="ov-card-thumb" src="${escHtml(imgProxied)}" alt="${escHtml(c.name)}" loading="lazy" onerror="this.style.display='none'"/>`
+          : `<div class="ov-card-thumb ov-card-thumb-placeholder">🃏</div>`;
+        return `
+        <a class="ov-row" href="${escHtml(c.cm_live_url || '#')}" target="_blank" rel="noopener nofollow" title="Open on Cardmarket">
+          <div class="ov-rank">#${i+1}</div>
+          ${thumb}
+          <div class="ov-info">
+            <div class="ov-name">${escHtml(c.name || 'Unknown')} <span class="ov-variant">${escHtml(c.variant || '')}</span></div>
+            <div class="ov-meta">${escHtml(c.set_code || '')} · ${escHtml(c.language || 'EN')} · ${fmt.int(c.cm_live_available || 0)} available</div>
           </div>
-          <div class="overview-mover-spread">${fmt.pct(m.profit_pct || m.spread_pct || 0)}</div>
-        </div>
-      `).join('');
+          <div class="ov-price">${fmt.eurAuto(c.cm_live_trend)}</div>
+        </a>`;
+      }).join('');
     } else {
-      moversEl.innerHTML = `<div class="empty-state" style="padding:24px 0;">
-        <div style="color:var(--muted);font-size:13px;">Coming soon — EN prices needed for arbitrage movers</div>
+      valEl.innerHTML = `<div class="empty-state" style="padding:24px 0;">
+        <div style="color:var(--muted);font-size:13px;">No live-priced alt-arts yet — scraper is still backfilling.</div>
       </div>`;
     }
   }
 
-  // Sets list
+  // ─── JP → EN Arbitrage movers (live spreads) ────────────────────────
+  const moversEl = $('overview-movers');
+  if (moversEl) {
+    const movers = data.arbitrage || [];
+    if (movers.length) {
+      moversEl.innerHTML = movers.map((m, i) => {
+        const imgProxied = m.image_url ? proxyImg(m.image_url) : '';
+        const thumb = imgProxied
+          ? `<img class="ov-card-thumb" src="${escHtml(imgProxied)}" alt="${escHtml(m.name)}" loading="lazy" onerror="this.style.display='none'"/>`
+          : `<div class="ov-card-thumb ov-card-thumb-placeholder">🃏</div>`;
+        const ratio = Number(m.ratio) || 0;
+        return `
+        <div class="ov-row">
+          <div class="ov-rank">#${i+1}</div>
+          ${thumb}
+          <div class="ov-info">
+            <div class="ov-name">${escHtml(m.name || 'Unknown')} <span class="ov-variant">${escHtml(m.variant || '')}</span></div>
+            <div class="ov-meta">${escHtml(m.set_code || '')} · JP €${fmt.eurAuto(m.jp_price)} → EN €${fmt.eurAuto(m.en_price)}</div>
+          </div>
+          <div class="ov-price positive">+${fmt.eurAuto(m.spread_eur)}<div class="ov-meta" style="text-align:right;">${ratio.toFixed(1)}×</div></div>
+        </div>`;
+      }).join('');
+    } else {
+      moversEl.innerHTML = `<div class="empty-state" style="padding:24px 0;">
+        <div style="color:var(--muted);font-size:13px;">No qualifying arbitrage pairs yet — need live prices on both JP+EN of the same card.</div>
+      </div>`;
+    }
+  }
+
+  // Sets coverage
   const setsEl = $('overview-sets');
   if (setsEl) {
-    const sets = data.sets || data.recent_sets || [];
+    const sets = data.recent_sets || [];
     if (sets.length) {
-      setsEl.innerHTML = sets.slice(0,10).map(s => `
-        <div class="set-item">
-          <div class="set-item-code">${escHtml(s.set_code || s.code || '')}</div>
-          <div class="set-item-name">${escHtml(s.set_name || s.name || '')}</div>
-          <div class="set-item-count">${s.card_count ? `${s.card_count} cards` : ''}</div>
-        </div>
-      `).join('');
+      setsEl.innerHTML = sets.map(s => {
+        const live = Number(s.live_count) || 0;
+        const total = Number(s.card_count) || 0;
+        const pct = total > 0 ? Math.round((live / total) * 100) : 0;
+        const avg = s.avg_price ? `Ø ${fmt.eurAuto(Number(s.avg_price))}` : '';
+        return `
+        <div class="set-coverage-item">
+          <div class="set-coverage-code">${escHtml(s.set_code || '')}</div>
+          <div class="set-coverage-bar-wrap">
+            <div class="set-coverage-bar" style="width:${pct}%"></div>
+          </div>
+          <div class="set-coverage-stats">
+            <span class="set-coverage-live">${fmt.int(live)}</span>
+            <span class="set-coverage-sep">/</span>
+            <span class="set-coverage-total">${fmt.int(total)}</span>
+            <span class="set-coverage-avg">${avg}</span>
+          </div>
+        </div>`;
+      }).join('');
     } else {
       setsEl.innerHTML = `<div style="color:var(--muted);font-size:13px;padding:16px 0;">No sets data</div>`;
     }
   }
+}
+
+// Relative time: '5 min ago', '2 h ago', '1 d ago'
+function _relativeTime(iso) {
+  if (!iso) return '—';
+  const diff = (Date.now() - new Date(iso).getTime()) / 1000; // seconds
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return `${Math.round(diff/60)} min ago`;
+  if (diff < 86400) return `${Math.round(diff/3600)} h ago`;
+  return `${Math.round(diff/86400)} d ago`;
 }
 
 /* ══════════════════════════════════════════════════════════════════

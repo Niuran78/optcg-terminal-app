@@ -209,44 +209,85 @@ async def health():
 # Market overview endpoint
 @app.get("/api/market/overview")
 async def market_overview():
-    """Quick market overview — top movers and summary stats."""
-    from services import opcg_api
-    from services.arbitrage_engine import analyze_items
+    """Market overview powered entirely by live scraped Cardmarket data.
 
-    # Fetch ALL sets for total count
-    all_sets = await opcg_api.get_sets(tier="elite")
-    total_sets = len(all_sets)
-
+    Returns the data that actually helps an OP TCG trader:
+      - Top 5 LIVE-priced Alt-Art cards right now (most valuable liquid cards)
+      - Top 5 JP-EN arbitrage opportunities (live-live cross-market spreads)
+      - Market-wide stats
+      - Recent scraper activity (transparency)
+    """
     pool = await get_pool()
     async with pool.acquire() as conn:
-        recent_sets = await conn.fetch(
-            "SELECT * FROM sets ORDER BY release_date DESC LIMIT 10"
-        )
+        # Big picture stats
+        stats = await conn.fetchrow("""
+            SELECT
+                (SELECT COUNT(DISTINCT set_code) FROM cards_unified) AS total_sets,
+                (SELECT COUNT(*) FROM cards_unified) AS total_cards,
+                (SELECT COUNT(*) FROM cards_unified WHERE cm_live_trend IS NOT NULL) AS cards_with_live,
+                (SELECT MAX(cm_live_updated_at) FROM cards_unified) AS last_scrape,
+                (SELECT COUNT(*) FROM cards_unified WHERE cm_live_status='ok'
+                                                        AND cm_live_updated_at > NOW() - INTERVAL '48 hours') AS fresh_prices
+        """)
 
-    recent_sets = [dict(row) for row in recent_sets]
+        # TOP 5 MOST VALUABLE LIVE-PRICED ALT-ARTS
+        top_valuable = await conn.fetch("""
+            SELECT card_id, variant, language, name, set_code, image_url,
+                   cm_live_trend, cm_live_lowest, cm_live_available, cm_live_url
+            FROM cards_unified
+            WHERE cm_live_trend IS NOT NULL
+              AND (variant ILIKE 'Alternate Art%' OR variant ILIKE 'V%')
+              AND cm_live_trend >= 100
+            ORDER BY cm_live_trend DESC
+            LIMIT 5
+        """)
 
-    top_movers = []
-    for s in recent_sets[:2]:  # Limit API calls on overview
-        try:
-            products = await opcg_api.get_products(s["api_id"], tier="free")
-            analyzed = analyze_items(products, "product")
-            for item in analyzed[:3]:
-                item["set_name"] = s.get("name", "")
-                item["set_language"] = s.get("language", "EN")
-                top_movers.append(item)
-        except Exception:
-            continue
+        # TOP JP-EN ARBITRAGE: same card, big price gap between JP and EN live prices
+        arbitrage = await conn.fetch("""
+            SELECT en.card_id, en.variant, en.name, en.set_code, en.image_url,
+                   en.cm_live_trend AS en_price, en.cm_live_url AS en_url,
+                   jp.cm_live_trend AS jp_price, jp.cm_live_url AS jp_url,
+                   (en.cm_live_trend - jp.cm_live_trend) AS spread_eur,
+                   (en.cm_live_trend / NULLIF(jp.cm_live_trend, 0)) AS ratio
+            FROM cards_unified en
+            INNER JOIN cards_unified jp
+              ON jp.card_id = en.card_id AND jp.variant = en.variant AND jp.language = 'JP'
+            WHERE en.language = 'EN'
+              AND en.cm_live_trend IS NOT NULL
+              AND jp.cm_live_trend IS NOT NULL
+              AND jp.cm_live_trend >= 5       -- skip penny-cards (noise)
+              AND en.cm_live_trend > jp.cm_live_trend * 1.5  -- at least 50% spread
+            ORDER BY (en.cm_live_trend - jp.cm_live_trend) DESC
+            LIMIT 5
+        """)
 
-    top_movers.sort(key=lambda x: abs(x.get("profit_eur") or 0), reverse=True)
+        # RECENT SETS
+        recent_sets = await conn.fetch("""
+            SELECT set_code,
+                   COUNT(*) AS card_count,
+                   COUNT(*) FILTER (WHERE cm_live_trend IS NOT NULL) AS live_count,
+                   ROUND(AVG(cm_live_trend)::numeric, 2) AS avg_price
+            FROM cards_unified
+            WHERE set_code IS NOT NULL
+            GROUP BY set_code
+            ORDER BY
+                -- OP18, OP17, OP16... come first; ST/EB sets after
+                CASE WHEN set_code LIKE 'OP%' THEN 0 ELSE 1 END,
+                set_code DESC
+            LIMIT 8
+        """)
 
     return {
-        "recent_sets": recent_sets,
-        "top_movers": top_movers[:10],
         "stats": {
-            "sets_tracked": total_sets,
-            "total_sets": total_sets,
-            "top_signal": top_movers[0].get("signal") if top_movers else "NEUTRAL",
-        }
+            "total_sets":       stats["total_sets"],
+            "total_cards":      stats["total_cards"],
+            "cards_with_live":  stats["cards_with_live"],
+            "fresh_prices":     stats["fresh_prices"],
+            "last_scrape":      stats["last_scrape"].isoformat() if stats["last_scrape"] else None,
+        },
+        "top_valuable": [dict(r) for r in top_valuable],
+        "arbitrage":    [dict(r) for r in arbitrage],
+        "recent_sets":  [dict(r) for r in recent_sets],
     }
 
 
