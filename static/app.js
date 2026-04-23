@@ -33,7 +33,7 @@ const State = {
     total:   0,
     offset:  0,
     loading: false,
-    filters: { signal: 'all', minSpread: 5, set: 'all' },
+    filters: { signal: 'all', minSpread: 5, set: 'all', source: 'live' },  // default: LIVE-only
   },
 
   overview: {
@@ -880,6 +880,16 @@ function initArbitrageFilters() {
     State.arbitrage.offset = 0;
     loadArbitrageData();
   });
+
+  // LIVE-only toggle
+  $$('[data-arb-source]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      State.arbitrage.filters.source = btn.dataset.arbSource;
+      $$('[data-arb-source]').forEach(b => b.classList.toggle('active', b.dataset.arbSource === btn.dataset.arbSource));
+      // Filter is client-side — just re-render without refetching
+      renderArbitrageView({ opportunities: State.arbitrage.opportunities, total: State.arbitrage.total });
+    });
+  });
 }
 
 async function loadArbitrageData() {
@@ -920,42 +930,48 @@ async function loadArbitrageData() {
 }
 
 function renderArbitrageView(data) {
-  const opps = data.opportunities || [];
+  let opps = data.opportunities || [];
+
+  // Client-side LIVE-only filter
+  if (State.arbitrage.filters.source === 'live') {
+    opps = opps.filter(o => o.is_live);
+  }
 
   // Stat cards
-  const buyEu = opps.filter(o => o.signal === 'BUY_EU').length;
-  const buyEn = opps.filter(o => o.signal === 'BUY_EN').length;
+  const liveCount = opps.filter(o => o.is_live).length;
+  const profits = opps.map(o => o.profit_eur).filter(v => v != null);
+  const totalProfit = profits.reduce((a,b) => a+b, 0);
   const spreads = opps.map(o => o.profit_pct).filter(v => v != null);
-  const avgSpread = spreads.length ? spreads.reduce((a,b) => a+b, 0) / spreads.length : 0;
   const bestSpread = spreads.length ? Math.max(...spreads) : 0;
+  const bestProfitCard = opps.length ? opps.reduce((a,b) => (b.profit_eur || 0) > (a.profit_eur || 0) ? b : a) : null;
 
   const statsEl = $('arb-stats');
   if (statsEl) {
     statsEl.innerHTML = `
       <div class="stat-card">
-        <div class="stat-label">Total Opportunities</div>
-        <div class="stat-value accent">${fmt.int(data.total || opps.length)}</div>
-        <div class="stat-sub">above ${State.arbitrage.filters.minSpread}% spread</div>
+        <div class="stat-label">Opportunities</div>
+        <div class="stat-value accent">${fmt.int(opps.length)}</div>
+        <div class="stat-sub">${State.arbitrage.filters.source === 'live' ? 'LIVE only' : 'all sources'} · ≥ ${State.arbitrage.filters.minSpread}% profit</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">LIVE Verified</div>
+        <div class="stat-value positive">${fmt.int(liveCount)}</div>
+        <div class="stat-sub">both JP+EN live prices</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Best Profit</div>
+        <div class="stat-value positive">${bestProfitCard ? fmt.eurAuto(bestProfitCard.profit_eur) : '—'}</div>
+        <div class="stat-sub">${bestProfitCard ? escHtml((bestProfitCard.name || '').slice(0, 24)) : 'no opportunities'}</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Best Spread</div>
-        <div class="stat-value positive">${fmt.pct(bestSpread)}</div>
-        <div class="stat-sub">highest single card</div>
+        <div class="stat-value">${fmt.pct(bestSpread)}</div>
+        <div class="stat-sub">ROI after fees</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Avg Spread</div>
-        <div class="stat-value">${fmt.pct(avgSpread)}</div>
-        <div class="stat-sub">across all signals</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Buy EU Signals</div>
-        <div class="stat-value positive">${buyEu}</div>
-        <div class="stat-sub">EN > EU price</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Buy EN Signals</div>
-        <div class="stat-value" style="color:var(--info)">${buyEn}</div>
-        <div class="stat-sub">EU > EN price</div>
+        <div class="stat-label">Total Profit Pool</div>
+        <div class="stat-value">${fmt.eurAuto(totalProfit)}</div>
+        <div class="stat-sub">sum of all opps</div>
       </div>
     `;
   }
@@ -1004,17 +1020,17 @@ function renderArbitrageTable(opps) {
         <td class="col-en">
           <div class="price-cell">
             ${o.links?.cardmarket_jp
-              ? `<a class="price-val price-link" href="${o.links.cardmarket_jp}" target="_blank" rel="noopener nofollow" title="Buy JP on Cardmarket">${fmt.usdAuto(o.jp_price_usd)} ↗</a>`
-              : `<div class="price-val">${fmt.usdAuto(o.jp_price_usd)}</div>`}
-            <div class="price-sub">🇯🇵 Japanese</div>
+              ? `<a class="price-val price-link" href="${o.links.cardmarket_jp}" target="_blank" rel="noopener nofollow" title="Buy JP on Cardmarket">${fmt.eurAuto(o.jp_price_eur)} ↗</a>`
+              : `<div class="price-val">${fmt.eurAuto(o.jp_price_eur)}</div>`}
+            <div class="price-sub">${o.jp_source === 'live' ? '<span class="live-badge">🎯 LIVE</span>' : '🇯🇵 Reference'}</div>
           </div>
         </td>
         <td class="col-eu">
           <div class="price-cell">
             ${o.links?.cardmarket_en
-              ? `<a class="price-val price-link" href="${o.links.cardmarket_en}" target="_blank" rel="noopener nofollow" title="Sell on Cardmarket EN">${fmt.usdAuto(o.en_price_usd)} ↗</a>`
-              : `<div class="price-val">${fmt.usdAuto(o.en_price_usd)}</div>`}
-            <div class="price-sub">🇬🇧 English</div>
+              ? `<a class="price-val price-link" href="${o.links.cardmarket_en}" target="_blank" rel="noopener nofollow" title="Sell on Cardmarket EN">${fmt.eurAuto(o.en_price_eur)} ↗</a>`
+              : `<div class="price-val">${fmt.eurAuto(o.en_price_eur)}</div>`}
+            <div class="price-sub">${o.en_source === 'live' ? '<span class="live-badge">🎯 LIVE</span>' : '🇬🇧 Reference'}</div>
           </div>
         </td>
         <td>

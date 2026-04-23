@@ -140,16 +140,31 @@ def _row_to_sealed(row: dict) -> dict:
 def _jp_en_arbitrage_calc(row: dict, min_profit_pct: float) -> Optional[dict]:
     """Calculate JP→EN arbitrage for a single card-variant.
 
-    Model: Buy the JP version (from Japan, e.g. Yuyutei/Cardrush), ship to EU,
-    sell as JP-sealed or JP-single on Cardmarket/eBay to collectors.
+    Model: Buy the JP version on Cardmarket JP, sell the EN version on
+    Cardmarket EN. Live Cardmarket prices are used whenever available,
+    falling back to PriceCharting-derived EUR only if live data is missing.
     """
-    jp_usd = row.get("jp_price_usd")
-    en_usd = row.get("en_price_usd")
-    if not jp_usd or not en_usd or jp_usd <= 0 or en_usd <= 0:
+    # Prefer live Cardmarket EUR prices (scraped)
+    jp_eur = row.get("jp_cm_live_trend")
+    en_eur = row.get("en_cm_live_trend")
+    # Fallback: derive from PriceCharting USD * FX
+    if jp_eur is None:
+        jp_usd = row.get("jp_price_usd")
+        jp_eur = jp_usd * USD_TO_EUR if jp_usd else None
+    if en_eur is None:
+        en_usd = row.get("en_price_usd")
+        en_eur = en_usd * USD_TO_EUR if en_usd else None
+
+    if not jp_eur or not en_eur or jp_eur <= 0 or en_eur <= 0:
         return None
 
-    jp_eur = jp_usd * USD_TO_EUR
-    en_eur = en_usd * USD_TO_EUR
+    # Keep legacy *_usd fields for the response payload (UI shows them)
+    jp_usd = (jp_eur / USD_TO_EUR) if USD_TO_EUR else jp_eur
+    en_usd = (en_eur / USD_TO_EUR) if USD_TO_EUR else en_eur
+
+    # Data-source label
+    jp_source = "live" if row.get("jp_cm_live_trend") is not None else "reference"
+    en_source = "live" if row.get("en_cm_live_trend") is not None else "reference"
 
     # Sanity filter: Spreads > 15× are almost always data artifacts.
     # JP marketplaces often don't list rare Western Prize Cards (V5+), so
@@ -189,10 +204,12 @@ def _jp_en_arbitrage_calc(row: dict, min_profit_pct: float) -> Optional[dict]:
     cid = row.get("card_id")
     sc = row.get("set_code")
     var = row.get("variant")
+    # Use live Cardmarket URLs (scraped + verified) when available;
+    # fall back to our URL-builder guess otherwise.
     links = {
         "tcgplayer": tcgplayer_url(row.get("en_tcgplayer_id")),
-        "cardmarket_en": cardmarket_card_url(name, cid, sc, var, language="EN"),
-        "cardmarket_jp": cardmarket_card_url(name, cid, sc, var, language="JP"),
+        "cardmarket_en": row.get("en_cm_live_url") or cardmarket_card_url(name, cid, sc, var, language="EN"),
+        "cardmarket_jp": row.get("jp_cm_live_url") or cardmarket_card_url(name, cid, sc, var, language="JP"),
         "pricecharting_jp": pricecharting_url(row.get("jp_pricecharting_id")),
         "pricecharting_en": pricecharting_url(row.get("en_pricecharting_id")),
     }
@@ -205,6 +222,9 @@ def _jp_en_arbitrage_calc(row: dict, min_profit_pct: float) -> Optional[dict]:
         "rarity": row.get("rarity"),
         "variant": var,
         "image_url": row.get("image_url"),
+        "jp_source": jp_source,
+        "en_source": en_source,
+        "is_live": jp_source == "live" and en_source == "live",
         "jp_price_usd": round(jp_usd, 2),
         "jp_price_eur": round(jp_eur, 2),
         "en_price_usd": round(en_usd, 2),
@@ -835,6 +855,10 @@ async def arbitrage_scanner(
             jp.rarity, jp.image_url,
             jp.pc_price_usd AS jp_price_usd,
             en.pc_price_usd AS en_price_usd,
+            jp.cm_live_trend AS jp_cm_live_trend,
+            en.cm_live_trend AS en_cm_live_trend,
+            jp.cm_live_url   AS jp_cm_live_url,
+            en.cm_live_url   AS en_cm_live_url,
             jp.tcgplayer_id AS jp_tcgplayer_id,
             jp.cardmarket_id AS jp_cardmarket_id,
             en.tcgplayer_id AS en_tcgplayer_id,
@@ -847,12 +871,15 @@ async def arbitrage_scanner(
          AND en.variant = jp.variant
          AND en.language = 'EN'
         WHERE jp.language = 'JP'
-          AND jp.pc_price_usd > 1.0
-          AND en.pc_price_usd > 1.0
+          AND COALESCE(jp.cm_live_trend, jp.pc_price_usd * $LANG_USD_TO_EUR$) > 1.0
+          AND COALESCE(en.cm_live_trend, en.pc_price_usd * $LANG_USD_TO_EUR$) > 1.0
           {set_filter}
-        ORDER BY (en.pc_price_usd - jp.pc_price_usd) DESC
+        ORDER BY (
+            COALESCE(en.cm_live_trend, en.pc_price_usd * $LANG_USD_TO_EUR$) -
+            COALESCE(jp.cm_live_trend, jp.pc_price_usd * $LANG_USD_TO_EUR$)
+        ) DESC
         LIMIT 1000
-    """
+    """.replace("$LANG_USD_TO_EUR$", str(USD_TO_EUR))
 
     pool = await get_pool()
     async with pool.acquire() as conn:
