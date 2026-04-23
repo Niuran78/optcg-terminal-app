@@ -185,6 +185,8 @@ app.add_middleware(
 # API Routers
 app.include_router(auth_router)
 app.include_router(unified_router)  # unified multi-source endpoints (new)
+from api.image_proxy import router as image_proxy_router
+app.include_router(image_proxy_router)  # proxy external card images (CORP workaround)
 app.include_router(widget_router)  # public widget endpoints (no auth)
 app.include_router(cards_router)    # legacy single-source endpoints (kept for compat)
 app.include_router(sets_router)

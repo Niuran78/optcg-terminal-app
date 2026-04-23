@@ -339,9 +339,20 @@ function computeSpread(enUsd, euEur) {
   return ((enInEur - euEur) / euEur) * 100;
 }
 
+// External card-image CDNs (Bandai, TCGGO, TCGPriceLookup) send
+// `Cross-Origin-Resource-Policy: same-site` which blocks cross-origin <img>
+// loading in Chrome/Safari. We proxy them through our own origin instead.
+function proxyImg(url) {
+  if (!url) return '';
+  // Only proxy external HTTP(S) URLs; leave data URIs and our own paths alone.
+  if (!/^https?:\/\//i.test(url)) return url;
+  return '/api/image/proxy?url=' + encodeURIComponent(url);
+}
+
 function cardThumb(url, name) {
   if (url) {
-    return `<img class="card-thumb" src="${escHtml(url)}" alt="${escHtml(name || '')}" loading="lazy" onerror="this.outerHTML='<div class=\\'card-thumb-placeholder\\'>🃏</div>'" />`;
+    const proxied = proxyImg(url);
+    return `<img class="card-thumb" src="${escHtml(proxied)}" alt="${escHtml(name || '')}" loading="lazy" onerror="this.outerHTML='<div class=\\'card-thumb-placeholder\\'>🃏</div>'" />`;
   }
   return `<div class="card-thumb-placeholder">🃏</div>`;
 }
