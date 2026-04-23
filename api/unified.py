@@ -454,7 +454,7 @@ async def browse_cards(
     set_code: Optional[str] = Query(None, description="Filter by set code, e.g. OP01"),
     search: Optional[str] = Query(None, min_length=2, description="Card name search"),
     rarity: Optional[str] = Query(None, description="Filter by rarity"),
-    sort: str = Query("eu_cardmarket_7d_avg", description="Sort column"),
+    sort: str = Query("relevance", description="Sort column. 'relevance' = LIVE-first, then price"),
     order: str = Query("desc", description="asc or desc"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -587,8 +587,26 @@ async def browse_cards(
 
     outer_where = "WHERE " + " AND ".join(outer_conditions)
 
-    # Build sort column with EN-first fallback to JP for sorting when EN missing
-    if sort.startswith("eu_") or sort == "en_tcgplayer_market":
+    # Build sort expression.
+    # 'relevance' is the new default — shows the most trustworthy + highest-
+    # impact cards first. Composite score:
+    #   +10000 if we have a LIVE Cardmarket price (scraped within 7 days)
+    #   +  500 for alternate-art / parallel variants (more desirable)
+    #   +    1 per € of effective price (so within each group, price decides)
+    if sort == "relevance":
+        effective_price_sql = (
+            "COALESCE("
+            "  en.cm_live_trend, jp.cm_live_trend, "
+            "  en.eu_cardmarket_7d_avg, jp.pc_price_usd * 0.92, 0)"
+        )
+        sort_expr = (
+            "("
+            "  CASE WHEN en.cm_live_trend IS NOT NULL OR jp.cm_live_trend IS NOT NULL THEN 10000 ELSE 0 END"
+            " + CASE WHEN b.variant ILIKE 'Alternate Art%' OR b.variant ILIKE 'V%' THEN 500 ELSE 0 END"
+            f" + LEAST({effective_price_sql}, 9999)"
+            ")"
+        )
+    elif sort.startswith("eu_") or sort == "en_tcgplayer_market":
         sort_expr = f"COALESCE(en.{sort}, jp.pc_price_usd * 0.92)"
     else:
         sort_expr = f"COALESCE(en.{sort}, jp.{sort})"

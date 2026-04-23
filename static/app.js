@@ -17,7 +17,7 @@ const State = {
     offset:  0,
     loading: false,
     filters: { set: 'all', rarity: 'all', search: '' },
-    sort:    { col: 'eu_cardmarket_7d_avg', order: 'desc' },
+    sort:    { col: 'relevance', order: 'desc' },  // LIVE-prices first, then price
   },
 
   sealed: {
@@ -556,7 +556,7 @@ function renderBrowserTable(data) {
     summaryEl.innerHTML = `
       <span><strong>${fmt.int(total)}</strong> cards</span>
       <span>Page <strong>${Math.floor(State.browser.offset / 50) + 1}</strong></span>
-      <span style="margin-left:auto;">Sorted by <strong>${State.browser.sort.col.replace(/_/g,' ')}</strong> ${State.browser.sort.order}</span>
+      <span style="margin-left:auto;">Sorted by <strong>${State.browser.sort.col === 'relevance' ? 'best picks (LIVE · alt-art · price)' : State.browser.sort.col.replace(/_/g,' ')}</strong>${State.browser.sort.col === 'relevance' ? '' : ' ' + State.browser.sort.order}</span>
     `;
   }
 
