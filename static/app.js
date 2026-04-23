@@ -1158,7 +1158,7 @@ function renderOverview(data) {
           ${thumb}
           <div class="ov-info">
             <div class="ov-name">${escHtml(m.name || 'Unknown')} <span class="ov-variant">${escHtml(m.variant || '')}</span></div>
-            <div class="ov-meta">${escHtml(m.set_code || '')} · JP €${fmt.eurAuto(m.jp_price)} → EN €${fmt.eurAuto(m.en_price)}</div>
+            <div class="ov-meta">${escHtml(m.set_code || '')} · JP ${fmt.eurAuto(m.jp_price)} → EN ${fmt.eurAuto(m.en_price)}</div>
           </div>
           <div class="ov-price positive">+${fmt.eurAuto(m.spread_eur)}<div class="ov-meta" style="text-align:right;">${ratio.toFixed(1)}×</div></div>
         </div>`;
