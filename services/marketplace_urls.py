@@ -336,13 +336,21 @@ def build_card_links(row: dict) -> dict:
 
 
 def build_sealed_links(row: dict) -> dict:
-    """Build all marketplace links for a sealed product row."""
-    cm = cardmarket_sealed_url(
-        row.get("product_type"),
-        row.get("set_code"),
-        row.get("set_name"),
-        row.get("language"),
-    )
+    """Build all marketplace links for a sealed product row.
+
+    Wenn wir eine verifizierte Cardmarket-URL haben (cm_live_url, aus unserem
+    Scraper), nehmen wir die als Quelle der Wahrheit. Den generierten Search-
+    Fallback unterdruecken wir in diesem Fall, weil er zu "Invalid product"
+    fuehrt, wenn das Produkt auf Cardmarket nicht existiert.
+    """
+    verified_cm = row.get("cm_live_url")
+    if verified_cm:
+        cm = verified_cm
+    else:
+        # No verified URL = wir haben das Produkt nie auf Cardmarket
+        # gesehen. Keinen Search-Fallback erzeugen, sonst landet der Kunde
+        # in einer Sackgasse mit "Invalid product".
+        cm = None
     pc = pricecharting_url(row.get("pricecharting_id"))
 
     return {
