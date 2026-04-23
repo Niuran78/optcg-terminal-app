@@ -39,9 +39,32 @@ def tcgplayer_search_url(card_name: str, card_id: Optional[str] = None) -> Optio
 # older Starter Decks use '-Non-English'. Keyed by the EN set slug.
 _JP_SET_SUFFIX_OVERRIDES: dict[str, str] = {
     "Starter-Deck-The-Seven-Warlords-of-the-Sea": "-Non-English",
+    "The-Best":                                    "-Non-English",  # confirmed Apr 2026
+    "Unnumbered-Promos":                           "-Japanese",     # confirmed Apr 2026
     # (add more exceptions here as we discover them)
-    "Unnumbered-Promos": "-Japanese",  # confirmed Apr 2026
 }
+
+
+def _is_starter_altart(card_id: str, variant: Optional[str]) -> bool:
+    """True when this is an Alt-Art version of a Starter-Deck (STxx) card.
+
+    Cardmarket lists these under 'The Best' / 'The Best (Non-English)', not
+    in the original Starter-Deck set page.
+    """
+    if not card_id or not variant:
+        return False
+    if not card_id.upper().startswith("ST"):
+        return False
+    v = variant.strip().lower()
+    # Normal / Foil printings stay in the original Starter-Deck set
+    if v in ("normal", "foil", ""):
+        return False
+    # Any numbered V suffix ≥ V2, or any 'Alternate Art' label → The Best
+    if re.match(r"^v(\d+)$", v):
+        return int(re.match(r"^v(\d+)$", v).group(1)) >= 2
+    if "alternate art" in v or "alt art" in v or "parallel" in v:
+        return True
+    return False
 
 CM_SET_SLUGS: dict[str, str] = {
     "OP01": "Romance-Dawn",
@@ -110,8 +133,14 @@ def _slugify_card(name: str, card_id: str, variant: Optional[str] = None) -> str
         return ""
     # Remove parenthetical variant suffix from name: "Luffy (Alternate Art)" → "Luffy"
     name = re.sub(r"\s*\(.*?\)\s*", "", name)
-    # Replace special chars, keep alphanum only
-    name_slug = re.sub(r"[^\w]", "", name)
+    # Cardmarket keeps word boundaries as hyphens, not compacted.
+    # 'Boa Hancock'  → 'Boa-Hancock'
+    # 'Eustass"Captain"Kid' (the quoted form) → 'EustassCaptainKid' (PriceCharting already dropped the spaces, but Cardmarket
+    #   for this specific card also uses the compacted form so that's fine).
+    # Rule: split on whitespace, drop non-alphanum in each word, join with '-'.
+    words = re.split(r"\s+", name.strip())
+    words = [re.sub(r"[^\w]", "", w) for w in words if w]
+    name_slug = "-".join(w for w in words if w)
 
     # Variant suffix — Cardmarket uses V1, V2, V3, V4…
     # Rule: Normal=V1, Alternate Art=V2, Alternate Art 2=V3, Alternate Art 3=V4,
@@ -181,6 +210,12 @@ def cardmarket_card_url(
     # Promo/prize variants live on a different Cardmarket page
     if _is_promo_variant(variant):
         base_slug = "Unnumbered-Promos"
+    elif _is_starter_altart(card_id, variant):
+        # Alt-Art reprints of Starter-Deck (STxx) cards don't live in the
+        # original Starter-Deck set on Cardmarket — they're re-released in a
+        # separate 'The Best' compilation. Observed April 2026 for ST03-013
+        # (Boa Hancock V2, V4), ST01 reprints, etc.
+        base_slug = "The-Best"
     else:
         canonical = _canonical_set_from_card_id(card_id) or set_code.upper()
         base_slug = CM_SET_SLUGS.get(canonical)
