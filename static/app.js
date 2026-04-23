@@ -1642,16 +1642,29 @@ function renderAutocomplete(results) {
     return;
   }
 
-  dd.innerHTML = results.map(r => `
+  dd.innerHTML = results.map(r => {
+    // Prefer live Cardmarket trend, fall back to 7d reference
+    const price = r.cm_live_trend != null
+      ? r.cm_live_trend
+      : (r.eu_cardmarket_7d_avg != null ? r.eu_cardmarket_7d_avg : null);
+    const priceLabel = r.has_live
+      ? `<span class="ac-live-badge" title="Live Cardmarket price">LIVE</span>`
+      : `<span class="ac-ref-badge" title="Reference price (no live data yet)">ref</span>`;
+    const langBadge = r.language ? `<span class="ac-lang">${escHtml(r.language)}</span>` : '';
+    const metaParts = [r.card_id, r.set_code, r.rarity, r.variant].filter(Boolean).map(escHtml).join(' &middot; ');
+    return `
     <div class="autocomplete-item" onclick="selectCard(${escHtml(JSON.stringify(JSON.stringify(r)))})">
       ${cardThumb(r.image_url, r.name)}
       <div class="ac-item-info">
-        <div class="ac-item-name">${escHtml(r.name)}</div>
-        <div class="ac-item-meta">${escHtml(r.card_id)} &middot; ${escHtml(r.set_code || '')} &middot; ${escHtml(r.rarity || '')}</div>
+        <div class="ac-item-name">${escHtml(r.name)} ${langBadge}</div>
+        <div class="ac-item-meta">${metaParts}</div>
       </div>
-      <div class="ac-item-price">${r.eu_cardmarket_7d_avg != null ? fmt.eur(r.eu_cardmarket_7d_avg) : '—'}</div>
-    </div>
-  `).join('');
+      <div class="ac-item-price">
+        ${price != null ? fmt.eur(price) : '—'}
+        ${priceLabel}
+      </div>
+    </div>`;
+  }).join('');
   dd.style.display = '';
 }
 
