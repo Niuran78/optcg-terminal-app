@@ -881,15 +881,6 @@ function initArbitrageFilters() {
     loadArbitrageData();
   });
 
-  // LIVE-only toggle
-  $$('[data-arb-source]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      State.arbitrage.filters.source = btn.dataset.arbSource;
-      $$('[data-arb-source]').forEach(b => b.classList.toggle('active', b.dataset.arbSource === btn.dataset.arbSource));
-      // Filter is client-side — just re-render without refetching
-      renderArbitrageView({ opportunities: State.arbitrage.opportunities, total: State.arbitrage.total });
-    });
-  });
 }
 
 async function loadArbitrageData() {
@@ -974,6 +965,18 @@ function renderArbitrageView(data) {
         <div class="stat-sub">sum of all opps</div>
       </div>
     `;
+  }
+
+  // Transparent note if the live dataset is still small
+  const noteEl = $('arb-note');
+  if (noteEl) {
+    if (opps.length < 20) {
+      noteEl.innerHTML = `
+        <strong>Showing only verified live arbitrage.</strong> ${opps.length} opportunities with 🎯 LIVE Cardmarket prices on both JP and EN sides. More pairs appear after each nightly scraper run (next: 03:30 CEST).`;
+      noteEl.style.display = 'block';
+    } else {
+      noteEl.style.display = 'none';
+    }
   }
 
   renderArbitrageTable(opps);

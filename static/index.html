@@ -344,23 +344,17 @@
         </select>
       </div>
 
-      <div class="filter-group">
-        <span class="filter-label">Data Source</span>
-        <div class="pill-group" role="group" aria-label="Data source filter">
-          <button class="pill" data-arb-source="all">All</button>
-          <button class="pill active" data-arb-source="live">🎯 LIVE only</button>
-        </div>
-      </div>
-
     </div>
 
     <!-- Section header -->
     <div class="section-header">
       <div>
         <h2 class="section-title">Arbitrage Scanner</h2>
-        <div class="section-meta">Cross-market price discrepancies — Japanese Cardmarket vs English Cardmarket</div>
+        <div class="section-meta">Cross-market price discrepancies — Japanese Cardmarket vs English Cardmarket · <span class="live-badge">🎯 LIVE only</span></div>
       </div>
     </div>
+
+    <div id="arb-note" class="data-source-note" style="display:none;"></div>
 
     <!-- Arbitrage table -->
     <div class="table-wrap">
