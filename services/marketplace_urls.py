@@ -114,19 +114,20 @@ def _slugify_card(name: str, card_id: str, variant: Optional[str] = None) -> str
     name_slug = re.sub(r"[^\w]", "", name)
 
     # Variant suffix — Cardmarket uses V1, V2, V3, V4…
-    # Rule of thumb: Normal=V1, first alt=V2, etc.
+    # Rule: Normal=V1, Alternate Art=V2, Alternate Art 2=V3, Alternate Art 3=V4,
+    # Alternate Art 4=V5, and so on. Explicit Vn labels (e.g. 'V4') pass through.
     variant_suffix = "V1"
     if variant:
         v = variant.lower().strip()
-        # Explicit Vn labels (e.g. 'V4', 'V2') pass through
-        m = re.match(r"^v(\d+)$", v)
-        if m:
-            variant_suffix = f"V{m.group(1)}"
-        elif "alternate art 2" in v or "alt art 2" in v:
-            variant_suffix = "V3"
-        elif "alternate art" in v or "alt art" in v or "parallel" in v:
-            variant_suffix = "V2"
+        m_v = re.match(r"^v(\d+)$", v)
+        m_alt = re.match(r"^(?:alternate art|alt art|parallel)(?:\s+(\d+))?$", v)
+        if m_v:
+            variant_suffix = f"V{m_v.group(1)}"
+        elif m_alt:
+            n = int(m_alt.group(1) or 1)  # 'Alternate Art' alone = V2, +1 per counter
+            variant_suffix = f"V{n + 1}"
         elif "foil" in v and "normal" not in v:
+            # Foil reprints typically live on the last V slot for that card
             variant_suffix = "V4"
     return f"{name_slug}-{card_id}-{variant_suffix}"
 
