@@ -189,8 +189,13 @@ async def init_db():
             -- Sealed language columns (added for JP/EN price separation)
             ALTER TABLE sealed_unified ADD COLUMN IF NOT EXISTS language VARCHAR(10) DEFAULT 'JP';
             ALTER TABLE sealed_unified ADD COLUMN IF NOT EXISTS en_price_usd REAL;
+
             CREATE UNIQUE INDEX IF NOT EXISTS sealed_unified_set_type_lang
                 ON sealed_unified(set_code, product_type, language);
+
+            -- Role column for admin separation (tier = monetization, role = permission).
+            -- Elite != Admin. Admin role must be granted explicitly, never via subscription.
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
             CREATE INDEX IF NOT EXISTS idx_tcg_en_cards_set ON tcg_en_cards_cache(set_slug);
 
             -- ═══ Phase 2 Tables ═══
