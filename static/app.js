@@ -207,10 +207,11 @@ function bindUpgradeModal() {
     e.stopPropagation();
     $('user-menu')?.classList.remove('open');
     const currentTier = (State.user && Auth?.getTier(State.user) || 'free').toLowerCase();
-    // If Elite AND has an actual Stripe subscription → open portal to manage/cancel
-    // Otherwise (Free, Pro, or Elite-via-shop-bonus without stripe_customer_id) → open modal
-    const hasStripeSub = State.user && State.user.stripe_customer_id;
-    if (currentTier === 'elite' && hasStripeSub) {
+    // Open Stripe portal only if user has an ACTIVE subscription record.
+    // stripe_customer_id alone is not enough — shop-bonus Elite users may have
+    // a dangling customer row without a paid subscription.
+    const hasActiveSub = State.user && State.user.subscription && State.user.subscription.status === 'active';
+    if (currentTier === 'elite' && hasActiveSub) {
       openStripePortal();
       return;
     }
@@ -225,9 +226,9 @@ function bindUpgradeModal() {
     openStripePortal();
   });
 
-  // Show "Manage Subscription" link only for users with a real Stripe customer
-  const hasStripeSub = State.user && State.user.stripe_customer_id;
-  if (hasStripeSub) {
+  // Show "Manage Subscription" link only for users with an active paid subscription
+  const hasActiveSub = State.user && State.user.subscription && State.user.subscription.status === 'active';
+  if (hasActiveSub) {
     const link = $('manage-sub-link');
     if (link) link.style.display = '';
   }
