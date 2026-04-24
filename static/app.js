@@ -207,12 +207,14 @@ function bindUpgradeModal() {
     e.stopPropagation();
     $('user-menu')?.classList.remove('open');
     const currentTier = (State.user && Auth?.getTier(State.user) || 'free').toLowerCase();
-    // If already Elite → open Stripe portal instead
-    if (currentTier === 'elite') {
+    // If Elite AND has an actual Stripe subscription → open portal to manage/cancel
+    // Otherwise (Free, Pro, or Elite-via-shop-bonus without stripe_customer_id) → open modal
+    const hasStripeSub = State.user && State.user.stripe_customer_id;
+    if (currentTier === 'elite' && hasStripeSub) {
       openStripePortal();
       return;
     }
-    // If Pro → highlight Elite; if Free → highlight Pro
+    // Highlight: Pro → Elite, everything else → Pro
     openUpgradeModal(currentTier === 'pro' ? 'elite' : 'pro');
   });
 
@@ -223,9 +225,9 @@ function bindUpgradeModal() {
     openStripePortal();
   });
 
-  // Show "Manage Subscription" link for Pro/Elite users
-  const currentTier = (State.user && Auth?.getTier(State.user) || 'free').toLowerCase();
-  if (['pro', 'elite'].includes(currentTier)) {
+  // Show "Manage Subscription" link only for users with a real Stripe customer
+  const hasStripeSub = State.user && State.user.stripe_customer_id;
+  if (hasStripeSub) {
     const link = $('manage-sub-link');
     if (link) link.style.display = '';
   }
