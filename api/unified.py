@@ -918,7 +918,7 @@ async def arbitrage_scanner(
             COALESCE(jp.cm_live_trend, jp.pc_price_usd * $LANG_USD_TO_EUR$)
         ) DESC
         LIMIT 1000
-    """.replace("$LANG_USD_TO_EUR$", str(USD_TO_EUR))
+    """.replace("$LANG_USD_TO_EUR$", f"{float(USD_TO_EUR):.6f}")
 
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -941,6 +941,6 @@ async def arbitrage_scanner(
         "offset": offset,
         "min_profit_pct": min_profit_pct,
         "tier": user.tier,
-        "fx_rate": {"usd_to_eur": USD_TO_EUR, "eur_to_usd": EUR_TO_USD},
+        "fx_rate": {"usd_to_eur": float(USD_TO_EUR), "eur_to_usd": float(EUR_TO_USD)},
         "opportunities": page,
     }

@@ -28,29 +28,38 @@ logger = logging.getLogger(__name__)
 #   rate = get_usd_to_eur()
 from services.fx_rate import get_usd_to_eur as _get_usd_to_eur, get_eur_to_usd as _get_eur_to_usd
 
-# Backwards-kompatible "Konstanten" als Properties — lazy-lookup des Live-Kurses
+# Backwards-kompatible "Konstanten" als Properties — lazy-lookup des Live-Kurses.
+# Das Objekt verhält sich in allen Standardoperationen wie ein float.
 class _LiveRate:
-    def __float__(self):
-        return _get_usd_to_eur()
-    def __mul__(self, other):
-        return _get_usd_to_eur() * other
-    def __rmul__(self, other):
-        return _get_usd_to_eur() * other
-    def __repr__(self):
-        return f"LiveUsdToEur({_get_usd_to_eur():.4f})"
+    def __init__(self, getter):
+        self._getter = getter
+    def __float__(self):      return self._getter()
+    def __int__(self):        return int(self._getter())
+    def __bool__(self):       return bool(self._getter())
+    def __format__(self, s):  return format(self._getter(), s)
+    def __str__(self):        return str(self._getter())
+    def __repr__(self):       return f"<LiveRate {self._getter():.4f}>"
+    # Arithmetik mit Skalaren:
+    def __mul__(self, o):     return self._getter() * o
+    def __rmul__(self, o):    return o * self._getter()
+    def __truediv__(self, o): return self._getter() / o
+    def __rtruediv__(self, o):return o / self._getter()
+    def __add__(self, o):     return self._getter() + o
+    def __radd__(self, o):    return o + self._getter()
+    def __sub__(self, o):     return self._getter() - o
+    def __rsub__(self, o):    return o - self._getter()
+    def __neg__(self):        return -self._getter()
+    # Vergleiche:
+    def __lt__(self, o):      return self._getter() < o
+    def __le__(self, o):      return self._getter() <= o
+    def __gt__(self, o):      return self._getter() > o
+    def __ge__(self, o):      return self._getter() >= o
+    def __eq__(self, o):      return self._getter() == o
+    def __ne__(self, o):      return self._getter() != o
+    def __hash__(self):       return hash(self._getter())
 
-class _LiveInverseRate:
-    def __float__(self):
-        return _get_eur_to_usd()
-    def __mul__(self, other):
-        return _get_eur_to_usd() * other
-    def __rmul__(self, other):
-        return _get_eur_to_usd() * other
-    def __repr__(self):
-        return f"LiveEurToUsd({_get_eur_to_usd():.4f})"
-
-USD_TO_EUR = _LiveRate()
-EUR_TO_USD = _LiveInverseRate()
+USD_TO_EUR = _LiveRate(_get_usd_to_eur)
+EUR_TO_USD = _LiveRate(_get_eur_to_usd)
 
 # ─── Set mapping: EN slug ↔ RapidAPI set ID ─────────────────────────────────
 # Keys are the set codes that appear in card numbers (e.g. "OP01").
