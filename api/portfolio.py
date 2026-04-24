@@ -529,32 +529,37 @@ async def export_csv(portfolio_id: int, user: UserInfo = Depends(require_auth)):
 # 9. Card search autocomplete
 
 @router.get("/api/cards/search-autocomplete")
-async def search_autocomplete(q: str = Query(..., min_length=1, max_length=100)):
-    """Search cards_unified by name for add-to-portfolio modal. Public, no auth.
+async def search_autocomplete(
+    q: str = Query(..., min_length=1, max_length=100),
+    user: UserInfo = Depends(require_auth),
+):
+    """Search cards_unified by name for add-to-portfolio modal. Login-gated.
 
     Applies the same trust guard as the browse view:
       - Cards ≥ €50 without a live Cardmarket trend are hidden
         (they'd show fantasy PriceCharting values).
       - Prefers cm_live_trend over the 7d reference when ranking results.
     """
+    from services.fx_rate import get_usd_to_eur
+    FX = get_usd_to_eur()
     pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            """SELECT card_id, name, set_code, rarity, variant, language, image_url,
+            f"""SELECT card_id, name, set_code, rarity, variant, language, image_url,
                       eu_cardmarket_7d_avg, en_tcgplayer_market,
                       cm_live_trend,
                       COALESCE(cm_live_trend, eu_cardmarket_7d_avg,
-                               pc_price_usd * 0.92) AS effective_price
+                               pc_price_usd * {FX}) AS effective_price
                FROM cards_unified
                WHERE name ILIKE $1
                  AND (
                    cm_live_trend IS NOT NULL
-                   OR COALESCE(eu_cardmarket_7d_avg, pc_price_usd * 0.92, 0) < 50
+                   OR COALESCE(eu_cardmarket_7d_avg, pc_price_usd * {FX}, 0) < 50
                  )
                ORDER BY
                  (cm_live_trend IS NOT NULL) DESC,
                  COALESCE(cm_live_trend, eu_cardmarket_7d_avg,
-                          pc_price_usd * 0.92) DESC NULLS LAST
+                          pc_price_usd * {FX}) DESC NULLS LAST
                LIMIT 10""",
             f"%{q}%",
         )

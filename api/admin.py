@@ -17,7 +17,7 @@ from datetime import datetime
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 
 from db.init import get_pool
-from middleware.tier_gate import get_current_user, UserInfo
+from middleware.tier_gate import get_current_user, require_auth, UserInfo
 from services.cardmarket_csv import refresh_from_cardmarket
 
 logger = logging.getLogger(__name__)
@@ -261,10 +261,11 @@ async def admin_seed_missing_sets(user: UserInfo = Depends(get_current_user)):
 # ── Status dashboard ──────────────────────────────────────────────────────────
 
 @router.get("/admin/status")
-async def admin_status():
+async def admin_status(user: UserInfo = Depends(require_auth)):
     """Return current DB stats for monitoring.
 
-    Public endpoint — no tier check needed.
+    Requires authentication (login-gated).
+    Protects internal operational data from leaking to anonymous traffic.
     """
     from services.card_aggregator import SET_MAPPING
 

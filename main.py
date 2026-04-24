@@ -108,6 +108,15 @@ async def lifespan(app: FastAPI):
     logger.info("Starting Holygrade Terminal...")
     await init_db()
 
+    # FX rate: fetch live USD->EUR so prices are honest.
+    # Falls back silently to a conservative baseline on failure.
+    try:
+        from services.fx_rate import refresh as refresh_fx_rate
+        rate = await refresh_fx_rate()
+        logger.info(f"FX rate initialized: 1 USD = {rate:.4f} EUR")
+    except Exception as e:
+        logger.warning(f"FX rate init failed (using fallback): {e}")
+
     # Seed sets from API on startup
     try:
         from services import opcg_api

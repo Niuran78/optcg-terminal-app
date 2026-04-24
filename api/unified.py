@@ -345,8 +345,8 @@ def _arbitrage_calc(card_row: dict, min_profit_pct: float) -> Optional[dict]:
 # ─── Market Summary ───────────────────────────────────────────────────────────
 
 @router.get("/market-summary")
-async def market_summary():
-    """Public endpoint: aggregate stats from cards_unified."""
+async def market_summary(user: UserInfo = Depends(require_auth)):
+    """Aggregate stats from cards_unified. Login-gated."""
     pool = await get_pool()
     async with pool.acquire() as conn:
         total_cards = await conn.fetchval("SELECT COUNT(*) FROM cards_unified")
@@ -516,6 +516,11 @@ async def browse_cards(
         sort = "eu_cardmarket_7d_avg"
     order_sql = "DESC" if order.lower() != "asc" else "ASC"
 
+    # LIVE FX rate (USD->EUR) — used in all SQL strings below for converting
+    # pc_price_usd. Kept in a local to ensure consistency within a single request.
+    from services.fx_rate import get_usd_to_eur
+    FX = get_usd_to_eur()
+
     # Free tier: limit to latest sets
     allowed_sets: Optional[list[str]] = None
     if not user.can_access("pro"):
@@ -580,15 +585,15 @@ async def browse_cards(
         if max_price_eur is not None:
             # Cap max of (EN-price-eur, JP-price-eur) — either side exceeding is dropped
             price_conditions.append(
-                f"COALESCE(GREATEST(en.eu_cardmarket_7d_avg, jp.pc_price_usd * 0.92), "
-                f"en.eu_cardmarket_7d_avg, jp.pc_price_usd * 0.92) < ${param_idx}"
+                f"COALESCE(GREATEST(en.eu_cardmarket_7d_avg, jp.pc_price_usd * {FX}), "
+                f"en.eu_cardmarket_7d_avg, jp.pc_price_usd * {FX}) < ${param_idx}"
             )
             params.append(max_price_eur)
             param_idx += 1
     if min_price_eur is not None and min_price_eur > 0:
         # At least one side needs to hit min_price
         price_conditions.append(
-            f"COALESCE(en.eu_cardmarket_7d_avg, jp.pc_price_usd * 0.92, 0) >= ${param_idx}"
+            f"COALESCE(en.eu_cardmarket_7d_avg, jp.pc_price_usd * {FX}, 0) >= ${param_idx}"
         )
         params.append(min_price_eur)
         param_idx += 1
@@ -621,7 +626,7 @@ async def browse_cards(
         "("
         "   en.cm_live_trend IS NOT NULL"
         " OR jp.cm_live_trend IS NOT NULL"
-        " OR COALESCE(en.eu_cardmarket_7d_avg, jp.pc_price_usd * 0.92, 0) < 50"
+        f" OR COALESCE(en.eu_cardmarket_7d_avg, jp.pc_price_usd * {FX}, 0) < 50"
         ")"
     )
 
@@ -637,7 +642,7 @@ async def browse_cards(
         effective_price_sql = (
             "COALESCE("
             "  en.cm_live_trend, jp.cm_live_trend, "
-            "  en.eu_cardmarket_7d_avg, jp.pc_price_usd * 0.92, 0)"
+            f"  en.eu_cardmarket_7d_avg, jp.pc_price_usd * {FX}, 0)"
         )
         sort_expr = (
             "("
@@ -647,7 +652,7 @@ async def browse_cards(
             ")"
         )
     elif sort.startswith("eu_") or sort == "en_tcgplayer_market":
-        sort_expr = f"COALESCE(en.{sort}, jp.pc_price_usd * 0.92)"
+        sort_expr = f"COALESCE(en.{sort}, jp.pc_price_usd * {FX})"
     else:
         sort_expr = f"COALESCE(en.{sort}, jp.{sort})"
 

@@ -229,7 +229,29 @@ async def shop_bonus(body: ShopBonusRequest):
     pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
     temp_password = None
 
+    bonus_sub_id = f"shop_bonus_{body.order_id}"
+
     async with pool.acquire() as conn:
+        # IDEMPOTENCY GUARD — if this order_id was already processed, return
+        # the existing result without granting another bonus. Shopify retries
+        # webhooks on 5xx or timeout, so the same order_id can arrive 2–3×.
+        duplicate = await conn.fetchrow(
+            "SELECT id, user_id, current_period_end FROM subscriptions WHERE stripe_subscription_id=$1",
+            bonus_sub_id,
+        )
+        if duplicate:
+            return {
+                "message": f"Order {body.order_id} already processed (idempotent).",
+                "email": body.email,
+                "user_action": "no_op_already_applied",
+                "subscription_action": "no_op_duplicate",
+                "pro_until": duplicate["current_period_end"].isoformat() if duplicate["current_period_end"] else None,
+                "temp_password": None,
+                "order_id": body.order_id,
+                "order_amount_eur": body.order_amount_eur,
+                "idempotent": True,
+            }
+
         user_row = await conn.fetchrow("SELECT id, email, tier FROM users WHERE email=$1", body.email)
 
         if user_row is None:
@@ -249,7 +271,7 @@ async def shop_bonus(body: ShopBonusRequest):
             else:
                 action = f"kept_{user_row['tier']}"  # Don't downgrade elite to pro
 
-        # Track the bonus in subscriptions (extends existing period if any)
+        # Track the bonus in subscriptions (extends existing active period if any)
         existing_sub = await conn.fetchrow(
             """SELECT id, current_period_end FROM subscriptions
                WHERE user_id=$1 AND status='active'
@@ -258,23 +280,25 @@ async def shop_bonus(body: ShopBonusRequest):
         )
 
         if existing_sub and existing_sub["current_period_end"] and existing_sub["current_period_end"] > datetime.now(timezone.utc):
-            # Extend existing period
-            new_end = max(existing_sub["current_period_end"], period_end)
-            new_end = existing_sub["current_period_end"] + timedelta(days=months * 30)
+            # Extend existing period: always add N months to whichever is later
+            # (existing period_end or 'now'). This is additive + order-independent.
+            base = existing_sub["current_period_end"]
+            new_end = base + timedelta(days=months * 30)
             await conn.execute(
-                "UPDATE subscriptions SET current_period_end=$1 WHERE id=$2",
-                new_end, existing_sub["id"],
+                "UPDATE subscriptions SET current_period_end=$1, stripe_subscription_id=$2 WHERE id=$3",
+                new_end, bonus_sub_id, existing_sub["id"],
             )
             period_end = new_end
             sub_action = "extended"
         else:
-            # Create new subscription entry
+            # Create new subscription entry (idempotency enforced by unique stripe_subscription_id)
             await conn.execute(
                 """INSERT INTO subscriptions
                    (user_id, stripe_subscription_id, tier, status, current_period_end)
-                   VALUES ($1, $2, 'pro', 'active', $3)""",
+                   VALUES ($1, $2, 'pro', 'active', $3)
+                   ON CONFLICT (stripe_subscription_id) DO NOTHING""",
                 user_row["id"],
-                f"shop_bonus_{body.order_id}",
+                bonus_sub_id,
                 period_end,
             )
             sub_action = "created"

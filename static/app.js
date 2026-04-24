@@ -607,7 +607,7 @@ function renderBrowserTable(data) {
 
     rows += `
       <tr data-idx="${i}" class="clickable-row ${i >= limit ? 'blurred-rows' : ''}" title="Click Chart for history">
-        <td>
+        <td data-label="Card">
           <div class="card-cell">
             ${cardThumb(card.image_url, card.name)}
             <div class="card-info">
@@ -616,12 +616,12 @@ function renderBrowserTable(data) {
             </div>
           </div>
         </td>
-        <td>
+        <td data-label="Set">
           <span style="font-family:var(--font-mono);font-size:11px;color:var(--accent);">${escHtml(card.set_code || '')}</span>
           ${card.set_name ? `<div style="font-size:10px;color:var(--muted);margin-top:2px;">${escHtml(card.set_name)}</div>` : ''}
         </td>
-        <td>${rarityBadge(card.rarity)}</td>
-        <td class="col-en">
+        <td data-label="Rarity">${rarityBadge(card.rarity)}</td>
+        <td data-label="JP" class="col-en">
           <div class="price-cell">
             ${jpIsLive
               ? `<a class="price-val price-link" href="${card.jp_cm_live_url || card.links?.cardmarket_jp || '#'}" target="_blank" rel="noopener nofollow" title="Live Cardmarket JP price · click to open listing">${fmt.eurAuto(jpDisplay)} ↗</a>`
@@ -633,7 +633,7 @@ function renderBrowserTable(data) {
               : '🇯🇵 Reference'}</div>
           </div>
         </td>
-        <td class="col-eu">
+        <td data-label="EN" class="col-eu">
           <div class="price-cell">
             ${enIsLive
               ? `<a class="price-val price-link" href="${card.cm_live_url || card.links?.cardmarket_en || '#'}" target="_blank" rel="noopener nofollow" title="Live Cardmarket EN price · click to open listing">${fmt.eurAuto(enDisplay)} ↗</a>`
@@ -645,12 +645,12 @@ function renderBrowserTable(data) {
               : '🇬🇧 Reference'}</div>
           </div>
         </td>
-        <td>
+        <td data-label="Spread">
           ${spreadRatio != null
             ? `<span class="${spreadRatio >= 2 ? 'spread-positive' : 'spread-neutral'}" style="font-family:var(--font-mono);font-weight:700;">${spreadRatio.toFixed(1)}x</span>`
             : '<span class="spread-neutral">—</span>'}
         </td>
-        <td>
+        <td data-label="Action" class="actions">
           <div style="display:flex;align-items:center;gap:4px;">
             ${signalBadge(signal)}
             <button class="chart-btn" title="Open price chart & indicators" onclick="event.stopPropagation();openChartModal('${escHtml(card.card_id)}','${escHtml(card.variant || 'Normal')}')" aria-label="Open chart">
@@ -1561,7 +1561,7 @@ function renderPortfolioItems(items) {
     }
 
     return `<tr>
-      <td>
+      <td data-label="Card">
         <div style="display:flex;align-items:center;gap:8px;">
           ${cardThumb(it.image_url, it.name)}
           <div>
@@ -1570,16 +1570,16 @@ function renderPortfolioItems(items) {
           </div>
         </div>
       </td>
-      <td>${escHtml(it.set_code || '')}</td>
-      <td>${it.quantity}</td>
-      <td>${fmt.eurAuto(it.buy_price)}</td>
-      <td class="col-eu">
+      <td data-label="Set">${escHtml(it.set_code || '')}</td>
+      <td data-label="Qty">${it.quantity}</td>
+      <td data-label="Buy Price">${fmt.eurAuto(it.buy_price)}</td>
+      <td data-label="Market" class="col-eu">
         <div style="line-height:1.3;">${priceHtml}</div>
         <div style="margin-top:2px;">${sourceLabel}</div>
       </td>
-      <td class="${pnlClass}">${it.pnl_eur != null ? fmt.eurAuto(it.pnl_eur) : '—'}</td>
-      <td class="${roiClass}">${it.roi_pct != null ? fmt.pct(it.roi_pct) : '—'}</td>
-      <td>
+      <td data-label="P&L" class="${pnlClass}">${it.pnl_eur != null ? fmt.eurAuto(it.pnl_eur) : '—'}</td>
+      <td data-label="ROI" class="${roiClass}">${it.roi_pct != null ? fmt.pct(it.roi_pct) : '—'}</td>
+      <td data-label="Action" class="actions">
         <button class="btn-icon" title="Remove" onclick="deletePortfolioItem(${it.id})">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 4h8l-.75 8.25a1 1 0 01-1 .75h-4.5a1 1 0 01-1-.75L3 4z" stroke="currentColor" stroke-width="1.2"/><path d="M2 4h10M5.5 2h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
         </button>

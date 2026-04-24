@@ -20,8 +20,37 @@ from services.price_snapshots import take_daily_snapshots
 logger = logging.getLogger(__name__)
 
 # FX conversion constants (approximate; update periodically)
-USD_TO_EUR: float = 0.92
-EUR_TO_USD: float = 1.08
+# FX-Kurse werden ab jetzt LIVE über services/fx_rate.py geholt.
+# Die folgenden Konstanten sind nur ein absoluter Notfall-Fallback wenn
+# der FX-Service nie initialisiert wurde (sollte nie passieren).
+# Neuen Code NIEMALS gegen diese Konstanten schreiben — stattdessen:
+#   from services.fx_rate import get_usd_to_eur
+#   rate = get_usd_to_eur()
+from services.fx_rate import get_usd_to_eur as _get_usd_to_eur, get_eur_to_usd as _get_eur_to_usd
+
+# Backwards-kompatible "Konstanten" als Properties — lazy-lookup des Live-Kurses
+class _LiveRate:
+    def __float__(self):
+        return _get_usd_to_eur()
+    def __mul__(self, other):
+        return _get_usd_to_eur() * other
+    def __rmul__(self, other):
+        return _get_usd_to_eur() * other
+    def __repr__(self):
+        return f"LiveUsdToEur({_get_usd_to_eur():.4f})"
+
+class _LiveInverseRate:
+    def __float__(self):
+        return _get_eur_to_usd()
+    def __mul__(self, other):
+        return _get_eur_to_usd() * other
+    def __rmul__(self, other):
+        return _get_eur_to_usd() * other
+    def __repr__(self):
+        return f"LiveEurToUsd({_get_eur_to_usd():.4f})"
+
+USD_TO_EUR = _LiveRate()
+EUR_TO_USD = _LiveInverseRate()
 
 # ─── Set mapping: EN slug ↔ RapidAPI set ID ─────────────────────────────────
 # Keys are the set codes that appear in card numbers (e.g. "OP01").

@@ -88,16 +88,20 @@ async def stripe_webhook(request: Request):
     payload = await request.body()
     sig_header = request.headers.get("stripe-signature", "")
 
+    # HARDENED: Signature-Verification ist NICHT optional. Wenn kein Secret
+    # konfiguriert ist, muss der Endpoint hart failen statt tier-upgrades
+    # durchzuwinken — sonst ist das ein direkter Privilege-Escalation-Pfad
+    # (ein Angreifer POSTet ein gefaktes subscription.updated-Event mit
+    # metadata.tier="elite" und ist Elite-User ohne zu zahlen).
     if not STRIPE_WEBHOOK_SECRET:
-        logger.warning("Stripe webhook secret not configured — skipping signature verification.")
-        event = stripe.Event.construct_from(json.loads(payload), stripe.api_key)
-    else:
-        try:
-            event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
-        except ValueError:
-            raise HTTPException(400, "Invalid payload.")
-        except stripe.error.SignatureVerificationError:
-            raise HTTPException(400, "Invalid signature.")
+        logger.error("STRIPE_WEBHOOK_SECRET not configured — refusing to process webhook.")
+        raise HTTPException(500, "Webhook secret not configured.")
+    try:
+        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
+    except ValueError:
+        raise HTTPException(400, "Invalid payload.")
+    except stripe.error.SignatureVerificationError:
+        raise HTTPException(400, "Invalid signature.")
 
     event_type = event["type"]
     data = event["data"]["object"]

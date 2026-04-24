@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from db.init import get_pool
-from middleware.tier_gate import get_current_user, UserInfo, require_pro
+from middleware.tier_gate import get_current_user, require_auth, UserInfo, require_pro
 from services import opcg_api
 from services.ev_engine import calculate_ev, calculate_custom_ev, PULL_RATES
 
@@ -128,8 +128,8 @@ async def custom_ev(
 
 
 @router.get("/pull-rates")
-async def get_pull_rates():
-    """Get the current pull rate configuration (public endpoint)."""
+async def get_pull_rates(user: UserInfo = Depends(require_auth)):
+    """Get the current pull rate configuration. Login-gated."""
     return {
         "JP": {
             **PULL_RATES["JP"],
