@@ -184,9 +184,10 @@ function initAuthPage() {
   const formLogin   = document.getElementById('form-login');
   const formRegister = document.getElementById('form-register');
 
-  // If already logged in, redirect
+  // If already logged in, redirect (honor ?next= so upgrade flow returns to modal)
   if (Auth.isAuthenticated()) {
-    window.location.href = '/';
+    const next = new URLSearchParams(window.location.search).get('next');
+    window.location.href = next || '/';
     return;
   }
 
@@ -251,7 +252,8 @@ function initAuthPage() {
 
     try {
       await Auth.register(email, password);
-      window.location.href = '/';
+      const next = new URLSearchParams(window.location.search).get('next');
+      window.location.href = next || '/';
     } catch (err) {
       errEl.textContent = err.message;
       submitBtn.disabled = false;

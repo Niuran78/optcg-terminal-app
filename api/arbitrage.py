@@ -150,7 +150,7 @@ async def arbitrage_for_set(
                 detail={
                     "error": "PRO_REQUIRED",
                     "message": "This set requires a Pro subscription.",
-                    "upgrade_url": "/login.html#upgrade",
+                    "upgrade_url": "/?upgrade=pro",
                 }
             )
 

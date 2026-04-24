@@ -82,12 +82,201 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Bind nav
   bindNav();
 
+  // Wire upgrade modal
+  bindUpgradeModal();
+
+  // Handle ?upgrade=pro / ?upgrade=elite / ?subscription=success
+  handleUpgradeQueryParams();
+
   // Load market summary bar
   loadMarketSummary();
 
   // Load default tab
   switchTab('browser');
 });
+
+/* ═════════════════════════════════════════════════════════════════
+   UPGRADE FLOW — modal + Stripe Checkout
+   ═════════════════════════════════════════════════════════════════ */
+function openUpgradeModal(highlightTier) {
+  const modal = $('upgrade-modal');
+  if (!modal) return;
+  // If user not logged in, send to login.html with return URL
+  if (!State.user) {
+    window.location.href = '/login.html?next=' + encodeURIComponent(window.location.pathname + '?upgrade=' + (highlightTier || 'pro'));
+    return;
+  }
+  const errBox = $('upgrade-error');
+  if (errBox) errBox.textContent = '';
+  modal.style.display = 'flex';
+  modal.setAttribute('aria-hidden', 'false');
+  // Hide "current plan" button on the tier the user already has
+  const currentTier = (Auth?.getTier(State.user) || 'free').toLowerCase();
+  $$('#upgrade-modal .plan-card').forEach(card => {
+    const tier = card.dataset.tier;
+    const btn = card.querySelector('button');
+    if (!btn) return;
+    if (tier === currentTier) {
+      btn.disabled = true;
+      btn.style.opacity = '0.6';
+      btn.style.cursor = 'default';
+      btn.textContent = 'Your current plan';
+      btn.classList.remove('btn-primary');
+      btn.classList.add('btn');
+    } else if (tier !== 'free') {
+      btn.disabled = false;
+      btn.style.opacity = '';
+      btn.style.cursor = '';
+      btn.textContent = 'Upgrade to ' + tier.charAt(0).toUpperCase() + tier.slice(1);
+      btn.classList.add('btn-primary');
+    }
+  });
+  // Visually emphasize the targeted tier
+  if (highlightTier) {
+    const target = document.querySelector(`#upgrade-modal .plan-card[data-tier="${highlightTier}"]`);
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+
+function closeUpgradeModal() {
+  const modal = $('upgrade-modal');
+  if (!modal) return;
+  modal.style.display = 'none';
+  modal.setAttribute('aria-hidden', 'true');
+}
+
+async function startCheckout(tier) {
+  const errBox = $('upgrade-error');
+  if (errBox) errBox.textContent = '';
+  if (!['pro', 'elite'].includes(tier)) return;
+  if (!State.user) {
+    window.location.href = '/login.html?next=' + encodeURIComponent('/?upgrade=' + tier);
+    return;
+  }
+  // Disable all checkout buttons, show loading state on clicked one
+  const btns = $$('.upgrade-checkout-btn');
+  btns.forEach(b => b.disabled = true);
+  const target = document.querySelector(`.upgrade-checkout-btn[data-tier="${tier}"]`);
+  const originalLabel = target ? target.textContent : '';
+  if (target) target.textContent = 'Redirecting to Stripe…';
+  try {
+    const res = await apiFetchMut('/api/billing/checkout', 'POST', { tier });
+    if (res && res.checkout_url) {
+      window.location.href = res.checkout_url;
+      return;
+    }
+    throw new Error('No checkout URL received');
+  } catch (err) {
+    const msg = (err && err.message) ? String(err.message) : 'Checkout unavailable';
+    if (errBox) errBox.textContent = 'Checkout failed: ' + msg + '. Please try again or contact support.';
+    btns.forEach(b => b.disabled = false);
+    if (target) target.textContent = originalLabel;
+  }
+}
+
+async function openStripePortal() {
+  try {
+    const res = await apiFetch('/api/billing/portal');
+    if (res && res.portal_url) {
+      window.location.href = res.portal_url;
+    }
+  } catch (err) {
+    showMiniToast('Could not open subscription portal: ' + (err.message || 'unknown error'), 'error');
+  }
+}
+
+// Minimal toast helper — uses existing .toast-container if present
+function showMiniToast(message, type, ttl) {
+  const container = document.getElementById('toast-container');
+  if (!container) { console.log('[toast]', type || 'info', message); return; }
+  const el = document.createElement('div');
+  el.className = 'toast toast-' + (type || 'info');
+  el.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-left:3px solid ' +
+    (type === 'success' ? 'var(--accent)' : type === 'error' ? 'var(--danger, #ff5c5c)' : 'var(--muted)') +
+    ';padding:12px 16px;margin-top:8px;border-radius:var(--r-md);color:var(--text);font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,0.3);max-width:360px;';
+  el.textContent = message;
+  container.appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity 0.3s'; }, ttl || 4000);
+  setTimeout(() => { el.remove(); }, (ttl || 4000) + 300);
+}
+
+function bindUpgradeModal() {
+  // Header Upgrade button in user dropdown
+  $('upgrade-btn')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    $('user-menu')?.classList.remove('open');
+    const currentTier = (State.user && Auth?.getTier(State.user) || 'free').toLowerCase();
+    // If already Elite → open Stripe portal instead
+    if (currentTier === 'elite') {
+      openStripePortal();
+      return;
+    }
+    // If Pro → highlight Elite; if Free → highlight Pro
+    openUpgradeModal(currentTier === 'pro' ? 'elite' : 'pro');
+  });
+
+  // Manage Subscription link → Stripe portal
+  $('manage-sub-link')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openStripePortal();
+  });
+
+  // Show "Manage Subscription" link for Pro/Elite users
+  const currentTier = (State.user && Auth?.getTier(State.user) || 'free').toLowerCase();
+  if (['pro', 'elite'].includes(currentTier)) {
+    const link = $('manage-sub-link');
+    if (link) link.style.display = '';
+  }
+
+  // Close button
+  $('upgrade-modal-close')?.addEventListener('click', closeUpgradeModal);
+
+  // Backdrop click
+  $('upgrade-modal')?.addEventListener('click', (e) => {
+    if (e.target.id === 'upgrade-modal') closeUpgradeModal();
+  });
+
+  // Escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && $('upgrade-modal')?.style.display !== 'none') {
+      closeUpgradeModal();
+    }
+  });
+
+  // Checkout buttons
+  $$('.upgrade-checkout-btn').forEach(btn => {
+    btn.addEventListener('click', () => startCheckout(btn.dataset.tier));
+  });
+}
+
+function handleUpgradeQueryParams() {
+  const params = new URLSearchParams(window.location.search);
+  const upgradeTier = params.get('upgrade');
+  const subStatus = params.get('subscription');
+  const subTier = params.get('tier');
+
+  if (subStatus === 'success' && subTier) {
+    // Show success toast and clean URL
+    setTimeout(() => {
+      showMiniToast(`Welcome to ${subTier.charAt(0).toUpperCase() + subTier.slice(1)}! Your subscription is active.`, 'success', 7000);
+    }, 400);
+    const clean = window.location.pathname + window.location.hash;
+    window.history.replaceState({}, document.title, clean);
+    return;
+  }
+
+  if (upgradeTier && ['pro', 'elite'].includes(upgradeTier)) {
+    setTimeout(() => openUpgradeModal(upgradeTier), 200);
+    // Clean URL so reload doesn't re-trigger
+    const clean = window.location.pathname + window.location.hash;
+    window.history.replaceState({}, document.title, clean);
+  }
+}
+
+// Expose globally so backend-provided upgrade_url handlers (via window.location or inline onclick) could call it
+window.openUpgradeModal = openUpgradeModal;
 
 /* ══════════════════════════════════════════════════════════════════
    MARKET SUMMARY BAR
@@ -678,8 +867,8 @@ function renderBrowserTable(data) {
     cta.innerHTML = `
       <div class="upgrade-lock-icon">🔒</div>
       <h3>${fmt.int(total - 10)} more cards locked</h3>
-      <p>Upgrade to Elite to unlock all ${fmt.int(total)} cards, full arbitrage scanner, and live price feeds.</p>
-      <a href="/login.html" class="btn btn-primary">Upgrade to Elite</a>
+      <p>Upgrade to Pro to unlock all ${fmt.int(total)} cards, full arbitrage scanner, and live price feeds.</p>
+      <button onclick="openUpgradeModal('pro')" class="btn btn-primary" style="border:none;cursor:pointer;">Upgrade to Pro</button>
     `;
     tableWrap?.appendChild(cta);
   }
@@ -1478,7 +1667,7 @@ async function loadPortfolioData() {
       $('portfolio-tbody').innerHTML = `<tr><td colspan="8" class="empty-state" style="padding:40px 0;">
         <div style="margin-bottom:8px;font-weight:600;">Pro Required</div>
         <div style="color:var(--muted);font-size:13px;">Portfolio tracking requires a Pro (CHF 19/mo) or Elite subscription.</div>
-        <a href="/login.html#upgrade" class="btn-primary" style="margin-top:12px;display:inline-block;">Upgrade</a>
+        <button onclick="openUpgradeModal('pro')" class="btn-primary" style="margin-top:12px;display:inline-block;border:none;cursor:pointer;">Upgrade</button>
       </td></tr>`;
     } else {
       showToast('Portfolio: ' + detail, 'error');

@@ -142,7 +142,7 @@ async def create_portfolio(body: CreatePortfolio, user: UserInfo = Depends(requi
             detail={
                 "error": "PRO_REQUIRED",
                 "message": "Portfolio creation requires a Pro (CHF 19/mo) or Elite subscription.",
-                "upgrade_url": "/login.html#upgrade",
+                "upgrade_url": "/?upgrade=pro",
             },
         )
 
@@ -159,7 +159,7 @@ async def create_portfolio(body: CreatePortfolio, user: UserInfo = Depends(requi
                     detail={
                         "error": "LIMIT_REACHED",
                         "message": "Pro tier allows 1 portfolio. Upgrade to Elite for unlimited.",
-                        "upgrade_url": "/login.html#upgrade",
+                        "upgrade_url": "/?upgrade=pro",
                     },
                 )
 
@@ -260,7 +260,7 @@ async def add_item(portfolio_id: int, body: AddItem, user: UserInfo = Depends(re
             detail={
                 "error": "PRO_REQUIRED",
                 "message": "Adding cards to portfolios requires Pro or Elite.",
-                "upgrade_url": "/login.html#upgrade",
+                "upgrade_url": "/?upgrade=pro",
             },
         )
 
@@ -296,7 +296,7 @@ async def add_item(portfolio_id: int, body: AddItem, user: UserInfo = Depends(re
                     detail={
                         "error": "LIMIT_REACHED",
                         "message": "Pro tier allows 50 items per portfolio. Upgrade to Elite for unlimited.",
-                        "upgrade_url": "/login.html#upgrade",
+                        "upgrade_url": "/?upgrade=pro",
                     },
                 )
 
@@ -469,7 +469,7 @@ async def export_csv(portfolio_id: int, user: UserInfo = Depends(require_auth)):
             detail={
                 "error": "ELITE_REQUIRED",
                 "message": "CSV export requires an Elite subscription (CHF 69/mo).",
-                "upgrade_url": "/login.html#upgrade",
+                "upgrade_url": "/?upgrade=pro",
             },
         )
 

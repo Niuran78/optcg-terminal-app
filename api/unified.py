@@ -543,7 +543,7 @@ async def browse_cards(
                 detail={
                     "error": "PRO_REQUIRED",
                     "message": "Access to this set requires a Pro subscription.",
-                    "upgrade_url": "/login.html#upgrade",
+                    "upgrade_url": "/?upgrade=pro",
                 },
             )
         conditions.append(f"set_code = ${param_idx}")
@@ -789,7 +789,7 @@ async def browse_sealed(
                 detail={
                     "error": "PRO_REQUIRED",
                     "message": "Access to this set requires a Pro subscription.",
-                    "upgrade_url": "/login.html#upgrade",
+                    "upgrade_url": "/?upgrade=pro",
                 },
             )
         conditions.append(f"set_code = ${param_idx}")
@@ -881,7 +881,7 @@ async def arbitrage_scanner(
                 detail={
                     "error": "PRO_REQUIRED",
                     "message": "Access to this set requires a Pro subscription.",
-                    "upgrade_url": "/login.html#upgrade",
+                    "upgrade_url": "/?upgrade=pro",
                 },
             )
         set_filter += f" AND jp.set_code = ${param_idx}"

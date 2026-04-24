@@ -90,7 +90,7 @@ async def require_pro(user: UserInfo = Depends(get_current_user)) -> UserInfo:
             detail={
                 "error": "PRO_REQUIRED",
                 "message": "This feature requires a Pro or Elite subscription.",
-                "upgrade_url": "/login.html#upgrade",
+                "upgrade_url": "/?upgrade=pro",
             }
         )
     return user
@@ -104,7 +104,7 @@ async def require_elite(user: UserInfo = Depends(get_current_user)) -> UserInfo:
             detail={
                 "error": "ELITE_REQUIRED",
                 "message": "This feature requires an Elite subscription.",
-                "upgrade_url": "/login.html#upgrade",
+                "upgrade_url": "/?upgrade=pro",
             }
         )
     return user
@@ -134,7 +134,7 @@ def require_tier(tier: str):
                 detail={
                     "error": f"{tier.upper()}_REQUIRED",
                     "message": f"This feature requires a {tier.capitalize()} or higher subscription.",
-                    "upgrade_url": "/login.html#upgrade",
+                    "upgrade_url": "/?upgrade=pro",
                 }
             )
         return user

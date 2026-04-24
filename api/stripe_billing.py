@@ -63,7 +63,7 @@ async def create_checkout(
             line_items=[{"price": price_id, "quantity": 1}],
             mode="subscription",
             success_url=f"{APP_URL}/?subscription=success&tier={body.tier}",
-            cancel_url=f"{APP_URL}/login.html#upgrade",
+            cancel_url=f"{APP_URL}/?upgrade={body.tier}",
             metadata={
                 "user_id": str(user.user_id),
                 "tier": body.tier,

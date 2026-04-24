@@ -98,7 +98,7 @@ async def create_alert(body: CreateAlert, user: UserInfo = Depends(require_auth)
             detail={
                 "error": "PRO_REQUIRED",
                 "message": "Price alerts require a Pro (CHF 19/mo) or Elite subscription.",
-                "upgrade_url": "/login.html#upgrade",
+                "upgrade_url": "/?upgrade=pro",
             },
         )
 
@@ -135,7 +135,7 @@ async def create_alert(body: CreateAlert, user: UserInfo = Depends(require_auth)
                     detail={
                         "error": "LIMIT_REACHED",
                         "message": "Pro tier allows 10 active alerts. Upgrade to Elite for unlimited.",
-                        "upgrade_url": "/login.html#upgrade",
+                        "upgrade_url": "/?upgrade=pro",
                     },
                 )
 

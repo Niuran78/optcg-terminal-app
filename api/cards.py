@@ -43,7 +43,7 @@ async def get_cards_for_set(
                 detail={
                     "error": "PRO_REQUIRED",
                     "message": "This set requires a Pro subscription.",
-                    "upgrade_url": "/login.html#upgrade",
+                    "upgrade_url": "/?upgrade=pro",
                 }
             )
 
@@ -77,7 +77,7 @@ async def get_card_history(
             detail={
                 "error": "PRO_REQUIRED",
                 "message": "Price history requires a Pro subscription.",
-                "upgrade_url": "/login.html#upgrade",
+                "upgrade_url": "/?upgrade=pro",
             }
         )
 

@@ -125,24 +125,36 @@
     </div>
 
     <!-- Tier comparison teaser -->
-    <div style="margin-top: 32px; max-width: 420px; width: 100%;">
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-        <div style="background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 16px;">
-          <div style="font-family: var(--font-mono); font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px;">Free</div>
-          <div style="font-size: 13px; color: var(--text-2); display: flex; flex-direction: column; gap: 6px;">
+    <div style="margin-top: 32px; max-width: 640px; width: 100%;">
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+        <div style="background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 14px;">
+          <div style="font-family: var(--font-mono); font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px;">Free</div>
+          <div style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">CHF 0<span style="font-size:10px;color:var(--muted);font-weight:400;"> /mo</span></div>
+          <div style="font-size: 11px; color: var(--text-2); display: flex; flex-direction: column; gap: 4px;">
             <div>✓ 10 cards preview</div>
             <div>✓ Overview stats</div>
-            <div style="color: var(--muted);">✗ Full card browser</div>
-            <div style="color: var(--muted);">✗ Arbitrage scanner</div>
+            <div style="color: var(--muted);">✗ Arbitrage</div>
           </div>
         </div>
-        <div style="background: var(--surface); border: 1px solid rgba(0,229,192,0.25); border-radius: var(--r-lg); padding: 16px; background: linear-gradient(135deg, rgba(0,229,192,0.05), var(--surface));">
-          <div style="font-family: var(--font-mono); font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px;">Elite</div>
-          <div style="font-size: 13px; color: var(--text-2); display: flex; flex-direction: column; gap: 6px;">
-            <div>✓ All cards unlocked</div>
-            <div>✓ Arbitrage alerts</div>
-            <div>✓ Sealed tracker</div>
-            <div>✓ Live price feeds</div>
+        <div style="border: 1px solid rgba(0,229,192,0.35); border-radius: var(--r-lg); padding: 14px; background: linear-gradient(135deg, rgba(0,229,192,0.06), var(--surface)); position: relative;">
+          <div style="position:absolute;top:-8px;right:10px;background:var(--accent);color:#0a0a0b;font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:0.08em;padding:2px 6px;border-radius:3px;">POPULAR</div>
+          <div style="font-family: var(--font-mono); font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); margin-bottom: 4px;">Pro</div>
+          <div style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">CHF 19<span style="font-size:10px;color:var(--muted);font-weight:400;"> /mo</span></div>
+          <div style="font-size: 11px; color: var(--text-2); display: flex; flex-direction: column; gap: 4px;">
+            <div>✓ All cards JP+EN</div>
+            <div>✓ Live data</div>
+            <div>✓ Arbitrage scanner</div>
+            <div>✓ Portfolio</div>
+          </div>
+        </div>
+        <div style="background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 14px;">
+          <div style="font-family: var(--font-mono); font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px;">Elite</div>
+          <div style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">CHF 69<span style="font-size:10px;color:var(--muted);font-weight:400;"> /mo</span></div>
+          <div style="font-size: 11px; color: var(--text-2); display: flex; flex-direction: column; gap: 4px;">
+            <div>✓ All of Pro</div>
+            <div>✓ Price alerts</div>
+            <div>✓ CSV export</div>
+            <div>✓ 1-year history</div>
           </div>
         </div>
       </div>
