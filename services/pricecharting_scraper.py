@@ -17,7 +17,11 @@ from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
-USD_TO_EUR = 0.92
+# USD_TO_EUR is now a function call to services.fx_rate.get_usd_to_eur()
+# so daily syncs always use the live ECB rate, not a stale hardcoded 0.92.
+from services.fx_rate import get_usd_to_eur
+def _usd_to_eur() -> float:
+    return get_usd_to_eur()
 
 # Set code → PriceCharting slug (verified against pricecharting.com/category/one-piece-cards)
 PC_SET_SLUGS: dict[str, str] = {
@@ -166,7 +170,7 @@ async def fetch_sealed_price(
 
     return {
         "price_usd": round(price_usd, 2),
-        "price_eur": round(price_usd * USD_TO_EUR, 2),
+        "price_eur": round(price_usd * _usd_to_eur(), 2),
         "source_url": url,
     }
 

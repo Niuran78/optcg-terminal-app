@@ -120,7 +120,7 @@ def _row_to_sealed(row: dict) -> dict:
     """Convert a sealed_unified DB row to a flat API response dict.
 
     Live Cardmarket prices (cm_live_trend) take precedence over the legacy
-    eu_price field (which is PriceCharting USD * 0.92, so not an actual
+    eu_price field (which is PriceCharting USD * live_fx, so not an actual
     EU market price). Users see the real number whenever we have one.
     """
     cm_live_trend = row.get("cm_live_trend")
@@ -943,4 +943,26 @@ async def arbitrage_scanner(
         "tier": user.tier,
         "fx_rate": {"usd_to_eur": float(USD_TO_EUR), "eur_to_usd": float(EUR_TO_USD)},
         "opportunities": page,
+    }
+
+
+# ─── Public FX rate endpoint ──────────────────────────────────────────────────
+# Exposes the live USD→EUR rate so the frontend can convert reference USD prices
+# without hardcoding 0.92 anymore. No auth: it's a public market data point and
+# we already hit the FX provider on every backend startup.
+
+_fx_router = APIRouter(prefix="/api/fx", tags=["fx"])
+
+
+@_fx_router.get("/rate")
+async def get_fx_rate():
+    from services.fx_rate import get_usd_to_eur, _cache
+    rate = get_usd_to_eur()
+    return {
+        "base": "USD",
+        "quote": "EUR",
+        "rate": float(rate),
+        "inverse": round(1.0 / rate, 6) if rate > 0 else None,
+        "fetched_at_unix": float(_cache[1]),
+        "source": "Frankfurter.dev (ECB)",
     }

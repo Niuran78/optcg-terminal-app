@@ -49,8 +49,11 @@ const State = {
     loading: false,
   },
 
-  // FX
-  usdToEur: 0.92,
+  // FX — hydrated from /api/fx/rate at startup (Frankfurter.dev ECB-sourced).
+  // Conservative initial value used only for the first ~100ms before the live
+  // rate arrives; do NOT compute final displayed prices off this default.
+  usdToEur: 0.93,
+  fxLoaded: false,
   displayCurrency: 'EUR', // 'EUR' | 'USD' for arbitrage calculated fields
 
   // Known sets (populated from first browse call)
@@ -81,6 +84,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Bind nav
   bindNav();
+
+  // Hydrate live FX rate so all USD→EUR conversions match the backend.
+  hydrateFxRate();
 
   // Wire upgrade modal
   bindUpgradeModal();
@@ -280,6 +286,34 @@ function handleUpgradeQueryParams() {
 
 // Expose globally so backend-provided upgrade_url handlers (via window.location or inline onclick) could call it
 window.openUpgradeModal = openUpgradeModal;
+
+/* ═════════════════════════════════════════════════════════════════
+   FX — fetch live USD→EUR rate from /api/fx/rate
+   ═════════════════════════════════════════════════════════════════ */
+async function hydrateFxRate() {
+  try {
+    const r = await fetch('/api/fx/rate');
+    if (!r.ok) return;
+    const data = await r.json();
+    if (data && typeof data.rate === 'number' && data.rate > 0.7 && data.rate < 1.3) {
+      State.usdToEur = data.rate;
+      State.fxLoaded = true;
+      // Update tooltips that mention the rate, if rendered already.
+      updateFxTooltips();
+    }
+  } catch (_) {
+    // Keep conservative default already in State
+  }
+}
+
+function updateFxTooltips() {
+  const rate = State.usdToEur;
+  document.querySelectorAll('[data-fx-tooltip]').forEach(el => {
+    const tpl = el.getAttribute('data-fx-tooltip');
+    if (tpl) el.title = tpl.replace('{rate}', rate.toFixed(4));
+  });
+}
+window.hydrateFxRate = hydrateFxRate;
 
 /* ══════════════════════════════════════════════════════════════════
    MARKET SUMMARY BAR
@@ -778,8 +812,8 @@ function renderBrowserTable(data) {
 
     const enRefUsd = card.en_tcgplayer_market;
     const jpRefUsd = card.jp_pc_price_usd;
-    const jpRefEur = jpRefUsd != null ? jpRefUsd * 0.92 : null;
-    const enRefEur = enRefUsd != null ? enRefUsd * 0.92 : null;
+    const jpRefEur = jpRefUsd != null ? jpRefUsd * State.usdToEur : null;
+    const enRefEur = enRefUsd != null ? enRefUsd * State.usdToEur : null;
 
     // Displayed prices — prefer live
     const enDisplay = enLive != null ? enLive : enRefEur;
@@ -1748,7 +1782,7 @@ function renderPortfolioItems(items) {
       priceHtml = fmt.eurAuto(it.eu_cardmarket_7d_avg);
       sourceLabel = '<span style="font-size:9px;color:var(--muted);">Reference</span>';
     } else if (it.en_tcgplayer_market != null) {
-      priceHtml = fmt.eurAuto(it.en_tcgplayer_market * 0.92);
+      priceHtml = fmt.eurAuto(it.en_tcgplayer_market * State.usdToEur);
       sourceLabel = '<span style="font-size:9px;color:var(--muted);">Reference (EN)</span>';
     }
 

@@ -195,6 +195,9 @@ app.add_middleware(
 # API Routers
 app.include_router(auth_router)
 app.include_router(unified_router)  # unified multi-source endpoints (new)
+# Public FX rate endpoint (no auth) so frontend can read live USD→EUR rate.
+from api.unified import _fx_router as fx_router
+app.include_router(fx_router)
 from api.image_proxy import router as image_proxy_router
 app.include_router(image_proxy_router)  # proxy external card images (CORP workaround)
 app.include_router(widget_router)  # public widget endpoints (no auth)

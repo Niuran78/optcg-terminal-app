@@ -73,13 +73,15 @@ async def seed_synthetic_history(days: int = 90, missing_only: bool = False) -> 
 
     async with pool.acquire() as conn:
         # Include JP-only cards too: if pc_price_usd is set but en/eu columns
-        # are NULL, derive a JP-EUR baseline from pc_price_usd * 0.92.
-        query = """
+        # are NULL, derive a JP-EUR baseline from pc_price_usd * live_fx_rate.
+        from services.fx_rate import get_usd_to_eur
+        fx = f"{get_usd_to_eur():.6f}"
+        query = f"""
             SELECT cu.id, cu.card_id, cu.set_code, cu.language,
                    cu.eu_cardmarket_7d_avg, cu.eu_cardmarket_30d_avg, cu.eu_cardmarket_lowest,
                    cu.en_tcgplayer_market, cu.en_tcgplayer_low,
                    cu.pc_price_usd,
-                   COALESCE(cu.eu_cardmarket_7d_avg, cu.pc_price_usd * 0.92) AS eu_current
+                   COALESCE(cu.eu_cardmarket_7d_avg, cu.pc_price_usd * {fx}) AS eu_current
             FROM cards_unified cu
             WHERE (cu.eu_cardmarket_7d_avg IS NOT NULL
                 OR cu.en_tcgplayer_market IS NOT NULL
@@ -91,7 +93,7 @@ async def seed_synthetic_history(days: int = 90, missing_only: bool = False) -> 
                 SELECT COUNT(*) FROM daily_price_snapshots d
                 WHERE d.card_unified_id = cu.id
               ) < {days // 2}
-            """
+            """  # noqa: F541
         cards = await conn.fetch(query)
 
         for c in cards:
@@ -170,7 +172,7 @@ async def daily_snapshot_from_current() -> dict:
     Runs daily via cron. Idempotent on (card_unified_id, snap_date).
 
     Also handles JP-only cards: when language='JP' and eu_cardmarket_7d_avg
-    is NULL, we derive the EUR baseline from pc_price_usd * 0.92 so JP charts
+    is NULL, we derive the EUR baseline from pc_price_usd * live_fx_rate so JP charts
     have data.
     """
     from db.init import get_pool
@@ -179,8 +181,10 @@ async def daily_snapshot_from_current() -> dict:
     today = date.today()
 
     async with pool.acquire() as conn:
+        from services.fx_rate import get_usd_to_eur
+        fx = f"{get_usd_to_eur():.6f}"
         result = await conn.execute(
-            """
+            f"""
             INSERT INTO daily_price_snapshots (
                 card_unified_id, snap_date,
                 en_tcgplayer_market, en_tcgplayer_low,
@@ -188,9 +192,9 @@ async def daily_snapshot_from_current() -> dict:
             )
             SELECT id, $1,
                    en_tcgplayer_market, en_tcgplayer_low,
-                   COALESCE(eu_cardmarket_7d_avg, pc_price_usd * 0.92),
-                   COALESCE(eu_cardmarket_30d_avg, pc_price_usd * 0.92),
-                   COALESCE(eu_cardmarket_lowest, pc_price_usd * 0.92 * 0.85)
+                   COALESCE(eu_cardmarket_7d_avg, pc_price_usd * {fx}),
+                   COALESCE(eu_cardmarket_30d_avg, pc_price_usd * {fx}),
+                   COALESCE(eu_cardmarket_lowest, pc_price_usd * {fx} * 0.85)
             FROM cards_unified
             WHERE eu_cardmarket_7d_avg IS NOT NULL
                OR en_tcgplayer_market IS NOT NULL

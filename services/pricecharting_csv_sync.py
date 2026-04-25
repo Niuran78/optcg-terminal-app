@@ -45,7 +45,11 @@ PRICECHARTING_CSV_URL = (
 )
 
 # USD → EUR rate (updated via env var in production)
-USD_TO_EUR = 0.92
+# USD_TO_EUR is now a function call to services.fx_rate.get_usd_to_eur()
+# so daily syncs always use the live ECB rate, not a stale hardcoded 0.92.
+from services.fx_rate import get_usd_to_eur
+def _usd_to_eur() -> float:
+    return get_usd_to_eur()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PriceCharting "console-name" → our internal set_code + language
@@ -412,7 +416,7 @@ async def sync_from_csv() -> dict:
             if s["price_usd_cents"] is None:
                 continue
             usd = s["price_usd_cents"] / 100.0
-            eur = usd * USD_TO_EUR
+            eur = usd * _usd_to_eur()
             set_code = s["set_code"]
             lang = s["language"]
             product_type = s["product_type"]
@@ -509,7 +513,10 @@ async def sync_from_csv() -> dict:
         #   JP row: pc_price_usd = JP price ONLY.
         #           en_tcgplayer_market / eu_cardmarket_* are NULL so the
         #           browser JOIN never picks up JP prices in EN columns.
-        upd_count = await conn.fetchval("""
+        # Inject live USD→EUR rate into SQL string. Avoiding param-binding here
+        # because asyncpg can't parametrize CASE-WHEN literals in this position.
+        fx = f"{_usd_to_eur():.6f}"
+        sql = f"""
             WITH input AS (
                 SELECT * FROM UNNEST($1::text[], $2::text[], $3::text[], $4::real[], $5::text[], $6::text[], $7::text[])
                 AS t(set_code, card_id, variant, pc_price_usd, pricecharting_id, name, language)
@@ -526,9 +533,9 @@ async def sync_from_csv() -> dict:
                     set_code, card_id, variant, name, language,
                     pc_price_usd, pricecharting_id, NOW(),
                     CASE WHEN language = 'EN' THEN pc_price_usd ELSE NULL END,
-                    CASE WHEN language = 'EN' THEN pc_price_usd * 0.92 ELSE NULL END,
-                    CASE WHEN language = 'EN' THEN pc_price_usd * 0.92 ELSE NULL END,
-                    CASE WHEN language = 'EN' THEN pc_price_usd * 0.92 * 0.85 ELSE NULL END,
+                    CASE WHEN language = 'EN' THEN pc_price_usd * {fx} ELSE NULL END,
+                    CASE WHEN language = 'EN' THEN pc_price_usd * {fx} ELSE NULL END,
+                    CASE WHEN language = 'EN' THEN pc_price_usd * {fx} * 0.85 ELSE NULL END,
                     CASE WHEN language = 'EN' THEN 'PriceCharting' ELSE 'PriceCharting JP' END,
                     NOW()
                 FROM input
@@ -543,15 +550,15 @@ async def sync_from_csv() -> dict:
                         ELSE NULL
                     END,
                     eu_cardmarket_7d_avg = CASE
-                        WHEN EXCLUDED.language = 'EN' THEN EXCLUDED.pc_price_usd * 0.92
+                        WHEN EXCLUDED.language = 'EN' THEN EXCLUDED.pc_price_usd * {fx}
                         ELSE NULL
                     END,
                     eu_cardmarket_30d_avg = CASE
-                        WHEN EXCLUDED.language = 'EN' THEN EXCLUDED.pc_price_usd * 0.92
+                        WHEN EXCLUDED.language = 'EN' THEN EXCLUDED.pc_price_usd * {fx}
                         ELSE NULL
                     END,
                     eu_cardmarket_lowest = CASE
-                        WHEN EXCLUDED.language = 'EN' THEN EXCLUDED.pc_price_usd * 0.92 * 0.85
+                        WHEN EXCLUDED.language = 'EN' THEN EXCLUDED.pc_price_usd * {fx} * 0.85
                         ELSE NULL
                     END,
                     eu_source = CASE
@@ -562,7 +569,8 @@ async def sync_from_csv() -> dict:
                 RETURNING 1
             )
             SELECT COUNT(*) FROM upserted
-        """, set_codes, card_ids, variants, prices, pc_ids, names_arr, languages)
+        """
+        upd_count = await conn.fetchval(sql, set_codes, card_ids, variants, prices, pc_ids, names_arr, languages)
         cards_updated = upd_count or 0
         cards_missing = []
 
