@@ -255,11 +255,12 @@ async def admin_seed_missing_sets(user: UserInfo = Depends(require_admin)):
 # ── Status dashboard ──────────────────────────────────────────────────────────
 
 @router.get("/admin/status")
-async def admin_status(user: UserInfo = Depends(require_auth)):
+async def admin_status(user: UserInfo = Depends(require_admin)):
     """Return current DB stats for monitoring.
 
-    Requires authentication (login-gated).
-    Protects internal operational data from leaking to anonymous traffic.
+    Requires admin role (not just authentication — paying Elite users are
+    NOT admins). DB stats are operational telemetry that shouldn't leak
+    to subscribers.
     """
     from services.card_aggregator import SET_MAPPING
 

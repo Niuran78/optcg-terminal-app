@@ -143,6 +143,7 @@ async def me(user: UserInfo = Depends(get_current_user)):
         "id": row["id"],
         "email": row["email"],
         "tier": row["tier"],
+        "role": user.role,  # 'user' or 'admin' — distinct from tier
         "stripe_customer_id": row["stripe_customer_id"],
         "created_at": str(row["created_at"]),
         "subscription": dict(sub) if sub else None,
