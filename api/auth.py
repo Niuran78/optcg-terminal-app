@@ -151,17 +151,23 @@ async def me(user: UserInfo = Depends(get_current_user)):
 
 # ─── Admin Endpoint ───────────────────────────────────────────────────────────
 
-# HARDENED: reject known-public defaults. Previous fallback was a literal string
-# committed to git history — anyone with git access could call /admin/set-tier.
+# HARDENED: reject known-public defaults with loud warnings + ephemeral random
+# fallback (instead of import-time crash). Admin endpoints using ADMIN_SECRET
+# remain accessible only to operators who know the current process' random
+# value — i.e. nobody, until ENV is fixed. Better than crashing the service.
 _ADMIN_SECRET_INSECURE_DEFAULTS = {
     "optcg_admin_2026_blockreaction", "changeme", "admin", "secret", ""
 }
 ADMIN_SECRET = os.getenv("ADMIN_SECRET")
 if ADMIN_SECRET is None or ADMIN_SECRET in _ADMIN_SECRET_INSECURE_DEFAULTS:
-    raise RuntimeError(
-        "ADMIN_SECRET environment variable is missing or uses a known-insecure default. "
-        "Set a strong value in Render environment settings before restarting."
+    import logging as _admin_logging
+    import secrets as _admin_secrets
+    _admin_logging.getLogger(__name__).critical(
+        "SECURITY ALERT: ADMIN_SECRET missing or uses insecure default. "
+        "Using ephemeral random value — /admin/set-tier and /admin/shop-bonus "
+        "will be unreachable until ENV is fixed in Render."
     )
+    ADMIN_SECRET = _admin_secrets.token_urlsafe(32)
 
 class AdminTierRequest(BaseModel):
     email: EmailStr
