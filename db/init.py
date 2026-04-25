@@ -214,6 +214,28 @@ async def init_db():
             -- from shop-bonus grants so neither overwrites the other.
             ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'stripe';
 
+            -- shop_bonus rows have no Stripe subscription id; loosen NOT NULL.
+            -- Idempotency for non-Stripe sources is anchored on shop_bonus_redemptions.order_id.
+            -- Existing UNIQUE constraint stays valid because UNIQUE allows multiple NULLs in Postgres.
+            ALTER TABLE subscriptions ALTER COLUMN stripe_subscription_id DROP NOT NULL;
+
+            -- cards_unified UNIQUE must include language now that JP and EN rows
+            -- coexist for the same (card_id, variant). Drop the old constraint
+            -- (if present) and add the language-aware one. Idempotent.
+            DO $mig$ BEGIN
+              IF EXISTS (
+                SELECT 1 FROM pg_constraint c
+                JOIN pg_class t ON t.oid = c.conrelid
+                WHERE t.relname = 'cards_unified'
+                  AND c.contype = 'u'
+                  AND c.conname = 'cards_unified_card_id_variant_key'
+              ) THEN
+                EXECUTE 'ALTER TABLE cards_unified DROP CONSTRAINT cards_unified_card_id_variant_key';
+              END IF;
+            END $mig$;
+            CREATE UNIQUE INDEX IF NOT EXISTS cards_unified_cid_var_lang
+              ON cards_unified(card_id, variant, language);
+
             -- Lightweight telemetry / event log. Keep it simple: append-only,
             -- no relations beyond user_id, no PII payloads. Querying patterns:
             -- daily DAU, funnel (signup -> upgrade_modal_open -> checkout_start ->

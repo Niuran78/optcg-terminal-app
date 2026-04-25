@@ -181,12 +181,13 @@ async def _handle_subscription_update(subscription: dict):
                 current_period_end=EXCLUDED.current_period_end
         """, user_id, sub_id, tier, status_val, period_end)
 
-        # Update user tier if subscription is active
+        # Update user tier based on the EFFECTIVE tier across all active
+        # subscription sources (stripe + shop_bonus). Avoids downgrading a user
+        # who still has an active shop-bonus when their Stripe sub lapses.
         if status_val == "active" and tier in ("pro", "elite"):
             await conn.execute("UPDATE users SET tier=$1 WHERE id=$2", tier, user_id)
         elif status_val not in ("active", "trialing"):
-            # Downgrade to free if subscription lapsed
-            await conn.execute("UPDATE users SET tier='free' WHERE id=$1", user_id)
+            await _recompute_effective_tier(conn, user_id)
 
         logger.info(f"Updated subscription for user {user_id}: tier={tier} status={status_val}")
 
@@ -206,12 +207,35 @@ async def _handle_subscription_deleted(subscription: dict):
         )
         if user_row:
             user_id = user_row["id"]
-            await conn.execute("UPDATE users SET tier='free' WHERE id=$1", user_id)
+            # First mark the Stripe subscription canceled, then recompute the
+            # effective tier from any remaining active subs (e.g. shop_bonus).
             await conn.execute(
                 "UPDATE subscriptions SET status='canceled' WHERE stripe_subscription_id=$1",
-                sub_id
+                sub_id,
             )
-            logger.info(f"Downgraded user {user_id} to free tier (subscription canceled)")
+            await _recompute_effective_tier(conn, user_id)
+            logger.info(f"Stripe sub canceled for user {user_id} — effective tier recomputed")
+
+
+async def _recompute_effective_tier(conn, user_id: int):
+    """Set users.tier to the highest tier of any active subscription row.
+
+    Reads from the subscriptions table after updates have been applied. If no
+    active row exists in any source, tier becomes 'free'. Tier hierarchy:
+    elite > pro > free.
+    """
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    row = await conn.fetchrow(
+        """SELECT tier FROM subscriptions
+           WHERE user_id=$1 AND status='active'
+             AND (current_period_end IS NULL OR current_period_end > $2)
+           ORDER BY CASE tier WHEN 'elite' THEN 2 WHEN 'pro' THEN 1 ELSE 0 END DESC
+           LIMIT 1""",
+        user_id, now,
+    )
+    new_tier = row["tier"] if row else "free"
+    await conn.execute("UPDATE users SET tier=$1 WHERE id=$2", new_tier, user_id)
 
 
 @router.get("/portal")

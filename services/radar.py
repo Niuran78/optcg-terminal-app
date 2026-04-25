@@ -40,8 +40,9 @@ MAX_SIGNALS_PER_USER_PER_TYPE = 10   # spam guard
 async def compute_fair_value_baselines() -> int:
     """Refresh the fair_value_baselines table.
 
-    fv_eur = trimmed mean (10/90 percentile) of last 30 days of
-    eu_cardmarket_7d_avg, with sample_size ≥ 20.
+    fv_eur = MEDIAN of last 30 days of eu_cardmarket_7d_avg,
+    with sample_size ≥ 20. Method tag: 'median_30d'.
+    Median is more robust to outliers than mean for sparse-data MVP.
     """
     pool = await get_pool()
     async with pool.acquire() as conn:

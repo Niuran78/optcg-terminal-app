@@ -433,9 +433,17 @@ async function loadRadarData() {
   }
 }
 
+function _radarLocale() {
+  // Honor browser language (de* -> de, otherwise en). Future: per-user pref.
+  const lang = (navigator.language || 'en').toLowerCase();
+  return lang.startsWith('de') ? 'de' : 'en';
+}
+
 function renderRadarRow(s) {
   const p = s.payload || {};
-  const word = (p.wording && (p.wording.de || p.wording.en)) || `${s.signal_type} on ${s.entity_id}`;
+  const loc = _radarLocale();
+  const word = (p.wording && (p.wording[loc] || p.wording.en || p.wording.de))
+               || `${s.signal_type} on ${s.entity_id}`;
   const setPill = p.set_code ? `<span class="pill">${escapeHtml(p.set_code)}</span>` : '';
   const typeLabel = ({
     'price_drop': 'Price Drop',
