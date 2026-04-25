@@ -164,7 +164,6 @@ async def lifespan(app: FastAPI):
         logger.info(f"cards_unified: {count} records, {priced} with prices — skipping seed")
 
     # Start daily PriceCharting CSV sync loop (runs in background forever)
-    import os
     if os.getenv("PRICECHARTING_API_TOKEN"):
         asyncio.create_task(_daily_pricecharting_sync_loop())
         logger.info("Daily PriceCharting CSV sync loop started (runs every 24h)")
