@@ -125,24 +125,26 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not seed sets on startup: {e}")
 
-    # Ensure admin account exists
+    # HARDENED: no longer auto-creates an admin with a hardcoded password.
+    # Admin role is granted to existing users listed in the ADMIN_EMAILS env var
+    # (comma-separated). Users must sign up normally first. If ADMIN_EMAILS is
+    # unset, no role changes happen — admin is granted manually via DB or
+    # the /admin/set-role endpoint (protected by ADMIN_SECRET).
     pool = await get_pool()
-    async with pool.acquire() as conn:
-        admin = await conn.fetchrow(
-            "SELECT id FROM users WHERE email=$1",
-            "mail@blockreaction-investments.ch",
-        )
-        if not admin:
-            import bcrypt
-            hashed = bcrypt.hashpw(b"Holygrade2026!", bcrypt.gensalt()).decode()
-            await conn.execute(
-                "INSERT INTO users (email, password_hash, tier) VALUES ($1, $2, 'elite')",
-                "mail@blockreaction-investments.ch",
-                hashed,
-            )
-            logger.info("Admin account created: mail@blockreaction-investments.ch (elite)")
-        else:
-            logger.info(f"Admin account exists: id={admin['id']}")
+    admin_emails_env = os.getenv("ADMIN_EMAILS", "").strip()
+    if admin_emails_env:
+        admin_emails = [e.strip().lower() for e in admin_emails_env.split(",") if e.strip()]
+        async with pool.acquire() as conn:
+            for email in admin_emails:
+                result = await conn.execute(
+                    "UPDATE users SET role='admin' WHERE LOWER(email)=$1 AND role <> 'admin'",
+                    email,
+                )
+                # result is e.g. 'UPDATE 1' or 'UPDATE 0'
+                if result.endswith(" 1"):
+                    logger.info(f"Granted admin role to {email}")
+    else:
+        logger.info("ADMIN_EMAILS env not set — skipping admin role sync on startup.")
 
     # Check if cards_unified has data — only seed if empty
     async with pool.acquire() as conn:
