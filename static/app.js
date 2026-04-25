@@ -117,6 +117,8 @@ function openUpgradeModal(highlightTier) {
   }
   // Telemetry: top of funnel
   trackEvent('upgrade_modal_open', { highlight_tier: highlightTier || 'pro' });
+  // Remember what was focused so we can restore it on close
+  modal._a11y_restore = document.activeElement;
   const errBox = $('upgrade-error');
   if (errBox) errBox.textContent = '';
   modal.style.display = 'flex';
@@ -147,6 +149,8 @@ function openUpgradeModal(highlightTier) {
     const target = document.querySelector(`#upgrade-modal .plan-card[data-tier="${highlightTier}"]`);
     if (target) target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
+  // A11y: trap focus inside, auto-focus first interactive element
+  trapModalFocus(modal);
 }
 
 function closeUpgradeModal() {
@@ -154,6 +158,7 @@ function closeUpgradeModal() {
   if (!modal) return;
   modal.style.display = 'none';
   modal.setAttribute('aria-hidden', 'true');
+  releaseModalFocus(modal);
 }
 
 async function startCheckout(tier) {
@@ -293,6 +298,63 @@ function handleUpgradeQueryParams() {
 
 // Expose globally so backend-provided upgrade_url handlers (via window.location or inline onclick) could call it
 window.openUpgradeModal = openUpgradeModal;
+
+/* ═════════════════════════════════════════════════════════════════
+   A11Y — Modal Focus Management
+   Generic helpers any modal can use. Trap Tab inside, restore focus on close.
+   ═════════════════════════════════════════════════════════════════ */
+const FOCUSABLE_SEL = [
+  'button:not([disabled])',
+  '[href]',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+  '[contenteditable="true"]',
+].join(',');
+
+function _focusableIn(modal) {
+  return Array.from(modal.querySelectorAll(FOCUSABLE_SEL))
+    .filter(el => el.offsetParent !== null);  // visible only
+}
+
+function trapModalFocus(modal) {
+  if (!modal) return;
+  // Auto-focus first interactive element
+  const focusables = _focusableIn(modal);
+  if (focusables.length) {
+    setTimeout(() => focusables[0].focus(), 50);
+  }
+  // Tab/Shift+Tab loop inside modal
+  const handler = (e) => {
+    if (e.key !== 'Tab') return;
+    const f = _focusableIn(modal);
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault(); last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault(); first.focus();
+    }
+  };
+  modal._a11y_trap = handler;
+  document.addEventListener('keydown', handler);
+}
+
+function releaseModalFocus(modal) {
+  if (!modal) return;
+  if (modal._a11y_trap) {
+    document.removeEventListener('keydown', modal._a11y_trap);
+    modal._a11y_trap = null;
+  }
+  // Restore focus to whatever opened the modal
+  if (modal._a11y_restore && typeof modal._a11y_restore.focus === 'function') {
+    try { modal._a11y_restore.focus(); } catch (_) {}
+    modal._a11y_restore = null;
+  }
+}
+window.trapModalFocus = trapModalFocus;
+window.releaseModalFocus = releaseModalFocus;
 
 /* ═════════════════════════════════════════════════════════════════
    TELEMETRY — fire-and-forget event tracking
@@ -465,14 +527,19 @@ function bindNav() {
 function switchTab(tab) {
   State.activeTab = tab;
 
-  // Update nav tabs
-  $$('[data-tab]').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.tab === tab);
+  // Update nav tabs (aria-selected reflects WAI-ARIA tabs pattern)
+  $$('.nav-tab[data-tab]').forEach(btn => {
+    const isActive = btn.dataset.tab === tab;
+    btn.classList.toggle('active', isActive);
+    btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    btn.setAttribute('tabindex', isActive ? '0' : '-1');
   });
 
   // Update panels
   $$('.tab-panel').forEach(panel => {
-    panel.classList.toggle('active', panel.id === `panel-${tab}`);
+    const isActive = panel.id === `panel-${tab}`;
+    panel.classList.toggle('active', isActive);
+    panel.setAttribute('aria-hidden', isActive ? 'false' : 'true');
   });
 
   // Load data
@@ -1566,6 +1633,7 @@ function closePriceModal() {
   if (overlay) {
     overlay.setAttribute('aria-hidden', 'true');
     overlay.classList.remove('open');
+    releaseModalFocus(overlay);
   }
   if (priceChart) { priceChart.destroy(); priceChart = null; }
   priceModalCard = null;
@@ -1575,6 +1643,7 @@ function showPriceHistoryModal(card) {
   priceModalCard = card;
   const overlay = $('price-modal-overlay');
   if (!overlay) return;
+  overlay._a11y_restore = document.activeElement;
 
   // Set header info
   const titleEl = $('price-modal-title');
@@ -1584,6 +1653,7 @@ function showPriceHistoryModal(card) {
 
   overlay.setAttribute('aria-hidden', 'false');
   overlay.classList.add('open');
+  trapModalFocus(overlay);
 
   const days = Number($('price-modal-days')?.value || 30);
   loadPriceHistory(card, days);
@@ -1884,6 +1954,7 @@ let _acDebounce = null;
 function openAddCardModal() {
   const modal = $('add-card-modal');
   if (!modal) { showToast('Add card modal not found', 'error'); return; }
+  modal._a11y_restore = document.activeElement;
   modal.style.display = 'flex';
   modal.classList.add('open');
   modal.setAttribute('aria-hidden', 'false');
@@ -1898,6 +1969,7 @@ function openAddCardModal() {
   $('ac-date').value = '';
   $('ac-notes').value = '';
   setTimeout(() => $('ac-search').focus(), 100);
+  trapModalFocus(modal);
 }
 window.openAddCardModal = openAddCardModal;
 
@@ -1907,6 +1979,7 @@ function closeAddCardModal() {
   modal.style.display = 'none';
   modal.classList.remove('open');
   modal.setAttribute('aria-hidden', 'true');
+  releaseModalFocus(modal);
 }
 window.closeAddCardModal = closeAddCardModal;
 
