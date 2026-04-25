@@ -552,7 +552,8 @@ async def browse_cards(
         param_idx += 1
 
     if search:
-        conditions.append(f"name LIKE ${param_idx}")
+        # Match against name OR card_id (so radar/portfolio links by ID work too)
+        conditions.append(f"(name ILIKE ${param_idx} OR card_id ILIKE ${param_idx})")
         params.append(f"%{search}%")
         param_idx += 1
 

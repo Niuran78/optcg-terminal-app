@@ -459,12 +459,26 @@ function onRadarRowClick(row) {
   const entityId = row.dataset.entityId;
   trackEvent('radar_signal_clicked', { signal_id: Number(sigId), entity_type: entityType, entity_id: entityId });
   if (entityType === 'card' && entityId) {
-    // Switch to browser tab and search for the card
+    // Reset filters so the card-id search isn't constrained by current set/rarity selection
+    if (State.browser && State.browser.filters) {
+      State.browser.filters.set = 'all';
+      State.browser.filters.rarity = '';
+      State.browser.filters.search = entityId;
+      State.browser.offset = 0;
+    }
+    // Reset visible filter UI to match
+    const setSel = $('browser-set');
+    if (setSel) setSel.value = 'all';
+    $$('#panel-browser .pill-group .pill').forEach(p => p.classList.remove('active'));
+    const allPill = document.querySelector('#panel-browser .pill-group .pill[data-rarity=""]');
+    if (allPill) allPill.classList.add('active');
+
     switchTab('browser');
     const search = $('browser-search');
     if (search) {
       search.value = entityId;
-      search.dispatchEvent(new Event('input', { bubbles: true }));
+      // Trigger backend search directly
+      if (typeof loadBrowserData === 'function') loadBrowserData();
     }
   } else if (entityType === 'portfolio') {
     switchTab('portfolio');
