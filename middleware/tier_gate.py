@@ -12,32 +12,21 @@ from jose import JWTError, jwt
 
 from db.init import get_pool
 
-# HARDENED: reject known-public defaults, but log LOUD warnings instead of
-# crashing the service at import time. A crashed service is worse than a
-# service with a default secret as long as we log the problem prominently
-# so it gets noticed and fixed. Admin endpoints additionally double-check
-# the secret at call time via require_admin role separation.
-import logging as _logging
-_log = _logging.getLogger(__name__)
-
+# HARDENED: reject known-public defaults and log loud warnings on weak secrets.
+# A missing/default JWT_SECRET lets anyone mint admin tokens — must fail loud.
 JWT_SECRET = os.getenv("JWT_SECRET")
 _INSECURE_DEFAULTS = {"change-me-in-production", "changeme", "secret", ""}
 if JWT_SECRET is None or JWT_SECRET in _INSECURE_DEFAULTS:
-    _log.critical(
-        "\n" + "=" * 70 + "\n"
-        "SECURITY ALERT: JWT_SECRET is missing or uses a known-insecure default!\n"
-        "Anyone can forge admin tokens. Fix NOW in Render environment:\n"
-        "  python -c 'import secrets; print(secrets.token_urlsafe(64))'\n"
-        + "=" * 70
+    raise RuntimeError(
+        "JWT_SECRET environment variable is missing or uses a known-insecure default. "
+        "Generate a strong secret with: python -c 'import secrets; print(secrets.token_urlsafe(64))' "
+        "and set it in Render environment settings before restarting."
     )
-    # Use a process-unique random value so tokens from a misconfigured
-    # env at least can't be forged with the known-public default.
-    import secrets as _secrets
-    JWT_SECRET = _secrets.token_urlsafe(64)
-    _log.warning("Using ephemeral random JWT_SECRET — existing sessions will be invalidated on every restart until ENV is fixed.")
-elif len(JWT_SECRET) < 32:
-    _log.warning(
-        f"JWT_SECRET is shorter than 32 chars (len={len(JWT_SECRET)}). Rotate to a longer value soon."
+if len(JWT_SECRET) < 32:
+    import logging
+    logging.getLogger(__name__).warning(
+        f"JWT_SECRET is shorter than 32 chars (len={len(JWT_SECRET)}). "
+        "Rotate to a longer value soon."
     )
 JWT_ALGORITHM = "HS256"
 
