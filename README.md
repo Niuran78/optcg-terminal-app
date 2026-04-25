@@ -275,5 +275,3 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
 ## License
 
 Private — all rights reserved.
-
-<!-- deploy-trigger 2026-04-24 -->
