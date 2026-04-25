@@ -43,6 +43,8 @@ ALLOWED_EVENTS = {
     "arbitrage_viewed",
     "card_viewed",
     "welcome_banner_dismissed",
+    "radar_opened",
+    "radar_signal_clicked",
 }
 
 

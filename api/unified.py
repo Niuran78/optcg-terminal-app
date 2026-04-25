@@ -994,3 +994,43 @@ async def post_event(
         properties=body.properties or {},
     )
     return {"ok": True}
+
+
+# ─── Market Radar (MVP) ──────────────────────────────────────────────────────
+# GET /api/radar/today — Pro+ tier-gated personalized signals.
+# Computed nightly; this is a pure read endpoint.
+
+_radar_router = APIRouter(prefix="/api/radar", tags=["radar"])
+
+
+@_radar_router.get("/today")
+async def radar_today(user: UserInfo = Depends(require_auth)):
+    """Return today's radar signals for the authenticated user.
+
+    Pro+ tier required. Free users get an upgrade prompt.
+    """
+    if user.tier not in ("pro", "elite"):
+        return {
+            "tier": user.tier,
+            "upgrade_required": True,
+            "upgrade_url": "/?upgrade=pro",
+            "signals": [],
+            "message": "Market Radar is a Pro feature. Upgrade to see personalized daily signals.",
+        }
+    from services.radar import get_signals_for_user
+    signals = await get_signals_for_user(user.user_id, limit=25)
+
+    # Telemetry: radar_opened
+    try:
+        from services.telemetry import emit
+        await emit("radar_opened", user_id=user.user_id, tier=user.tier,
+                   properties={"signal_count": len(signals)})
+    except Exception:
+        pass
+
+    return {
+        "tier": user.tier,
+        "upgrade_required": False,
+        "signals": signals,
+        "count": len(signals),
+    }

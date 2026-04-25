@@ -460,3 +460,15 @@ async def admin_seed_history(
         "missing_only": missing_only,
         "message": "Seed running in background. Check /api/cards/browse charts in ~1-2 minutes.",
     }
+
+
+@router.post("/admin/radar-compute")
+async def admin_radar_compute(user: UserInfo = Depends(require_admin)):
+    """Manually trigger Market Radar signal computation for today.
+
+    Normally runs nightly. This endpoint lets ops re-run on demand
+    (e.g. after backfilling price data, or for testing in dev).
+    """
+    from services.radar import compute_radar_signals_for_today
+    result = await compute_radar_signals_for_today()
+    return {"ok": True, "result": result}

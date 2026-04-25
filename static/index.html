@@ -82,6 +82,17 @@
       <span>Portfolio</span>
     </button>
 
+    <button class="nav-tab" data-tab="radar" role="tab" aria-selected="false" aria-controls="panel-radar">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+        <circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.2"/>
+        <circle cx="7" cy="7" r="3" stroke="currentColor" stroke-width="1.2"/>
+        <circle cx="7" cy="7" r="0.8" fill="currentColor"/>
+        <path d="M7 1.5v2M7 10.5v2M1.5 7h2M10.5 7h2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+      </svg>
+      <span>Radar</span>
+      <span class="nav-tab-badge" id="radar-badge" style="display:none;"></span>
+    </button>
+
     <button class="nav-tab" data-tab="overview" role="tab" aria-selected="false" aria-controls="panel-overview">
       <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
         <circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.3"/>
@@ -549,6 +560,20 @@
   </section>
 
   <!-- ─── TAB 5: MARKET OVERVIEW ───────────────────────────────── -->
+  <!-- TAB: MARKET RADAR -->
+  <section id="panel-radar" class="tab-panel" role="tabpanel" aria-labelledby="tab-radar">
+    <div class="radar-header">
+      <div>
+        <h1 class="radar-title">Market Radar</h1>
+        <p class="radar-sub">Daily signals — price drops, fair-value deviations, portfolio P&amp;L. Refreshed nightly.</p>
+      </div>
+      <div class="radar-meta" id="radar-meta" aria-live="polite"></div>
+    </div>
+    <div id="radar-content" aria-live="polite">
+      <div class="radar-loading">Loading…</div>
+    </div>
+  </section>
+
   <section id="panel-overview" class="tab-panel" role="tabpanel" aria-labelledby="tab-overview">
 
     <!-- Hero stat bar -->

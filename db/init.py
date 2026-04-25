@@ -228,6 +228,35 @@ async def init_db():
             );
             CREATE INDEX IF NOT EXISTS idx_telemetry_event_time ON telemetry_events(event_name, created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_telemetry_user ON telemetry_events(user_id, created_at DESC);
+
+            -- Holygrade Market Radar (MVP) — personalized daily signals.
+            -- See market_radar_architecture.md for full design.
+            CREATE TABLE IF NOT EXISTS radar_signals (
+                id              BIGSERIAL PRIMARY KEY,
+                user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                signal_type     TEXT NOT NULL,
+                entity_type     TEXT NOT NULL,
+                entity_id       TEXT NOT NULL,
+                severity        TEXT NOT NULL CHECK (severity IN ('info','opportunity','urgent')),
+                payload         JSONB NOT NULL,
+                computed_for    DATE NOT NULL,
+                created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                dismissed_at    TIMESTAMPTZ,
+                clicked_at      TIMESTAMPTZ,
+                UNIQUE (user_id, signal_type, entity_type, entity_id, computed_for)
+            );
+            CREATE INDEX IF NOT EXISTS idx_radar_signals_user_day
+                ON radar_signals (user_id, computed_for DESC)
+                WHERE dismissed_at IS NULL;
+
+            CREATE TABLE IF NOT EXISTS fair_value_baselines (
+                card_id           TEXT PRIMARY KEY,
+                fv_eur            NUMERIC(12,2) NOT NULL,
+                fv_method         TEXT NOT NULL DEFAULT 'trimmed_mean_30d',
+                sample_size       INTEGER NOT NULL,
+                stddev_eur        NUMERIC(12,2),
+                computed_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
             CREATE INDEX IF NOT EXISTS idx_tcg_en_cards_set ON tcg_en_cards_cache(set_slug);
 
             -- ═══ Phase 2 Tables ═══

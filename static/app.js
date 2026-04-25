@@ -375,6 +375,111 @@ function trackEvent(name, properties) {
 window.trackEvent = trackEvent;
 
 /* ═════════════════════════════════════════════════════════════════
+   MARKET RADAR — daily personalized signals
+   ═════════════════════════════════════════════════════════════════ */
+async function loadRadarData() {
+  const content = $('radar-content');
+  const meta = $('radar-meta');
+  const badge = $('radar-badge');
+  if (!content) return;
+  content.innerHTML = '<div class="radar-loading">Loading…</div>';
+
+  try {
+    const data = await apiFetch('/api/radar/today');
+    if (data.upgrade_required) {
+      content.innerHTML = `
+        <div class="radar-paywall">
+          <div class="radar-paywall-title">Market Radar is a Pro feature</div>
+          <div class="radar-paywall-desc">${data.message || 'Get personalized daily signals — price drops, fair-value opportunities, portfolio P&L — with Pro.'}</div>
+          <button onclick="openUpgradeModal('pro')" class="btn-primary" style="border:none;cursor:pointer;">Upgrade to Pro</button>
+        </div>`;
+      if (meta) meta.textContent = '';
+      if (badge) badge.style.display = 'none';
+      return;
+    }
+
+    const signals = data.signals || [];
+    if (signals.length === 0) {
+      content.innerHTML = `
+        <div class="radar-empty">
+          <div class="radar-empty-title">No signals today</div>
+          <div class="radar-empty-desc">The market is quiet. Check back tomorrow — signals are computed each night after the data sync.</div>
+        </div>`;
+      if (meta) meta.textContent = '0 SIGNALS';
+      if (badge) badge.style.display = 'none';
+      return;
+    }
+
+    if (meta) meta.textContent = `${signals.length} SIGNAL${signals.length === 1 ? '' : 'S'}`;
+    if (badge) {
+      const urgent = signals.filter(s => s.severity === 'urgent').length;
+      if (urgent > 0) {
+        badge.textContent = String(urgent);
+        badge.style.display = '';
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+
+    content.innerHTML = '<div class="radar-list">' +
+      signals.map(s => renderRadarRow(s)).join('') + '</div>';
+
+    // Bind clicks
+    $$('.radar-row', content).forEach(row => {
+      row.addEventListener('click', () => onRadarRowClick(row));
+    });
+  } catch (err) {
+    content.innerHTML = `<div class="radar-empty"><div class="radar-empty-title">Couldn't load signals</div><div class="radar-empty-desc">${(err && err.message) || 'Try again in a moment.'}</div></div>`;
+  }
+}
+
+function renderRadarRow(s) {
+  const p = s.payload || {};
+  const word = (p.wording && (p.wording.de || p.wording.en)) || `${s.signal_type} on ${s.entity_id}`;
+  const setPill = p.set_code ? `<span class="pill">${escapeHtml(p.set_code)}</span>` : '';
+  const typeLabel = ({
+    'price_drop': 'Price Drop',
+    'fv_deviation': 'Below Fair Value',
+    'portfolio_pnl': 'Portfolio P&L',
+  })[s.signal_type] || s.signal_type;
+  return `
+    <div class="radar-row" data-signal-id="${s.id}" data-entity-type="${s.entity_type}" data-entity-id="${escapeHtml(s.entity_id)}" tabindex="0" role="button">
+      <span class="radar-severity-dot ${s.severity}" aria-label="${s.severity}"></span>
+      <div class="radar-row-body">
+        <div class="radar-row-title">${escapeHtml(word)}</div>
+        <div class="radar-row-meta">${setPill}<span>${typeLabel}</span></div>
+      </div>
+      <span class="radar-row-cta">View →</span>
+    </div>`;
+}
+
+function onRadarRowClick(row) {
+  const sigId = row.dataset.signalId;
+  const entityType = row.dataset.entityType;
+  const entityId = row.dataset.entityId;
+  trackEvent('radar_signal_clicked', { signal_id: Number(sigId), entity_type: entityType, entity_id: entityId });
+  if (entityType === 'card' && entityId) {
+    // Switch to browser tab and search for the card
+    switchTab('browser');
+    const search = $('browser-search');
+    if (search) {
+      search.value = entityId;
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  } else if (entityType === 'portfolio') {
+    switchTab('portfolio');
+  }
+}
+
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+window.loadRadarData = loadRadarData;
+
+/* ═════════════════════════════════════════════════════════════════
    FIRST-RUN WELCOME BANNER
    ═════════════════════════════════════════════════════════════════ */
 function bindWelcomeBanner() {
@@ -548,6 +653,7 @@ function switchTab(tab) {
   if (tab === 'arbitrage') loadArbitrageData();
   if (tab === 'overview')  loadOverviewData();
   if (tab === 'portfolio') loadPortfolioData();
+  if (tab === 'radar')     loadRadarData();
 }
 
 function renderNavUser() {
