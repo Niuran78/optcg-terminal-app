@@ -79,6 +79,14 @@ async def create_checkout(
         logger.error(f"Stripe error creating checkout: {e}")
         raise HTTPException(500, f"Stripe error: {str(e)}")
 
+    # Telemetry: checkout funnel start
+    try:
+        from services.telemetry import emit
+        await emit("checkout_start", user_id=user.user_id, tier=user.tier,
+                   properties={"target_tier": body.tier})
+    except Exception:
+        pass
+
     return {"checkout_url": session.url, "session_id": session.id}
 
 
@@ -111,8 +119,20 @@ async def stripe_webhook(request: Request):
     elif event_type == "customer.subscription.deleted":
         await _handle_subscription_deleted(data)
     elif event_type == "checkout.session.completed":
-        # Subscription is already handled by subscription events
-        pass
+        # Subscription is already handled by subscription events— just emit
+        # the funnel-success event so we can measure conversion.
+        try:
+            from services.telemetry import emit
+            meta = data.get("metadata", {})
+            uid = meta.get("user_id")
+            await emit(
+                "checkout_success",
+                user_id=int(uid) if uid else None,
+                tier=meta.get("tier"),
+                properties={"session_id": data.get("id"), "amount_total": data.get("amount_total")},
+            )
+        except Exception:
+            pass
 
     return {"received": True}
 

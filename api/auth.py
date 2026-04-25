@@ -89,6 +89,14 @@ async def register(body: RegisterRequest):
         )
 
         token = create_token(row["id"])
+
+        # Telemetry: signup conversion event
+        try:
+            from services.telemetry import emit
+            await emit("signup", user_id=row["id"], tier=row["tier"])
+        except Exception:
+            pass
+
         return TokenResponse(access_token=token, user=user_to_dict(row))
 
 
@@ -106,6 +114,14 @@ async def login(body: LoginRequest):
         raise HTTPException(401, "Invalid email or password.")
 
     token = create_token(row["id"])
+
+    # Telemetry: login event
+    try:
+        from services.telemetry import emit
+        await emit("login", user_id=row["id"], tier=row["tier"])
+    except Exception:
+        pass
+
     return TokenResponse(
         access_token=token,
         user={
@@ -247,15 +263,14 @@ async def shop_bonus(body: ShopBonusRequest):
     pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
     temp_password = None
 
-    bonus_sub_id = f"shop_bonus_{body.order_id}"
-
     async with pool.acquire() as conn:
-        # IDEMPOTENCY GUARD — if this order_id was already processed, return
-        # the existing result without granting another bonus. Shopify retries
-        # webhooks on 5xx or timeout, so the same order_id can arrive 2–3×.
+        # IDEMPOTENCY GUARD — single source of truth: shop_bonus_redemptions(order_id PK).
+        # Shopify retries webhooks on 5xx or timeout, so the same order_id can arrive 2–3×.
+        # Previously we hijacked subscriptions.stripe_subscription_id which collided with
+        # real Stripe subs. Now bonus state lives in its own table.
         duplicate = await conn.fetchrow(
-            "SELECT id, user_id, current_period_end FROM subscriptions WHERE stripe_subscription_id=$1",
-            bonus_sub_id,
+            "SELECT user_id, period_end, months FROM shop_bonus_redemptions WHERE order_id=$1",
+            body.order_id,
         )
         if duplicate:
             return {
@@ -263,7 +278,7 @@ async def shop_bonus(body: ShopBonusRequest):
                 "email": body.email,
                 "user_action": "no_op_already_applied",
                 "subscription_action": "no_op_duplicate",
-                "pro_until": duplicate["current_period_end"].isoformat() if duplicate["current_period_end"] else None,
+                "pro_until": duplicate["period_end"].isoformat() if duplicate["period_end"] else None,
                 "temp_password": None,
                 "order_id": body.order_id,
                 "order_amount_eur": body.order_amount_eur,
@@ -289,37 +304,47 @@ async def shop_bonus(body: ShopBonusRequest):
             else:
                 action = f"kept_{user_row['tier']}"  # Don't downgrade elite to pro
 
-        # Track the bonus in subscriptions (extends existing active period if any)
+        # Track bonus in subscriptions with source='shop_bonus'. Coexists with
+        # any source='stripe' row — they don't fight over stripe_subscription_id.
+        # We extend the latest active shop_bonus subscription (if any), otherwise
+        # create a new one. Stripe-source rows are never touched here.
         existing_sub = await conn.fetchrow(
             """SELECT id, current_period_end FROM subscriptions
-               WHERE user_id=$1 AND status='active'
+               WHERE user_id=$1 AND status='active' AND source='shop_bonus'
                ORDER BY current_period_end DESC NULLS LAST LIMIT 1""",
             user_row["id"],
         )
 
         if existing_sub and existing_sub["current_period_end"] and existing_sub["current_period_end"] > datetime.now(timezone.utc):
-            # Extend existing period: always add N months to whichever is later
-            # (existing period_end or 'now'). This is additive + order-independent.
             base = existing_sub["current_period_end"]
             new_end = base + timedelta(days=months * 30)
             await conn.execute(
-                "UPDATE subscriptions SET current_period_end=$1, stripe_subscription_id=$2 WHERE id=$3",
-                new_end, bonus_sub_id, existing_sub["id"],
+                "UPDATE subscriptions SET current_period_end=$1 WHERE id=$2",
+                new_end, existing_sub["id"],
             )
             period_end = new_end
             sub_action = "extended"
         else:
-            # Create new subscription entry (idempotency enforced by unique stripe_subscription_id)
+            # New shop_bonus subscription row — stripe_subscription_id stays NULL.
             await conn.execute(
                 """INSERT INTO subscriptions
-                   (user_id, stripe_subscription_id, tier, status, current_period_end)
-                   VALUES ($1, $2, 'pro', 'active', $3)
-                   ON CONFLICT (stripe_subscription_id) DO NOTHING""",
+                   (user_id, tier, status, current_period_end, source)
+                   VALUES ($1, 'pro', 'active', $2, 'shop_bonus')""",
                 user_row["id"],
-                bonus_sub_id,
                 period_end,
             )
             sub_action = "created"
+
+        # Record the redemption (idempotency anchor). If we got this far, the
+        # bonus has been applied; failing to write here would mean the same
+        # order could double-grant. Use ON CONFLICT to be safe under races.
+        await conn.execute(
+            """INSERT INTO shop_bonus_redemptions
+               (order_id, user_id, months, order_amount_eur, period_end)
+               VALUES ($1, $2, $3, $4, $5)
+               ON CONFLICT (order_id) DO NOTHING""",
+            body.order_id, user_row["id"], months, body.order_amount_eur, period_end,
+        )
 
     return {
         "message": f"Shop bonus granted: {bonus_label} Terminal-Pro",

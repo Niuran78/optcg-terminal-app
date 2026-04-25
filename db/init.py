@@ -196,6 +196,38 @@ async def init_db():
             -- Role column for admin separation (tier = monetization, role = permission).
             -- Elite != Admin. Admin role must be granted explicitly, never via subscription.
             ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
+
+            -- Shop-bonus redemptions: separate from subscriptions so we don't
+            -- overwrite stripe_subscription_id with bonus markers. order_id is
+            -- the natural idempotency key from Shopify (one row per order).
+            CREATE TABLE IF NOT EXISTS shop_bonus_redemptions (
+                order_id TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                granted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                months INTEGER NOT NULL,
+                order_amount_eur NUMERIC(10,2) NOT NULL,
+                period_end TIMESTAMPTZ NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_shop_bonus_user ON shop_bonus_redemptions(user_id);
+
+            -- Source column for subscriptions: distinguishes paid Stripe subs
+            -- from shop-bonus grants so neither overwrites the other.
+            ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'stripe';
+
+            -- Lightweight telemetry / event log. Keep it simple: append-only,
+            -- no relations beyond user_id, no PII payloads. Querying patterns:
+            -- daily DAU, funnel (signup -> upgrade_modal_open -> checkout_start ->
+            -- checkout_success), feature usage by tier.
+            CREATE TABLE IF NOT EXISTS telemetry_events (
+                id BIGSERIAL PRIMARY KEY,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                event_name TEXT NOT NULL,
+                tier TEXT,
+                properties JSONB NOT NULL DEFAULT '{}'::jsonb
+            );
+            CREATE INDEX IF NOT EXISTS idx_telemetry_event_time ON telemetry_events(event_name, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_telemetry_user ON telemetry_events(user_id, created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_tcg_en_cards_set ON tcg_en_cards_cache(set_slug);
 
             -- ═══ Phase 2 Tables ═══

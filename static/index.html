@@ -146,6 +146,41 @@
 <!-- ═══ APP SHELL ════════════════════════════════════════════════ -->
 <main class="app-shell" role="main">
 
+  <!-- First-run welcome banner -->
+  <div id="welcome-banner" class="welcome-banner" style="display:none;" aria-live="polite">
+    <button class="welcome-close" id="welcome-close" aria-label="Dismiss welcome banner">&times;</button>
+    <div class="welcome-header">
+      <div class="welcome-eyebrow">Welcome to Holygrade Terminal</div>
+      <h2 class="welcome-title">Three steps to get value today</h2>
+    </div>
+    <ol class="welcome-steps">
+      <li class="welcome-step">
+        <span class="welcome-step-num">1</span>
+        <div class="welcome-step-body">
+          <div class="welcome-step-title">Browse the market</div>
+          <div class="welcome-step-desc">8&#39;385 cards across JP + EN. Filter by set or rarity.</div>
+          <button class="welcome-step-cta" data-tab="browser">Open Card Browser</button>
+        </div>
+      </li>
+      <li class="welcome-step">
+        <span class="welcome-step-num">2</span>
+        <div class="welcome-step-body">
+          <div class="welcome-step-title">Spot arbitrage</div>
+          <div class="welcome-step-desc">Find cards cheaper in JP than EN — sorted by profit %.</div>
+          <button class="welcome-step-cta" data-tab="arbitrage">View Scanner</button>
+        </div>
+      </li>
+      <li class="welcome-step">
+        <span class="welcome-step-num">3</span>
+        <div class="welcome-step-body">
+          <div class="welcome-step-title">Track your collection</div>
+          <div class="welcome-step-desc">Add cards, see total value &amp; daily P/L. (Pro)</div>
+          <button class="welcome-step-cta" data-tab="portfolio">Open Portfolio</button>
+        </div>
+      </li>
+    </ol>
+  </div>
+
   <!-- Market Summary Bar -->
   <div class="market-summary-bar" id="market-summary-bar" aria-live="polite">
     <span class="market-summary-loading">Loading market data...</span>

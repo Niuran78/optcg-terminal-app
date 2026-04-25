@@ -88,6 +88,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Hydrate live FX rate so all USD→EUR conversions match the backend.
   hydrateFxRate();
 
+  // First-run welcome banner (auto-show for accounts <7 days old, dismiss persists)
+  bindWelcomeBanner();
+
   // Wire upgrade modal
   bindUpgradeModal();
 
@@ -112,6 +115,8 @@ function openUpgradeModal(highlightTier) {
     window.location.href = '/login.html?next=' + encodeURIComponent(window.location.pathname + '?upgrade=' + (highlightTier || 'pro'));
     return;
   }
+  // Telemetry: top of funnel
+  trackEvent('upgrade_modal_open', { highlight_tier: highlightTier || 'pro' });
   const errBox = $('upgrade-error');
   if (errBox) errBox.textContent = '';
   modal.style.display = 'flex';
@@ -267,6 +272,8 @@ function handleUpgradeQueryParams() {
   const subTier = params.get('tier');
 
   if (subStatus === 'success' && subTier) {
+    // Telemetry: client-confirmed success (server-side already fired via webhook)
+    trackEvent('checkout_success', { tier: subTier, source: 'redirect' });
     // Show success toast and clean URL
     setTimeout(() => {
       showMiniToast(`Welcome to ${subTier.charAt(0).toUpperCase() + subTier.slice(1)}! Your subscription is active.`, 'success', 7000);
@@ -286,6 +293,62 @@ function handleUpgradeQueryParams() {
 
 // Expose globally so backend-provided upgrade_url handlers (via window.location or inline onclick) could call it
 window.openUpgradeModal = openUpgradeModal;
+
+/* ═════════════════════════════════════════════════════════════════
+   TELEMETRY — fire-and-forget event tracking
+   ═════════════════════════════════════════════════════════════════ */
+function trackEvent(name, properties) {
+  try {
+    const headers = { 'Content-Type': 'application/json' };
+    const tok = State.token || (typeof Auth !== 'undefined' && Auth.getToken && Auth.getToken());
+    if (tok) headers['Authorization'] = 'Bearer ' + tok;
+    fetch('/api/telemetry/event', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ event: name, properties: properties || {} }),
+      keepalive: true,  // survives page navigation (e.g. checkout redirect)
+    }).catch(() => {});
+  } catch (_) {}
+}
+window.trackEvent = trackEvent;
+
+/* ═════════════════════════════════════════════════════════════════
+   FIRST-RUN WELCOME BANNER
+   ═════════════════════════════════════════════════════════════════ */
+function bindWelcomeBanner() {
+  const banner = $('welcome-banner');
+  if (!banner) return;
+  if (!State.user) return;
+
+  const dismissKey = 'hg_welcome_dismissed_v1';
+  if (localStorage.getItem(dismissKey) === '1') return;
+
+  // Show only for accounts created in the last 7 days
+  const created = State.user.created_at ? new Date(State.user.created_at) : null;
+  if (created && !isNaN(created)) {
+    const ageDays = (Date.now() - created.getTime()) / (1000 * 60 * 60 * 24);
+    if (ageDays > 7) return;
+  }
+
+  banner.style.display = 'block';
+
+  // Step CTAs route to the right tab
+  $$('.welcome-step-cta', banner).forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab;
+      if (typeof switchTab === 'function' && tab) {
+        switchTab(tab);
+      }
+      // Don't auto-dismiss — user might want to come back to the list.
+    });
+  });
+
+  $('welcome-close')?.addEventListener('click', () => {
+    banner.style.display = 'none';
+    localStorage.setItem(dismissKey, '1');
+    trackEvent('welcome_banner_dismissed');
+  });
+}
 
 /* ═════════════════════════════════════════════════════════════════
    FX — fetch live USD→EUR rate from /api/fx/rate

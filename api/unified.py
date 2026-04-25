@@ -11,6 +11,7 @@ from datetime import date, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Path, Query, HTTPException
+from pydantic import BaseModel
 
 from db.init import get_pool
 from middleware.tier_gate import get_current_user, require_auth, UserInfo
@@ -966,3 +967,30 @@ async def get_fx_rate():
         "fetched_at_unix": float(_cache[1]),
         "source": "Frankfurter.dev (ECB)",
     }
+
+
+# ─── Telemetry endpoint ───────────────────────────────────────────────────────
+# Frontend POSTs events here. Bound to the user's bearer token if present;
+# anonymous events (e.g. before signup) get user_id=NULL.
+
+_telemetry_router = APIRouter(prefix="/api/telemetry", tags=["telemetry"])
+
+
+class _TelemetryEvent(BaseModel):
+    event: str
+    properties: dict = {}
+
+
+@_telemetry_router.post("/event")
+async def post_event(
+    body: _TelemetryEvent,
+    user: UserInfo = Depends(get_current_user),  # NOT require_auth — anonymous OK
+):
+    from services.telemetry import emit
+    await emit(
+        event_name=body.event,
+        user_id=user.user_id if user.is_authenticated else None,
+        tier=user.tier if user.is_authenticated else None,
+        properties=body.properties or {},
+    )
+    return {"ok": True}
