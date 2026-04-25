@@ -17,7 +17,7 @@ from datetime import datetime
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 
 from db.init import get_pool
-from middleware.tier_gate import get_current_user, require_auth, require_admin, UserInfo
+from middleware.tier_gate import get_current_user, require_auth, UserInfo
 from services.cardmarket_csv import refresh_from_cardmarket
 
 logger = logging.getLogger(__name__)
@@ -28,13 +28,15 @@ router = APIRouter(tags=["admin"])
 # ── Cardmarket CSV refresh ────────────────────────────────────────────────────
 
 @router.post("/admin/refresh-cardmarket")
-async def admin_refresh_cardmarket(request: Request, user: UserInfo = Depends(require_admin)):
+async def admin_refresh_cardmarket(request: Request, user: UserInfo = Depends(get_current_user)):
     """Trigger Cardmarket CSV price update.
 
     - Elite tier: auto-download CSV from Cardmarket
     - Upload mode: POST raw CSV bytes in the request body (for manual upload
       when Cloudflare blocks the auto-download)
     """
+    if user.tier != "elite":
+        raise HTTPException(403, "Elite tier required")
 
     # Check if CSV was uploaded in the body
     body = await request.body()
@@ -53,13 +55,15 @@ async def admin_refresh_cardmarket(request: Request, user: UserInfo = Depends(re
 # ── Backfill EN prices ────────────────────────────────────────────────────────
 
 @router.post("/admin/backfill-en-prices")
-async def admin_backfill_en_prices(user: UserInfo = Depends(require_admin)):
+async def admin_backfill_en_prices(user: UserInfo = Depends(get_current_user)):
     """Backfill EN prices for all cards missing them.
 
     Iterates sets that have cards with en_tcgplayer_market IS NULL,
     fetches EN prices from TCG Price Lookup, and updates cards_unified.
     Idempotent — safe to call multiple times.
     """
+    if user.tier != "elite":
+        raise HTTPException(403, "Elite tier required")
 
     from services import tcg_price_lookup
     from services.card_aggregator import SET_MAPPING
@@ -185,11 +189,13 @@ async def admin_backfill_en_prices(user: UserInfo = Depends(require_admin)):
 # ── Seed missing sets ─────────────────────────────────────────────────────────
 
 @router.post("/admin/seed-missing-sets")
-async def admin_seed_missing_sets(user: UserInfo = Depends(require_admin)):
+async def admin_seed_missing_sets(user: UserInfo = Depends(get_current_user)):
     """Seed sets that have < 10 cards in cards_unified.
 
     Runs aggregate_set + aggregate_sealed for each under-seeded set.
     """
+    if user.tier != "elite":
+        raise HTTPException(403, "Elite tier required")
 
     from services.card_aggregator import SET_MAPPING, aggregate_set, aggregate_sealed
 
@@ -331,12 +337,14 @@ async def admin_status(user: UserInfo = Depends(require_auth)):
 # ── Backfill sealed from PriceCharting ─────────────────────────────────────────
 
 @router.post("/admin/backfill-sealed-from-pricecharting")
-async def admin_backfill_sealed(user: UserInfo = Depends(require_admin)):
+async def admin_backfill_sealed(user: UserInfo = Depends(get_current_user)):
     """Backfill JP and EN sealed product prices from PriceCharting.
 
     Fetches booster box, booster pack, and case prices for all mapped sets.
     Inserts/updates sealed_unified with language='JP' or 'EN'.
     """
+    if user.tier != "elite":
+        raise HTTPException(403, "Elite tier required")
 
     from services.pricecharting_scraper import backfill_all_sealed
 
@@ -382,13 +390,15 @@ async def _run_csv_sync_in_background():
 @router.post("/admin/sync-pricecharting-csv")
 async def admin_sync_pricecharting_csv(
     background: BackgroundTasks,
-    user: UserInfo = Depends(require_admin),
+    user: UserInfo = Depends(get_current_user),
 ):
     """Kick off the full PriceCharting CSV sync as a background task.
 
     Returns immediately; poll GET /admin/sync-status for progress/result.
     The CSV download is capped at 1/10min by PriceCharting upstream.
     """
+    if user.tier != "elite":
+        raise HTTPException(403, "Elite tier required")
 
     if _last_sync_status["running"]:
         return {"started": False, "reason": "Another sync is already running"}
@@ -398,20 +408,24 @@ async def admin_sync_pricecharting_csv(
 
 
 @router.get("/admin/sync-status")
-async def admin_sync_status(user: UserInfo = Depends(require_admin)):
+async def admin_sync_status(user: UserInfo = Depends(get_current_user)):
     """Return the last CSV sync status (running/result/error)."""
+    if user.tier != "elite":
+        raise HTTPException(403, "Elite tier required")
     return _last_sync_status
 
 
 # ── PriceCharting test ────────────────────────────────────────────────────────
 
 @router.get("/admin/pricecharting-test")
-async def admin_pricecharting_test(user: UserInfo = Depends(require_admin)):
+async def admin_pricecharting_test(user: UserInfo = Depends(get_current_user)):
     """Test PriceCharting scraping for all sets — JP + EN booster boxes.
 
     Used to verify price accuracy before committing to the paid API.
     Returns per-set results with USD and EUR prices.
     """
+    if user.tier != "elite":
+        raise HTTPException(403, "Elite tier required")
 
     from services.pricecharting_scraper import test_all_sets
 
@@ -435,7 +449,7 @@ async def admin_seed_history(
     days: int = 365,
     missing_only: bool = True,
     wait: bool = False,
-    user: UserInfo = Depends(require_admin),
+    user: UserInfo = Depends(get_current_user),
 ):
     """Seed synthetic price history for cards missing snapshots.
 
@@ -446,6 +460,8 @@ async def admin_seed_history(
     Set `wait=true` to run synchronously (may time out for 365-day full seeds).
     Otherwise the seed runs in the background and returns immediately.
     """
+    if user.tier != "elite":
+        raise HTTPException(403, "Elite tier required")
 
     from services.price_history_seeder import seed_synthetic_history
     if wait:

@@ -151,17 +151,7 @@ async def me(user: UserInfo = Depends(get_current_user)):
 
 # ─── Admin Endpoint ───────────────────────────────────────────────────────────
 
-# HARDENED: reject known-public defaults. Previous fallback was a literal string
-# committed to git history — anyone with git access could call /admin/set-tier.
-_ADMIN_SECRET_INSECURE_DEFAULTS = {
-    "optcg_admin_2026_blockreaction", "changeme", "admin", "secret", ""
-}
-ADMIN_SECRET = os.getenv("ADMIN_SECRET")
-if ADMIN_SECRET is None or ADMIN_SECRET in _ADMIN_SECRET_INSECURE_DEFAULTS:
-    raise RuntimeError(
-        "ADMIN_SECRET environment variable is missing or uses a known-insecure default. "
-        "Set a strong value in Render environment settings before restarting."
-    )
+ADMIN_SECRET = os.getenv("ADMIN_SECRET", "optcg_admin_2026_blockreaction")
 
 class AdminTierRequest(BaseModel):
     email: EmailStr

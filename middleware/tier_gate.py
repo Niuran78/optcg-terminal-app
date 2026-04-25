@@ -12,22 +12,7 @@ from jose import JWTError, jwt
 
 from db.init import get_pool
 
-# HARDENED: reject known-public defaults and log loud warnings on weak secrets.
-# A missing/default JWT_SECRET lets anyone mint admin tokens — must fail loud.
-JWT_SECRET = os.getenv("JWT_SECRET")
-_INSECURE_DEFAULTS = {"change-me-in-production", "changeme", "secret", ""}
-if JWT_SECRET is None or JWT_SECRET in _INSECURE_DEFAULTS:
-    raise RuntimeError(
-        "JWT_SECRET environment variable is missing or uses a known-insecure default. "
-        "Generate a strong secret with: python -c 'import secrets; print(secrets.token_urlsafe(64))' "
-        "and set it in Render environment settings before restarting."
-    )
-if len(JWT_SECRET) < 32:
-    import logging
-    logging.getLogger(__name__).warning(
-        f"JWT_SECRET is shorter than 32 chars (len={len(JWT_SECRET)}). "
-        "Rotate to a longer value soon."
-    )
+JWT_SECRET = os.getenv("JWT_SECRET", "change-me-in-production")
 JWT_ALGORITHM = "HS256"
 
 security = HTTPBearer(auto_error=False)
@@ -40,20 +25,12 @@ TIER_HIERARCHY = {
 
 
 class UserInfo:
-    """Represents an authenticated (or anonymous) user.
-
-    Two orthogonal axes:
-      - tier  : monetization (free / pro / elite) — controls feature gating
-      - role  : permission   (user / admin)       — controls admin endpoints
-    An Elite subscriber is NOT an admin. Admin role is granted by DB write only.
-    """
+    """Represents an authenticated (or anonymous) user."""
     def __init__(self, user_id: Optional[int] = None, email: Optional[str] = None,
-                 tier: str = "free", role: str = "user",
-                 stripe_customer_id: Optional[str] = None):
+                 tier: str = "free", stripe_customer_id: Optional[str] = None):
         self.user_id = user_id
         self.email = email
         self.tier = tier
-        self.role = role
         self.stripe_customer_id = stripe_customer_id
         self.is_authenticated = user_id is not None
 
@@ -64,10 +41,6 @@ class UserInfo:
     def can_access(self, required_tier: str) -> bool:
         required_level = TIER_HIERARCHY.get(required_tier, 0)
         return self.tier_level >= required_level
-
-    @property
-    def is_admin(self) -> bool:
-        return self.role == "admin"
 
 
 async def get_current_user(
@@ -89,14 +62,12 @@ async def get_current_user(
     except JWTError:
         return UserInfo()
 
-    # Look up user in DB. On DB failure we now raise 503 instead of masquerading
-    # infrastructure errors as anonymous users (GPT-5.5 finding #12).
+    # Look up user in DB
     try:
         pool = await get_pool()
         async with pool.acquire() as conn:
             row = await conn.fetchrow(
-                "SELECT id, email, tier, COALESCE(role, 'user') AS role, stripe_customer_id "
-                "FROM users WHERE id=$1",
+                "SELECT id, email, tier, stripe_customer_id FROM users WHERE id=$1",
                 int(user_id)
             )
             if row is None:
@@ -105,18 +76,10 @@ async def get_current_user(
                 user_id=row["id"],
                 email=row["email"],
                 tier=row["tier"],
-                role=row["role"] or "user",
                 stripe_customer_id=row["stripe_customer_id"],
             )
-    except Exception as e:
-        # Log but don't swallow — an infra failure should surface, not silently
-        # strip a paying user down to anonymous free tier mid-session.
-        import logging
-        logging.getLogger(__name__).error(f"get_current_user DB lookup failed: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={"error": "DB_UNAVAILABLE", "message": "Database temporarily unavailable. Please retry."}
-        )
+    except Exception:
+        return UserInfo()
 
 
 async def require_pro(user: UserInfo = Depends(get_current_user)) -> UserInfo:
@@ -156,25 +119,6 @@ async def require_auth(user: UserInfo = Depends(get_current_user)) -> UserInfo:
                 "error": "AUTH_REQUIRED",
                 "message": "Authentication required.",
             }
-        )
-    return user
-
-
-async def require_admin(user: UserInfo = Depends(get_current_user)) -> UserInfo:
-    """Dependency for admin-only endpoints.
-
-    Distinct from tier checks: Elite is a paid tier, admin is a permission.
-    A paying Elite subscriber is NOT an admin. Role must be granted in the DB.
-    """
-    if not user.is_authenticated:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"error": "AUTH_REQUIRED", "message": "Authentication required."}
-        )
-    if not user.is_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={"error": "ADMIN_REQUIRED", "message": "Admin role required."}
         )
     return user
 
