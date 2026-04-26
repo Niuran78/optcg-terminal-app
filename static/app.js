@@ -2322,6 +2322,9 @@ async function loadPortfolioData() {
     // Load alerts list
     loadAlertsList();
 
+    // Load Sealed Holdings (Phase C — free via Holygrade purchase hook)
+    loadSealedPortfolio();
+
     // Export button visibility
     const exportBtn = $('export-csv-btn');
     if (exportBtn) {
@@ -3110,3 +3113,145 @@ window.ChartModal = (function() {
 // Global helper for inline onclick
 window.openChartModal = function(cardId, variant) { window.ChartModal.open(cardId, variant || 'Normal', 90); };
 window.closeChartModal = function() { window.ChartModal.close(); };
+
+
+/* ══════════════════════════════════════════════════════════════════
+   SEALED PORTFOLIO (Phase C — Free, unlocked via Holygrade purchase)
+   ══════════════════════════════════════════════════════════════════ */
+
+async function loadSealedPortfolio() {
+  const section = $('sealed-holdings-section');
+  const summary = $('sealed-holdings-summary');
+  const list    = $('sealed-holdings-list');
+  if (!section || !summary || !list) return;
+
+  // Hide by default; only show if user has at least one item.
+  section.style.display = 'none';
+
+  if (!State.user || !State.token) return;
+
+  try {
+    const res = await apiFetch('/api/portfolio/sealed');
+    const items = (res && res.items) || [];
+    if (!items.length) {
+      section.style.display = 'none';
+      return;
+    }
+
+    section.style.display = '';
+
+    const s = res.summary || {};
+    const fmt = (v) => fmtEurSafe(v);
+    summary.innerHTML = `
+      <div class="stat-card">
+        <div class="stat-label">Boxes</div>
+        <div class="stat-value">${items.length}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Bezahlt</div>
+        <div class="stat-value">${fmt(s.total_paid_eur)}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Aktueller Wert</div>
+        <div class="stat-value">${fmt(s.total_value_eur)}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">P&L</div>
+        <div class="stat-value" style="color:${(s.total_pl_eur ?? 0) >= 0 ? 'var(--positive,#4ade80)' : 'var(--negative,#e85a5a)'};">
+          ${(s.total_pl_eur != null && s.total_pl_eur > 0) ? '+' : ''}${fmt(s.total_pl_eur)}
+          ${s.total_pl_pct != null ? ` <span style="font-size:11px;opacity:.7;">(${s.total_pl_pct > 0 ? '+' : ''}${s.total_pl_pct.toFixed(1)}%)</span>` : ''}
+        </div>
+      </div>
+    `;
+
+    list.innerHTML = items.map((item) => renderSealedHoldingCard(item)).join('');
+  } catch (err) {
+    // Silent failure — sealed portfolio is optional/free, don't break main view.
+    console.warn('loadSealedPortfolio failed:', err);
+    section.style.display = 'none';
+  }
+}
+
+function fmtEurSafe(v) {
+  if (v == null) return '–';
+  try {
+    return new Intl.NumberFormat('de-DE', {
+      style: 'currency', currency: 'EUR',
+      minimumFractionDigits: 2, maximumFractionDigits: 2
+    }).format(v);
+  } catch (_) { return Number(v).toFixed(2) + ' €'; }
+}
+
+function renderSealedHoldingCard(item) {
+  const plPositive = (item.pl_eur ?? 0) >= 0;
+  const plColor = plPositive ? 'var(--positive,#4ade80)' : 'var(--negative,#e85a5a)';
+  const plPrefix = (item.pl_eur != null && item.pl_eur > 0) ? '+' : '';
+  const purchased = item.purchased_at
+    ? new Date(item.purchased_at).toLocaleDateString('de-DE')
+    : '–';
+  const sparkline = renderSealedSparkline(item.history || []);
+
+  return `
+    <div style="display:flex;gap:12px;padding:12px;border:1px solid var(--border,#1e2a28);border-radius:8px;margin-bottom:8px;background:var(--surface,#161e1c);">
+      ${item.image_url ? `<img src="${escAttr(item.image_url)}" alt="" style="width:60px;height:auto;border-radius:4px;flex-shrink:0;"/>` : ''}
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:600;font-size:14px;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;">
+          ${escText(item.product_name || '–')}
+        </div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted,#4a6660);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px;">
+          ${escText(item.set_code || '')} · ${escText(item.language || '')} · ${item.quantity}× · gekauft ${purchased}
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));gap:8px;font-size:11px;">
+          <div><div style="color:var(--muted,#4a6660);font-size:9px;text-transform:uppercase;letter-spacing:0.06em;">Bezahlt</div><div style="font-family:monospace;">${escText(fmtEurSafe(item.total_paid_eur))}</div></div>
+          <div><div style="color:var(--muted,#4a6660);font-size:9px;text-transform:uppercase;letter-spacing:0.06em;">Heute</div><div style="font-family:monospace;">${escText(fmtEurSafe(item.current_value_eur))}</div></div>
+          <div><div style="color:var(--muted,#4a6660);font-size:9px;text-transform:uppercase;letter-spacing:0.06em;">P&L</div><div style="font-family:monospace;color:${plColor};">${plPrefix}${escText(fmtEurSafe(item.pl_eur))}${item.pl_pct != null ? ` <span style="opacity:.7;">(${item.pl_pct > 0 ? '+' : ''}${item.pl_pct.toFixed(1)}%)</span>` : ''}</div></div>
+        </div>
+        ${sparkline}
+      </div>
+    </div>
+  `;
+}
+
+function renderSealedSparkline(points) {
+  const valid = (points || []).filter((p) => typeof p.trend_eur === 'number' && isFinite(p.trend_eur));
+  if (valid.length < 7) {
+    return `<div style="font-family:monospace;font-size:9px;color:var(--muted,#4a6660);margin-top:6px;">Verlauf wird aufgebaut · ${valid.length} Tag(e)</div>`;
+  }
+  const W = 240, H = 24, padX = 2, padY = 2;
+  const values = valid.map((p) => p.trend_eur);
+  let minV = Math.min.apply(null, values);
+  let maxV = Math.max.apply(null, values);
+  if (maxV === minV) maxV = minV + 1;
+  const n = valid.length;
+  const stepX = (W - 2 * padX) / Math.max(1, n - 1);
+  const scaleY = (v) => H - padY - ((v - minV) / (maxV - minV)) * (H - 2 * padY);
+  let d = '';
+  for (let i = 0; i < n; i++) {
+    const x = padX + i * stepX;
+    const y = scaleY(values[i]);
+    d += (i === 0 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1) + ' ';
+  }
+  const firstV = values[0];
+  const lastV = values[values.length - 1];
+  const deltaPct = firstV > 0 ? ((lastV - firstV) / firstV * 100) : 0;
+  const deltaCol = deltaPct > 0.5 ? 'var(--positive,#4ade80)' : (deltaPct < -0.5 ? 'var(--negative,#e85a5a)' : 'var(--muted,#4a6660)');
+  const sign = deltaPct > 0 ? '+' : '';
+  return `
+    <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:140px;height:24px;flex-shrink:0;" aria-hidden="true">
+        <path d="${d}" fill="none" stroke="#00e5c0" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span style="font-family:monospace;font-size:10px;color:${deltaCol};">${sign}${deltaPct.toFixed(1)}% · 30T</span>
+    </div>
+  `;
+}
+
+function escAttr(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function escText(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}

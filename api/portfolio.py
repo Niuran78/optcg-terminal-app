@@ -583,3 +583,97 @@ async def search_autocomplete(
             for r in rows
         ]
     }
+
+
+# ─── Sealed Portfolio (Phase C — free for any logged-in user with a Holygrade purchase) ───
+
+@router.get("/api/portfolio/sealed")
+async def get_sealed_portfolio(user: UserInfo = Depends(require_auth)):
+    """List sealed-portfolio items for the current user with live P&L.
+
+    Free-tier accessible by design: this is the post-purchase hook from the
+    Shopify Holygrade flow. Includes the most recent 30 daily snapshots per
+    item so the frontend can render a sparkline without an extra round-trip.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT sp.id, sp.sealed_id, sp.purchase_id, sp.quantity,
+                   sp.purchase_price_eur, sp.purchased_at, sp.notes, sp.source,
+                   s.product_name, s.set_code, s.set_name, s.product_type,
+                   s.language, s.image_url, s.cm_live_trend, s.cm_live_lowest,
+                   s.cm_live_url, s.cm_live_updated_at
+            FROM sealed_portfolio sp
+            JOIN sealed_unified s ON s.id = sp.sealed_id
+            WHERE sp.user_id = $1
+            ORDER BY sp.purchased_at DESC
+            """,
+            user.user_id,
+        )
+
+        items = []
+        for r in rows:
+            qty = int(r["quantity"])
+            paid = float(r["purchase_price_eur"]) * qty
+            cm_trend = float(r["cm_live_trend"]) if r["cm_live_trend"] is not None else None
+            current_value = round(cm_trend * qty, 2) if cm_trend is not None else None
+            pl_eur = round(current_value - paid, 2) if current_value is not None else None
+            pl_pct = round((pl_eur / paid) * 100.0, 2) if (pl_eur is not None and paid > 0) else None
+
+            # Inline sparkline data (last 30 days)
+            history = await conn.fetch(
+                """
+                SELECT snap_date, cm_live_trend
+                FROM sealed_price_snapshots
+                WHERE sealed_id = $1
+                  AND snap_date >= CURRENT_DATE - INTERVAL '30 days'
+                ORDER BY snap_date ASC
+                """,
+                int(r["sealed_id"]),
+            )
+            history_points = [
+                {"date": h["snap_date"].isoformat(),
+                 "trend_eur": float(h["cm_live_trend"]) if h["cm_live_trend"] is not None else None}
+                for h in history
+            ]
+
+            items.append({
+                "id":                  int(r["id"]),
+                "sealed_id":           int(r["sealed_id"]),
+                "purchase_id":         int(r["purchase_id"]) if r["purchase_id"] is not None else None,
+                "product_name":        r["product_name"],
+                "set_code":            r["set_code"],
+                "set_name":            r["set_name"],
+                "product_type":        r["product_type"],
+                "language":            r["language"],
+                "image_url":           r["image_url"],
+                "quantity":            qty,
+                "purchase_price_eur":  float(r["purchase_price_eur"]),
+                "total_paid_eur":      round(paid, 2),
+                "purchased_at":        r["purchased_at"].isoformat() if r["purchased_at"] else None,
+                "current_trend_eur":   cm_trend,
+                "current_value_eur":   current_value,
+                "pl_eur":              pl_eur,
+                "pl_pct":              pl_pct,
+                "cm_url":              r["cm_live_url"],
+                "source":              r["source"],
+                "notes":               r["notes"],
+                "history":             history_points,
+            })
+
+        # Aggregate totals
+        total_paid = round(sum(i["total_paid_eur"] for i in items), 2)
+        total_value = round(sum(i["current_value_eur"] or 0 for i in items), 2)
+        total_pl = round(total_value - total_paid, 2)
+
+    return {
+        "items": items,
+        "summary": {
+            "count":           len(items),
+            "total_paid_eur":  total_paid,
+            "total_value_eur": total_value,
+            "total_pl_eur":    total_pl,
+            "total_pl_pct":   round((total_pl / total_paid) * 100.0, 2) if total_paid > 0 else None,
+        },
+    }

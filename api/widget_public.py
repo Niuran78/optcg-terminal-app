@@ -189,6 +189,10 @@ async def widget_sealed_one(
         "booster_box",
         description="booster_box | case | booster (default: booster_box)",
     ),
+    include_history: int = Query(
+        0, ge=0, le=90,
+        description="If > 0, include up to N days of price history for sparkline (max 90).",
+    ),
 ):
     """Single-product sealed-widget endpoint for Shopify embeds.
 
@@ -209,7 +213,7 @@ async def widget_sealed_one(
         # falling back to EN (or whatever exists).
         rows = await conn.fetch(
             """
-            SELECT product_name, set_code, set_name, product_type, language,
+            SELECT id, product_name, set_code, set_name, product_type, language,
                    image_url, cm_live_trend, cm_live_30d_avg, cm_live_7d_avg,
                    cm_live_lowest, cm_live_available, cm_live_url, cm_live_status,
                    cm_live_updated_at, expected_value_eur
@@ -314,6 +318,24 @@ async def widget_sealed_one(
             "attribution": "Live data via Cardmarket scrape",
         },
     }
+
+    # Optional 30-day history for the inline sparkline. Honest semantics:
+    # if there are fewer than 7 datapoints we still return them but the
+    # client will choose to hide the chart and show "history is being built".
+    if include_history and r["id"] is not None:
+        try:
+            from services.sealed_snapshot import get_history_for_widget
+            points = await get_history_for_widget(int(r["id"]), days=include_history)
+            body["history"] = {
+                "days":   include_history,
+                "points": points,
+                "count":  len(points),
+            }
+        except Exception as e:
+            # Never break the main widget response because of history.
+            import logging as _lg
+            _lg.getLogger(__name__).warning(f"history fetch failed: {e}")
+            body["history"] = {"days": include_history, "points": [], "count": 0}
 
     # Telemetry (best-effort, never blocks)
     try:

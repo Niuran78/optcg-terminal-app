@@ -389,6 +389,79 @@ async def init_db():
             CREATE INDEX IF NOT EXISTS idx_watchlist_card ON watchlist(card_unified_id);
             CREATE INDEX IF NOT EXISTS idx_mindices_date ON market_indices(snap_date DESC);
             CREATE INDEX IF NOT EXISTS idx_mindices_name_date ON market_indices(index_name, snap_date DESC);
+
+            -- ═══ Phase B (Sparkline) — Sealed daily price snapshots ═══
+            -- One row per (sealed_unified row, day). Persists the live
+            -- Cardmarket trend/lowest/listings as captured by the daily
+            -- scraper, so the public widget can render a 30-day history
+            -- mini-sparkline. Idempotent via UNIQUE(sealed_id, snap_date).
+            CREATE TABLE IF NOT EXISTS sealed_price_snapshots (
+                id BIGSERIAL PRIMARY KEY,
+                sealed_id INTEGER NOT NULL REFERENCES sealed_unified(id) ON DELETE CASCADE,
+                snap_date DATE NOT NULL,
+                cm_live_trend NUMERIC(10,2),
+                cm_live_lowest NUMERIC(10,2),
+                cm_live_available INTEGER,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE(sealed_id, snap_date)
+            );
+            CREATE INDEX IF NOT EXISTS idx_sealed_snapshots_date
+                ON sealed_price_snapshots(sealed_id, snap_date DESC);
+
+            -- ═══ Phase C (Portfolio Hook) — Shopify purchase tracking ═══
+            -- One row per Shopify line-item. Order ID is the natural
+            -- idempotency key from Shopify. claim_token is the secret used
+            -- in the post-purchase email link to bind the order to a Terminal
+            -- account; it stays valid forever (single redemption sets claimed_at).
+            CREATE TABLE IF NOT EXISTS shopify_purchases (
+                id BIGSERIAL PRIMARY KEY,
+                order_id TEXT NOT NULL,
+                line_index INTEGER NOT NULL DEFAULT 0,
+                customer_email TEXT,
+                customer_first_name TEXT,
+                sealed_id INTEGER REFERENCES sealed_unified(id) ON DELETE SET NULL,
+                set_code TEXT,
+                language TEXT,
+                product_type TEXT,
+                quantity INTEGER NOT NULL DEFAULT 1,
+                unit_price_eur NUMERIC(10,2) NOT NULL DEFAULT 0,
+                currency TEXT NOT NULL DEFAULT 'EUR',
+                purchased_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                claim_token TEXT NOT NULL,
+                claimed_at TIMESTAMPTZ,
+                follow_up_sent_at TIMESTAMPTZ,
+                UNIQUE(order_id, line_index)
+            );
+            -- Unique claim_token: prevent token guessing collisions.
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_shopify_purchases_token
+                ON shopify_purchases(claim_token);
+            CREATE INDEX IF NOT EXISTS idx_shopify_purchases_email
+                ON shopify_purchases(customer_email);
+            CREATE INDEX IF NOT EXISTS idx_shopify_purchases_set
+                ON shopify_purchases(set_code, language);
+            CREATE INDEX IF NOT EXISTS idx_shopify_purchases_followup
+                ON shopify_purchases(follow_up_sent_at, purchased_at);
+
+            -- Free Sealed Portfolio: enabled for any user who claims a Holygrade
+            -- purchase. Survives even if the source row in shopify_purchases is
+            -- deleted; quantity + price are duplicated for stability.
+            CREATE TABLE IF NOT EXISTS sealed_portfolio (
+                id BIGSERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                sealed_id INTEGER NOT NULL REFERENCES sealed_unified(id) ON DELETE CASCADE,
+                purchase_id BIGINT REFERENCES shopify_purchases(id) ON DELETE SET NULL,
+                quantity INTEGER NOT NULL DEFAULT 1,
+                purchase_price_eur NUMERIC(10,2) NOT NULL DEFAULT 0,
+                purchased_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                source TEXT NOT NULL DEFAULT 'shopify',
+                notes TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+            CREATE INDEX IF NOT EXISTS idx_sealed_portfolio_user
+                ON sealed_portfolio(user_id);
+            CREATE INDEX IF NOT EXISTS idx_sealed_portfolio_purchase
+                ON sealed_portfolio(purchase_id);
         """)
     logger.info(f"[DB] PostgreSQL database initialized")
 

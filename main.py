@@ -32,6 +32,7 @@ from api.portfolio import router as portfolio_router
 from api.alerts import router as alerts_router
 from api.widget_public import router as widget_router
 from api.admin import router as admin_router
+from api.shopify_hooks import router as shopify_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -126,6 +127,29 @@ async def _daily_pricecharting_sync_loop():
             logger.info(f"[daily sync] sealed EV complete: {ev_stats}")
         except Exception as e:
             logger.error(f"[daily sync] sealed EV compute failed: {e}")
+
+        # Phase B — Sealed price snapshots: write today's row from current
+        # sealed_unified.cm_live_* columns. Idempotent (UNIQUE on sealed_id, snap_date).
+        # The actual scrape happens on the separate Cardmarket VPS; this captures
+        # whatever the Terminal currently sees.
+        try:
+            from services.sealed_snapshot import backfill_sealed_snapshots_today
+            logger.info("[daily sync] writing sealed price snapshots for today...")
+            snap_result = await backfill_sealed_snapshots_today()
+            logger.info(f"[daily sync] sealed snapshots: {snap_result}")
+        except Exception as e:
+            logger.error(f"[daily sync] sealed snapshot failed: {e}")
+
+        # Phase C — 30-day follow-up emails. Runs every day; idempotent
+        # via follow_up_sent_at IS NULL filter. Logs only when no email
+        # backend is configured (RESEND_API_KEY / SMTP_* missing).
+        try:
+            from services.email_followup import run_followup_job
+            logger.info("[daily sync] running 30-day follow-up email job...")
+            fu_result = await run_followup_job()
+            logger.info(f"[daily sync] follow-up: {fu_result}")
+        except Exception as e:
+            logger.error(f"[daily sync] follow-up job failed: {e}")
 
         # Sleep 24h before next sync
         await asyncio.sleep(24 * 60 * 60)
@@ -266,6 +290,7 @@ app.include_router(scraper_router)
 app.include_router(portfolio_router)
 app.include_router(alerts_router)
 app.include_router(admin_router)
+app.include_router(shopify_router)  # Phase C — purchase webhook + claim flow
 
 
 # Health check

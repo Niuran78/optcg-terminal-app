@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Holygrade — Dein Sealed-Portfolio aktivieren</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <style>
+    body {
+      background: var(--bg, #0f1413);
+      color: var(--text, #e8e6e0);
+      font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      margin: 0; padding: 0;
+      min-height: 100vh;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+    }
+    .claim-card {
+      max-width: 540px;
+      width: 100%;
+      margin: 24px;
+      background: #161e1c;
+      border: 1px solid #1e2a28;
+      border-radius: 14px;
+      padding: 28px 28px 24px 28px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.35);
+    }
+    .claim-brand {
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 11px; font-weight: 700;
+      color: #00e5c0;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .claim-hero h1 {
+      font-size: 22px; font-weight: 600;
+      margin: 0 0 6px 0;
+      line-height: 1.25;
+    }
+    .claim-hero p {
+      color: #b0ada6;
+      margin: 0 0 20px 0;
+      font-size: 14px;
+    }
+    .claim-product {
+      display: flex; gap: 16px; align-items: center;
+      padding: 14px;
+      background: #0f1413;
+      border: 1px solid #1e2a28;
+      border-radius: 10px;
+      margin: 20px 0;
+    }
+    .claim-product img {
+      width: 80px; height: auto;
+      border-radius: 4px;
+      flex-shrink: 0;
+    }
+    .claim-product-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .claim-product-name {
+      font-weight: 600;
+      font-size: 14px;
+      margin-bottom: 4px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .claim-product-meta {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: #4a6660;
+      letter-spacing: 0.04em;
+    }
+    .claim-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin: 16px 0;
+    }
+    .claim-stat {
+      padding: 12px;
+      background: #0f1413;
+      border: 1px solid #1e2a28;
+      border-radius: 8px;
+    }
+    .claim-stat-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px;
+      color: #4a6660;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 4px;
+    }
+    .claim-stat-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 18px; font-weight: 700;
+      color: #e8e6e0;
+    }
+    .claim-stat-value--positive { color: #4ade80; }
+    .claim-stat-value--negative { color: #e85a5a; }
+    .claim-cta {
+      display: block;
+      width: 100%;
+      padding: 14px;
+      background: #00e5c0;
+      color: #0a0a0b;
+      border: none;
+      border-radius: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      text-decoration: none;
+      text-align: center;
+      transition: background 120ms ease, transform 120ms ease;
+    }
+    .claim-cta:hover {
+      background: #00b89a;
+      transform: translateY(-1px);
+    }
+    .claim-cta--ghost {
+      background: transparent;
+      color: #b0ada6;
+      border: 1px solid #1e2a28;
+      margin-top: 10px;
+    }
+    .claim-cta--ghost:hover {
+      background: #1e2a28;
+      color: #e8e6e0;
+      transform: none;
+    }
+    .claim-footer {
+      margin-top: 22px;
+      padding-top: 16px;
+      border-top: 1px solid #1e2a28;
+      font-size: 12px;
+      color: #4a6660;
+      text-align: center;
+    }
+    .claim-loading, .claim-error {
+      text-align: center;
+      padding: 40px 20px;
+      color: #b0ada6;
+    }
+    .claim-error h2 {
+      color: #e85a5a;
+      font-size: 18px;
+      margin: 0 0 8px 0;
+    }
+    @media (max-width: 480px) {
+      .claim-card { padding: 20px; }
+      .claim-stats { grid-template-columns: 1fr; }
+      .claim-product { flex-direction: column; align-items: flex-start; }
+      .claim-product img { width: 100%; max-width: 160px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="claim-card" id="claim-card">
+    <div class="claim-loading" id="claim-loading">
+      <div class="claim-brand">Holygrade Terminal</div>
+      <p>Dein Holygrade-Kauf wird geladen…</p>
+    </div>
+  </div>
+
+  <script>
+    // Read ?t=TOKEN from query string
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('t') || urlParams.get('token');
+    const card = document.getElementById('claim-card');
+
+    function fmtEur(v) {
+      if (v == null) return '–';
+      try {
+        return new Intl.NumberFormat('de-DE', {
+          style: 'currency', currency: 'EUR',
+          minimumFractionDigits: 2, maximumFractionDigits: 2
+        }).format(v);
+      } catch (_) {
+        return Number(v).toFixed(2) + ' €';
+      }
+    }
+
+    function escHtml(s) {
+      if (s == null) return '';
+      return String(s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function renderError(title, message) {
+      card.innerHTML = `
+        <div class="claim-error">
+          <div class="claim-brand">Holygrade Terminal</div>
+          <h2>${escHtml(title)}</h2>
+          <p>${escHtml(message)}</p>
+          <a class="claim-cta claim-cta--ghost" href="/" style="display:inline-block;margin-top:16px;width:auto;padding:10px 24px;">Zur Startseite</a>
+        </div>`;
+    }
+
+    function getAuthToken() {
+      try { return localStorage.getItem('token'); } catch (_) { return null; }
+    }
+
+    async function loadClaim() {
+      if (!token) {
+        renderError('Kein Token', 'Der Link enthält keinen gültigen Claim-Token.');
+        return;
+      }
+
+      try {
+        const resp = await fetch('/api/shopify/claim/' + encodeURIComponent(token));
+        if (resp.status === 404) {
+          renderError('Token nicht gefunden', 'Dieser Claim-Link ist abgelaufen oder ungültig. Wenn du gerade gekauft hast, prüfe bitte deine neueste Bestätigungsmail.');
+          return;
+        }
+        if (!resp.ok) {
+          renderError('Server-Fehler', 'Bitte versuch es in einem Moment nochmal. Code: ' + resp.status);
+          return;
+        }
+        const data = await resp.json();
+        renderClaim(data);
+      } catch (err) {
+        renderError('Verbindung fehlgeschlagen', 'Bitte prüfe deine Internet-Verbindung.');
+      }
+    }
+
+    function renderClaim(data) {
+      const first = (data.customer && data.customer.first_name) || 'Hi';
+      const product = data.product || {};
+      const market = data.market || {};
+      const qty = product.quantity || 1;
+      const paid = product.total_paid_eur;
+      const cmTrend = market.cm_trend_eur;
+      const cmCur = (cmTrend != null) ? cmTrend * qty : null;
+      const pl = market.pl_eur;
+      const plCls = (pl == null) ? '' : (pl >= 0 ? 'claim-stat-value--positive' : 'claim-stat-value--negative');
+      const plPrefix = (pl != null && pl > 0) ? '+' : '';
+
+      const isLoggedIn = !!getAuthToken();
+      const claimedAlready = !!data.claimed && !!data.user_id;
+
+      let ctaHtml = '';
+      if (claimedAlready && isLoggedIn) {
+        ctaHtml = `
+          <a class="claim-cta" href="/?tab=portfolio">Im Portfolio ansehen →</a>
+          <p style="font-size:11px;color:#4a6660;margin:8px 0 0 0;text-align:center;">Bereits in deinem Portfolio aktiv.</p>`;
+      } else if (claimedAlready && !isLoggedIn) {
+        ctaHtml = `
+          <a class="claim-cta" href="/login.html?next=${encodeURIComponent('/claim.html?t=' + token)}">Einloggen → Portfolio</a>
+          <p style="font-size:11px;color:#4a6660;margin:8px 0 0 0;text-align:center;">Dieser Kauf ist bereits an einen Account gebunden.</p>`;
+      } else if (isLoggedIn) {
+        ctaHtml = `
+          <button class="claim-cta" id="claim-btn">Box meinem Portfolio hinzufügen →</button>
+          <p style="font-size:11px;color:#4a6660;margin:8px 0 0 0;text-align:center;">Free-Sealed-Portfolio. Kein Abo, keine Kreditkarte.</p>`;
+      } else {
+        ctaHtml = `
+          <a class="claim-cta" href="/login.html?next=${encodeURIComponent('/claim.html?t=' + token)}">Einloggen oder Account anlegen</a>
+          <p style="font-size:11px;color:#4a6660;margin:8px 0 0 0;text-align:center;">Dein Portfolio bleibt kostenlos. Kein Abo, keine Kreditkarte.</p>`;
+      }
+
+      card.innerHTML = `
+        <div class="claim-brand">Holygrade Terminal</div>
+        <div class="claim-hero">
+          <h1>Hi ${escHtml(first)}! Dein Sealed wartet im Terminal.</h1>
+          <p>Du hast ${qty}× <strong>${escHtml(product.name || product.set_code || 'Sealed Box')}</strong> bei Holygrade gekauft. Verfolge den Marktwert ab heute kostenlos.</p>
+        </div>
+
+        <div class="claim-product">
+          ${product.image_url ? `<img src="${escHtml(product.image_url)}" alt="${escHtml(product.name || '')}" />` : ''}
+          <div class="claim-product-info">
+            <div class="claim-product-name">${escHtml(product.name || product.set_code || '–')}</div>
+            <div class="claim-product-meta">${escHtml(product.set_code || '')} · ${escHtml(product.language || '')} · ${escHtml((product.product_type || '').toUpperCase())}</div>
+          </div>
+        </div>
+
+        <div class="claim-stats">
+          <div class="claim-stat">
+            <div class="claim-stat-label">Bezahlt (gesamt)</div>
+            <div class="claim-stat-value">${escHtml(fmtEur(paid))}</div>
+          </div>
+          <div class="claim-stat">
+            <div class="claim-stat-label">Cardmarket heute</div>
+            <div class="claim-stat-value">${escHtml(fmtEur(cmCur))}</div>
+          </div>
+          <div class="claim-stat">
+            <div class="claim-stat-label">P&L absolut</div>
+            <div class="claim-stat-value ${plCls}">${pl != null ? plPrefix + escHtml(fmtEur(pl)) : '–'}</div>
+          </div>
+          <div class="claim-stat">
+            <div class="claim-stat-label">Pro Box (CM-Trend)</div>
+            <div class="claim-stat-value">${escHtml(fmtEur(cmTrend))}</div>
+          </div>
+        </div>
+
+        ${ctaHtml}
+
+        <div class="claim-footer">
+          Daten via Cardmarket. Updates täglich. <br/>
+          Dein Free-Sealed-Portfolio bleibt kostenlos — kein Abo, keine Kreditkarte.
+        </div>
+      `;
+
+      const btn = document.getElementById('claim-btn');
+      if (btn) {
+        btn.addEventListener('click', async () => {
+          btn.disabled = true;
+          btn.textContent = 'Wird gespeichert…';
+          try {
+            const resp = await fetch('/api/shopify/claim/' + encodeURIComponent(token), {
+              method: 'POST',
+              headers: {
+                'Authorization': 'Bearer ' + getAuthToken(),
+                'Content-Type': 'application/json',
+              },
+            });
+            if (resp.ok) {
+              const result = await resp.json();
+              window.location.href = result.redirect || '/?tab=portfolio';
+            } else {
+              const errBody = await resp.json().catch(() => ({}));
+              btn.disabled = false;
+              btn.textContent = 'Erneut versuchen';
+              alert((errBody.detail && errBody.detail.message) || 'Fehler beim Verknüpfen.');
+            }
+          } catch (e) {
+            btn.disabled = false;
+            btn.textContent = 'Erneut versuchen';
+            alert('Netzwerk-Fehler. Bitte erneut versuchen.');
+          }
+        });
+      }
+    }
+
+    loadClaim();
+  </script>
+</body>
+</html>
