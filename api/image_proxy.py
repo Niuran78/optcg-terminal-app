@@ -31,6 +31,8 @@ ALLOWED_HOSTS = {
     "cdn.tcgpricelookup.com",
     "storage.googleapis.com",  # PriceCharting image CDN
     "images.pricecharting.com",
+    "product-images.s3.cardmarket.com",  # Cardmarket sealed product photos
+    "static.cardmarket.com",
 }
 
 # Allow-listed image content-types
@@ -53,10 +55,19 @@ async def proxy_image(url: str = Query(..., description="Absolute image URL")):
     if parsed.hostname not in ALLOWED_HOSTS:
         raise HTTPException(403, f"host not allowed: {parsed.hostname}")
 
+    # Cardmarket S3 blocks generic UAs — mimic a normal browser.
+    ua = (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 "
+        "(KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+    )
     try:
         async with httpx.AsyncClient(
-            headers={"User-Agent": "HolygradeTerminal/1.0 (image-proxy)"},
-            timeout=10,
+            headers={
+                "User-Agent": ua,
+                "Accept": "image/avif,image/webp,image/png,image/jpeg,*/*",
+                "Referer": "https://www.cardmarket.com/",
+            },
+            timeout=15,
             follow_redirects=True,
         ) as client:
             r = await client.get(url)

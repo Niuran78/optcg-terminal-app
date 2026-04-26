@@ -1417,7 +1417,7 @@ function renderSealedCard(p) {
     <div class="sealed-card" data-sealed-card data-set-code="${escHtml(p.set_code || '')}" data-lang="${escHtml(lang)}" data-type="${escHtml(p.product_type || '')}">
       <div class="sealed-card-img">
         ${p.image_url
-          ? `<img src="${escHtml(p.image_url)}" alt="${escHtml(p.product_name || '')}" loading="lazy" onerror="this.style.display='none'" />`
+          ? `<img src="${escHtml(proxyImg(p.image_url))}" alt="${escHtml(p.product_name || '')}" loading="lazy" onerror="this.style.display='none'" />`
           : `<div class="sealed-card-img-placeholder">📦</div>`
         }
         <div class="sealed-card-badges-tl">${langBadge}${liveBadge}</div>
@@ -1604,7 +1604,7 @@ function renderSealedGrid(data) {
     <div class="product-card">
       <div class="product-img-wrap">
         ${p.image_url
-          ? `<img src="${escHtml(p.image_url)}" alt="${escHtml(p.product_name || '')}" loading="lazy" onerror="this.style.display='none'" />`
+          ? `<img src="${escHtml(proxyImg(p.image_url))}" alt="${escHtml(p.product_name || '')}" loading="lazy" onerror="this.style.display='none'" />`
           : `<div class="product-img-placeholder">${getTypeEmoji(p.product_type)}</div>`
         }
         <div class="product-type-tag">${escHtml(p.product_type || 'product')}</div>
