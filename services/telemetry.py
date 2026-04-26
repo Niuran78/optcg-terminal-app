@@ -45,6 +45,7 @@ ALLOWED_EVENTS = {
     "welcome_banner_dismissed",
     "radar_opened",
     "radar_signal_clicked",
+    "markets_view_load",
 }
 
 

@@ -1035,3 +1035,144 @@ async def radar_today(user: UserInfo = Depends(require_auth)):
         "signals": signals,
         "count": len(signals),
     }
+
+
+# ─── Markets Endpoint (NEW — Investment-Tool pivot) ──────────────────────────
+# Honest, live-only card data. Sources cards_investable materialized view
+# which contains ~762 cards with verified Cardmarket live data, all with
+# liquidity_score >= 60 (cm_live_status='ok', updated within 14d).
+
+CARDS_MARKETS_SORT = {
+    "liquidity_score": "liquidity_score",
+    "cm_live_trend": "cm_live_trend",
+    "cm_live_available": "cm_live_available",
+    "name": "name",
+    "set_code": "set_code",
+    "spread_pct": "spread_pct",
+}
+
+
+@router.get("/markets")
+async def markets_cards(
+    set_code: Optional[str] = Query(None),
+    search: Optional[str] = Query(None, min_length=2),
+    rarity: Optional[str] = Query(None),
+    language: Optional[str] = Query(None, description="EN or JP"),
+    min_liquidity: int = Query(0, ge=0, le=100, description="0=all, 30=thin+, 60=liquid only"),
+    sort: str = Query("liquidity_score"),
+    order: str = Query("desc"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    min_price_eur: Optional[float] = Query(None, ge=0),
+    max_price_eur: Optional[float] = Query(1000.0, ge=0),
+    user: UserInfo = Depends(require_auth),
+):
+    """Investment-grade card list — Cardmarket live data only.
+
+    Backed by cards_investable materialized view. No PriceCharting
+    reference data here; if a card is missing, it doesn't appear.
+    Always returns liquidity_score and spread_pct.
+    """
+    pool = await get_pool()
+    sort_col = CARDS_MARKETS_SORT.get(sort, "liquidity_score")
+    order_sql = "DESC" if order.lower() != "asc" else "ASC"
+
+    where = ["1=1"]
+    params: list = []
+    pi = 1
+
+    if set_code:
+        where.append(f"set_code = ${pi}")
+        params.append(set_code.upper()); pi += 1
+
+    if search:
+        where.append(f"(name ILIKE ${pi} OR card_id ILIKE ${pi})")
+        params.append(f"%{search}%"); pi += 1
+
+    if rarity and rarity.lower() not in ('all', ''):
+        where.append(f"rarity = ${pi}")
+        params.append(rarity); pi += 1
+
+    if language and language.lower() not in ('all', ''):
+        where.append(f"language = ${pi}")
+        params.append(language.upper()); pi += 1
+
+    if min_liquidity > 0:
+        where.append(f"liquidity_score >= ${pi}")
+        params.append(min_liquidity); pi += 1
+
+    if min_price_eur is not None:
+        where.append(f"cm_live_trend >= ${pi}")
+        params.append(min_price_eur); pi += 1
+
+    if max_price_eur is not None:
+        where.append(f"cm_live_trend <= ${pi}")
+        params.append(max_price_eur); pi += 1
+
+    where_sql = " AND ".join(where)
+    limit_param = pi
+    offset_param = pi + 1
+    params.extend([limit, offset])
+
+    sql = f"""
+        SELECT id, card_id, variant, language, set_code, set_name, name, rarity, image_url,
+               cm_live_trend, cm_live_30d_avg, cm_live_7d_avg, cm_live_lowest,
+               cm_live_available, cm_live_url, cm_live_updated_at,
+               liquidity_score, spread_pct,
+               COUNT(*) OVER() AS _total
+        FROM cards_investable
+        WHERE {where_sql}
+        ORDER BY {sort_col} {order_sql} NULLS LAST, id ASC
+        LIMIT ${limit_param} OFFSET ${offset_param}
+    """
+
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(sql, *params)
+
+    total = rows[0]["_total"] if rows else 0
+    items = []
+    is_pro = user.can_access("pro")
+    for r in rows:
+        d = dict(r)
+        d.pop("_total", None)
+        # Free tier: hide actual prices, keep metadata + liquidity color (not number)
+        if not is_pro:
+            for k in ("cm_live_trend", "cm_live_30d_avg", "cm_live_7d_avg",
+                     "cm_live_lowest", "cm_live_available", "spread_pct"):
+                d[k] = None
+            # Coarse liquidity bucket only (not exact score)
+            score = d.get("liquidity_score") or 0
+            d["liquidity_score"] = None
+            d["liquidity_bucket"] = "liquid" if score >= 60 else "thin" if score >= 30 else "illiquid"
+            d["upgrade_required"] = True
+        else:
+            score = d.get("liquidity_score") or 0
+            d["liquidity_bucket"] = "liquid" if score >= 60 else "thin" if score >= 30 else "illiquid"
+        # Datetime → ISO
+        if d.get("cm_live_updated_at"):
+            d["cm_live_updated_at"] = d["cm_live_updated_at"].isoformat()
+        items.append(d)
+
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "items": items,
+        "tier": user.tier,
+        "is_pro": is_pro,
+    }
+
+
+@router.post("/markets/refresh-mview")
+async def refresh_markets_mview(user: UserInfo = Depends(require_auth)):
+    """Manually refresh cards_investable. Admin only.
+
+    Normally runs nightly via cron after the Cardmarket scrape.
+    """
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin role required")
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY cards_investable")
+        n = await conn.fetchval("SELECT COUNT(*) FROM cards_investable")
+    return {"ok": True, "rows": n}

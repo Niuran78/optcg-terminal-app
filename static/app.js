@@ -16,8 +16,8 @@ const State = {
     total:   0,
     offset:  0,
     loading: false,
-    filters: { set: 'all', rarity: 'all', search: '' },
-    sort:    { col: 'relevance', order: 'desc' },  // LIVE-prices first, then price
+    filters: { set: 'all', rarity: 'all', search: '', minLiquidity: 60 },  // Liquid-only by default
+    sort:    { col: 'liquidity_score', order: 'desc' },
   },
 
   sealed: {
@@ -467,10 +467,11 @@ function onRadarRowClick(row) {
   const entityId = row.dataset.entityId;
   trackEvent('radar_signal_clicked', { signal_id: Number(sigId), entity_type: entityType, entity_id: entityId });
   if (entityType === 'card' && entityId) {
-    // Reset filters so the card-id search isn't constrained by current set/rarity selection
+    // Reset filters so the card-id search isn't constrained by current selection
     if (State.browser && State.browser.filters) {
       State.browser.filters.set = 'all';
-      State.browser.filters.rarity = '';
+      State.browser.filters.rarity = 'all';
+      State.browser.filters.minLiquidity = 0;  // Show even illiquid signals
       State.browser.filters.search = entityId;
       State.browser.offset = 0;
     }
@@ -478,7 +479,7 @@ function onRadarRowClick(row) {
     const setSel = $('browser-set');
     if (setSel) setSel.value = 'all';
     $$('#panel-browser .pill-group .pill').forEach(p => p.classList.remove('active'));
-    const allPill = document.querySelector('#panel-browser .pill-group .pill[data-rarity=""]');
+    const allPill = document.querySelector('#panel-browser .pill-group .pill[data-rarity="all"]');
     if (allPill) allPill.classList.add('active');
 
     switchTab('browser');
@@ -934,6 +935,16 @@ function initBrowserFilters() {
     });
   });
 
+  // Liquidity pills (Markets pivot)
+  $$('[data-liq]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      State.browser.filters.minLiquidity = parseInt(btn.dataset.liq, 10);
+      $$('[data-liq]').forEach(b => b.classList.toggle('active', b.dataset.liq === btn.dataset.liq));
+      State.browser.offset = 0;
+      loadBrowserData();
+    });
+  });
+
   // Search
   let searchTimer;
   $('browser-search')?.addEventListener('input', (e) => {
@@ -962,43 +973,50 @@ function initBrowserFilters() {
 }
 
 async function loadBrowserData() {
+  // Markets endpoint — investment-grade card list, live Cardmarket data only.
   if (State.browser.loading) return;
   State.browser.loading = true;
   showLoadingBar();
 
   const tbody = $('browser-tbody');
-  if (tbody) tbody.innerHTML = skeletonRows(10, 8);
+  if (tbody) tbody.innerHTML = skeletonRows(10, 6);
 
   const { filters, sort, offset } = State.browser;
+  const sortCol = sort.col === 'relevance' || sort.col === 'eu_cardmarket_7d_avg'
+                  ? 'liquidity_score' : sort.col;
 
   const params = new URLSearchParams({
     limit:  50,
     offset: offset,
-    sort:   sort.col,
+    sort:   sortCol,
     order:  sort.order,
   });
   if (filters.set    && filters.set    !== 'all') params.set('set_code', filters.set);
   if (filters.rarity && filters.rarity !== 'all') params.set('rarity', filters.rarity);
   if (filters.search) params.set('search', filters.search);
+  if (filters.minLiquidity != null) params.set('min_liquidity', filters.minLiquidity);
 
   try {
-    const data = await apiFetch(`/api/cards/browse?${params}`);
-    State.browser.cards = data.cards || [];
+    const data = await apiFetch(`/api/cards/markets?${params}`);
+    State.browser.cards = data.items || [];
     State.browser.total = data.total || 0;
+    State.browser.lastData = data;
 
-    // Collect sets for filter dropdowns
-    if (data.cards?.length && !State.sets.length) {
+    // Build set list from current page (good enough for filter dropdown bootstrap)
+    if (data.items?.length && !State.sets.length) {
       const seen = new Set();
-      data.cards.forEach(c => { if (c.set_code) seen.add(JSON.stringify({ code: c.set_code, name: c.set_name })); });
+      data.items.forEach(c => { if (c.set_code) seen.add(JSON.stringify({ code: c.set_code, name: c.set_name })); });
       State.sets = Array.from(seen).map(s => JSON.parse(s)).sort((a,b) => a.code.localeCompare(b.code));
       populateSetSelects();
     }
 
-    State.browser.lastData = data;
+    // Telemetry
+    try { trackEvent('markets_view_load', { total: data.total, tier: data.tier, filters: { set: filters.set, rarity: filters.rarity } }); } catch (_) {}
+
     renderBrowserTable(data);
   } catch (err) {
     showToast(err.message, 'error');
-    if (tbody) tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:40px;">
+    if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:40px;">
       <div class="empty-state">
         <div class="empty-icon">⚠️</div>
         <div class="empty-title">Failed to load</div>
@@ -1011,49 +1029,61 @@ async function loadBrowserData() {
   }
 }
 
-function renderBrowserTable(data) {
-  const cards   = data.cards || [];
-  const total   = data.total || 0;
-  const tier    = data.tier || (State.user ? (Auth?.getTier(State.user) || 'free') : 'free');
-  const isElite = tier === 'elite' || tier === 'pro';
-  const limit   = isElite ? cards.length : Math.min(cards.length, 10);
+function _liquidityPill(score, bucket, isPro) {
+  // Pro sees number + color; Free sees coarse color only.
+  const palette = {
+    'liquid':   { bg: 'rgba(0,229,192,0.15)',  fg: '#0fd9b3', label: 'Liquid' },
+    'thin':     { bg: 'rgba(255,179,71,0.15)', fg: '#ffb347', label: 'Thin'   },
+    'illiquid': { bg: 'rgba(255,92,92,0.15)',  fg: '#ff5c5c', label: 'Illiquid' },
+  };
+  const b = bucket || (score >= 60 ? 'liquid' : score >= 30 ? 'thin' : 'illiquid');
+  const p = palette[b] || palette.thin;
+  const text = isPro && score != null ? String(score) : p.label;
+  return `<span class="liq-pill" style="display:inline-block;padding:2px 9px;border-radius:10px;background:${p.bg};color:${p.fg};font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.04em;">${text}</span>`;
+}
 
-  // Update sort headers
+function _sevenDayDelta(card) {
+  // Compute % change from cm_live_7d_avg vs cm_live_trend
+  const t = card.cm_live_trend, a = card.cm_live_7d_avg;
+  if (t == null || a == null || a <= 0) return null;
+  return ((t - a) / a) * 100;
+}
+
+function renderBrowserTable(data) {
+  const items  = data.items || [];
+  const total  = data.total || 0;
+  const isPro  = data.is_pro === true;
+
+  // Sort headers
   $$('[data-sort]', $('panel-browser')).forEach(th => {
     th.classList.remove('sort-asc', 'sort-desc');
     if (th.dataset.sort === State.browser.sort.col) {
       th.classList.add(State.browser.sort.order === 'asc' ? 'sort-asc' : 'sort-desc');
     }
     const icon = th.querySelector('.th-sort-icon');
-    if (icon) {
-      if (th.dataset.sort === State.browser.sort.col) {
-        icon.textContent = State.browser.sort.order === 'asc' ? '↑' : '↓';
-      } else {
-        icon.textContent = '↕';
-      }
-    }
+    if (icon) icon.textContent = th.dataset.sort === State.browser.sort.col
+        ? (State.browser.sort.order === 'asc' ? '↑' : '↓') : '↕';
   });
 
-  // Summary bar
+  // Summary
   const summaryEl = $('browser-summary');
   if (summaryEl) {
     summaryEl.innerHTML = `
-      <span><strong>${fmt.int(total)}</strong> cards</span>
+      <span><strong>${fmt.int(total)}</strong> tradable cards</span>
       <span>Page <strong>${Math.floor(State.browser.offset / 50) + 1}</strong></span>
-      <span style="margin-left:auto;">Sorted by <strong>${State.browser.sort.col === 'relevance' ? 'best picks (LIVE · alt-art · price)' : State.browser.sort.col.replace(/_/g,' ')}</strong>${State.browser.sort.col === 'relevance' ? '' : ' ' + State.browser.sort.order}</span>
+      <span style="margin-left:auto;">All entries have verified Cardmarket data</span>
     `;
   }
 
-  // Table body
   const tbody = $('browser-tbody');
   if (!tbody) return;
 
-  if (!cards.length) {
-    tbody.innerHTML = `<tr><td colspan="8">
+  if (!items.length) {
+    tbody.innerHTML = `<tr><td colspan="6">
       <div class="empty-state">
         <div class="empty-icon">🔍</div>
-        <div class="empty-title">No cards found</div>
-        <div class="empty-desc">Try adjusting your filters or search query.</div>
+        <div class="empty-title">No cards match your filters</div>
+        <div class="empty-desc">Try clearing filters or widening the price range.</div>
       </div>
     </td></tr>`;
     renderBrowserPagination(total);
@@ -1061,112 +1091,69 @@ function renderBrowserTable(data) {
   }
 
   let rows = '';
-  cards.forEach((card, i) => {
-    // LIVE Cardmarket prices take priority when available (scraped directly).
-    // Fall back to reference prices (PriceCharting/TCGPlayer → EUR) only
-    // when no live data exists yet.
-    const enLive = card.cm_live_trend;          // EN row live trend (€)
-    const jpLive = card.jp_cm_live_trend;       // JP row live trend (€)
+  items.forEach((c, i) => {
+    const variant = c.variant && c.variant !== 'Normal'
+                    ? ` <span style="font-size:10px;color:var(--muted);">(${escHtml(c.variant)})</span>` : '';
+    const langPill = c.language ? `<span class="pill" style="display:inline-block;padding:1px 6px;border-radius:3px;background:rgba(255,255,255,0.04);font-family:var(--font-mono);font-size:9px;color:var(--muted);margin-left:4px;">${c.language}</span>` : '';
 
-    const enRefUsd = card.en_tcgplayer_market;
-    const jpRefUsd = card.jp_pc_price_usd;
-    const jpRefEur = jpRefUsd != null ? jpRefUsd * State.usdToEur : null;
-    const enRefEur = enRefUsd != null ? enRefUsd * State.usdToEur : null;
+    // Liquidity
+    const liq = _liquidityPill(c.liquidity_score, c.liquidity_bucket, isPro);
 
-    // Displayed prices — prefer live
-    const enDisplay = enLive != null ? enLive : enRefEur;
-    const jpDisplay = jpLive != null ? jpLive : jpRefEur;
-    const enIsLive = enLive != null;
-    const jpIsLive = jpLive != null;
+    // Cardmarket price + link
+    let priceCell = '<span style="color:var(--muted);">—</span>';
+    if (isPro && c.cm_live_trend != null) {
+      const url = c.cm_live_url ? ` <a href="${escHtml(c.cm_live_url)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-size:10px;margin-left:4px;">↗</a>` : '';
+      const lowest = c.cm_live_lowest != null ? `<div style="font-size:10px;color:var(--muted);">low €${c.cm_live_lowest.toFixed(2)} · ${c.cm_live_available || 0} listings</div>` : '';
+      priceCell = `<div><strong>€${c.cm_live_trend.toFixed(2)}</strong>${url}</div>${lowest}`;
+    } else if (!isPro) {
+      priceCell = `<button class="upgrade-inline" onclick="openUpgradeModal('pro')" style="background:none;border:1px dashed var(--border);color:var(--accent);padding:2px 8px;border-radius:4px;font-size:10px;cursor:pointer;">Upgrade to see</button>`;
+    }
 
-    // Legacy vars kept for existing code below
-    const enUsd = enRefUsd;
-    const jpUsd = jpRefUsd;
-    const jpEur = jpRefEur;
-    const enEur = enRefEur;
-    // Spread: use live where available, else fall back to reference
-    const spreadRatio = (jpDisplay && enDisplay && jpDisplay > 0) ? (enDisplay / jpDisplay) : null;
-    const signal = card.arbitrage?.signal || null;
-    const variant = card.variant && card.variant !== 'Normal' ? ` <span style="font-size:10px;color:var(--muted);">(${escHtml(card.variant)})</span>` : '';
+    // 7d delta
+    let deltaCell = '<span style="color:var(--muted);">—</span>';
+    if (isPro) {
+      const d = _sevenDayDelta(c);
+      if (d != null) {
+        const color = d > 0 ? '#0fd9b3' : d < 0 ? '#ff5c5c' : 'var(--muted)';
+        const sign = d > 0 ? '+' : '';
+        deltaCell = `<span style="color:${color};font-family:var(--font-mono);font-size:12px;">${sign}${d.toFixed(1)}%</span>`;
+      }
+    }
 
     rows += `
-      <tr data-idx="${i}" class="clickable-row ${i >= limit ? 'blurred-rows' : ''}" title="Click Chart for history">
+      <tr data-idx="${i}" data-card-id="${escHtml(c.card_id)}" class="clickable-row" title="Click for price history">
         <td data-label="Card">
           <div class="card-cell">
-            ${cardThumb(card.image_url, card.name)}
+            ${cardThumb(c.image_url, c.name)}
             <div class="card-info">
-              <div class="card-name">${escHtml(card.name)}${variant}</div>
-              <div class="card-id">${escHtml(card.card_id || '')}</div>
+              <div class="card-name">${escHtml(c.name)}${variant}${langPill}</div>
+              <div class="card-id">${escHtml(c.card_id || '')}</div>
             </div>
           </div>
         </td>
-        <td data-label="Set">
-          <span style="font-family:var(--font-mono);font-size:11px;color:var(--accent);">${escHtml(card.set_code || '')}</span>
-          ${card.set_name ? `<div style="font-size:10px;color:var(--muted);margin-top:2px;">${escHtml(card.set_name)}</div>` : ''}
-        </td>
-        <td data-label="Rarity">${rarityBadge(card.rarity)}</td>
-        <td data-label="JP" class="col-en">
-          <div class="price-cell">
-            ${jpIsLive
-              ? `<a class="price-val price-link" href="${card.jp_cm_live_url || card.links?.cardmarket_jp || '#'}" target="_blank" rel="noopener nofollow" title="Live Cardmarket JP price · click to open listing">${fmt.eurAuto(jpDisplay)} ↗</a>`
-              : jpDisplay != null && card.links?.cardmarket_jp
-                ? `<a class="price-val price-link" style="opacity:0.55;" href="${card.links.cardmarket_jp}" target="_blank" rel="noopener nofollow" title="Reference price (PriceCharting — may differ from live)">${fmt.eurAuto(jpDisplay)} ↗</a>`
-                : `<div class="price-val" style="color:var(--muted);">—</div>`}
-            <div class="price-sub">${jpIsLive
-              ? '<span class="live-badge">🎯 LIVE</span>'
-              : '🇯🇵 Reference'}</div>
-          </div>
-        </td>
-        <td data-label="EN" class="col-eu">
-          <div class="price-cell">
-            ${enIsLive
-              ? `<a class="price-val price-link" href="${card.cm_live_url || card.links?.cardmarket_en || '#'}" target="_blank" rel="noopener nofollow" title="Live Cardmarket EN price · click to open listing">${fmt.eurAuto(enDisplay)} ↗</a>`
-              : enDisplay != null && card.links?.cardmarket_en
-                ? `<a class="price-val price-link" style="opacity:0.55;" href="${card.links.cardmarket_en}" target="_blank" rel="noopener nofollow" title="Reference price (TCGPlayer→EUR — may differ from live)">${fmt.eurAuto(enDisplay)} ↗</a>`
-                : `<div class="price-val" style="color:var(--muted);">—</div>`}
-            <div class="price-sub">${enIsLive
-              ? '<span class="live-badge">🎯 LIVE</span>'
-              : '🇬🇧 Reference'}</div>
-          </div>
-        </td>
-        <td data-label="Spread">
-          ${spreadRatio != null
-            ? `<span class="${spreadRatio >= 2 ? 'spread-positive' : 'spread-neutral'}" style="font-family:var(--font-mono);font-weight:700;">${spreadRatio.toFixed(1)}x</span>`
-            : '<span class="spread-neutral">—</span>'}
-        </td>
-        <td data-label="Action" class="actions">
-          <div style="display:flex;align-items:center;gap:4px;">
-            ${signalBadge(signal)}
-            <button class="chart-btn" title="Open price chart & indicators" onclick="event.stopPropagation();openChartModal('${escHtml(card.card_id)}','${escHtml(card.variant || 'Normal')}')" aria-label="Open chart">
-              <svg width="12" height="12" viewBox="0 0 14 14" fill="none" style="vertical-align:-1px;margin-right:2px;"><path d="M2 12h10M3 9l3-3 2 2 3-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>Chart
-            </button>
-            <button class="btn-alert-bell" title="Set price alert" onclick="event.stopPropagation();openAlertMini(${i})" aria-label="Set price alert">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1.5a3.5 3.5 0 00-3.5 3.5c0 2.1-.7 3.3-1.3 4a.5.5 0 00.4.75h8.8a.5.5 0 00.4-.75c-.6-.7-1.3-1.9-1.3-4A3.5 3.5 0 007 1.5z" stroke="currentColor" stroke-width="1.1"/><path d="M5.5 10.5a1.5 1.5 0 003 0" stroke="currentColor" stroke-width="1.1"/></svg>
-            </button>
-          </div>
-        </td>
-      </tr>
-    `;
+        <td data-label="Set"><span class="set-pill">${escHtml(c.set_code || '')}</span></td>
+        <td data-label="Rarity">${escHtml(c.rarity || '')}</td>
+        <td data-label="Liquidity">${liq}</td>
+        <td data-label="Cardmarket">${priceCell}</td>
+        <td data-label="7d Δ">${deltaCell}</td>
+      </tr>`;
   });
 
   tbody.innerHTML = rows;
 
-  // Free tier overlay
-  const tableWrap = $('browser-table-wrap');
-  const existingOverlay = tableWrap?.querySelector('.upgrade-cta');
-  if (existingOverlay) existingOverlay.remove();
-
-  if (!isElite && cards.length > 10) {
-    const cta = document.createElement('div');
-    cta.className = 'upgrade-cta';
-    cta.innerHTML = `
-      <div class="upgrade-lock-icon">🔒</div>
-      <h3>${fmt.int(total - 10)} more cards locked</h3>
-      <p>Upgrade to Pro to unlock all ${fmt.int(total)} cards, full arbitrage scanner, and live price feeds.</p>
-      <button onclick="openUpgradeModal('pro')" class="btn btn-primary" style="border:none;cursor:pointer;">Upgrade to Pro</button>
-    `;
-    tableWrap?.appendChild(cta);
-  }
+  // Click → price history modal (Pro only — Free users would see no chart data)
+  $$('tr.clickable-row', tbody).forEach(tr => {
+    tr.addEventListener('click', () => {
+      const idx = parseInt(tr.dataset.idx, 10);
+      const card = items[idx];
+      if (!card) return;
+      if (!isPro) {
+        openUpgradeModal('pro');
+        return;
+      }
+      if (typeof showPriceHistoryModal === 'function') showPriceHistoryModal(card);
+    });
+  });
 
   renderBrowserPagination(total);
 }
