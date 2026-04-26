@@ -79,8 +79,20 @@ async def proxy_image(url: str = Query(..., description="Absolute image URL")):
         raise HTTPException(r.status_code, "upstream returned non-200")
 
     ctype = (r.headers.get("content-type") or "").split(";")[0].strip().lower()
+    # Cardmarket S3 sometimes returns 'multerS3.AUTO_CONTENT_TYPE' — a bug on
+    # their side. Fall back to extension-based content-type detection.
     if ctype not in ALLOWED_TYPES:
-        raise HTTPException(415, f"unsupported content-type: {ctype}")
+        ext_map = {
+            ".png": "image/png",
+            ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+            ".webp": "image/webp", ".gif": "image/gif", ".avif": "image/avif",
+        }
+        path_lower = parsed.path.lower()
+        guessed = next((m for ext, m in ext_map.items() if path_lower.endswith(ext)), None)
+        if guessed:
+            ctype = guessed
+        else:
+            raise HTTPException(415, f"unsupported content-type: {ctype}")
 
     # Serve with long cache + CORS-safe headers
     return Response(
