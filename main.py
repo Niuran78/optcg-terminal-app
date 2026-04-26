@@ -107,6 +107,26 @@ async def _daily_pricecharting_sync_loop():
         except Exception as e:
             logger.error(f"[daily sync] radar compute failed: {e}")
 
+        # Refresh cards_investable materialized view (Tag-1 pivot artefact)
+        try:
+            from db.init import get_pool as _get_pool
+            logger.info("[daily sync] refreshing cards_investable materialized view...")
+            _pool = await _get_pool()
+            async with _pool.acquire() as _conn:
+                await _conn.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY cards_investable")
+            logger.info("[daily sync] cards_investable refreshed.")
+        except Exception as e:
+            logger.warning(f"[daily sync] mview refresh failed (non-fatal): {e}")
+
+        # Compute & persist Sealed EV for every booster box / case with live data
+        try:
+            from services.sealed_ev import compute_and_persist_all_ev
+            logger.info("[daily sync] computing Sealed EV for all live products...")
+            ev_stats = await compute_and_persist_all_ev()
+            logger.info(f"[daily sync] sealed EV complete: {ev_stats}")
+        except Exception as e:
+            logger.error(f"[daily sync] sealed EV compute failed: {e}")
+
         # Sleep 24h before next sync
         await asyncio.sleep(24 * 60 * 60)
 
@@ -193,13 +213,36 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS
+# CORS — must allow holygrade.com origins so the Shopify widget can call
+# /api/widget/sealed/* from product pages. We list explicit shop origins,
+# plus a regex for *.myshopify.com (preview store), plus the terminal's
+# own origins. With allow_credentials=False (which is the case for the
+# public widget) browsers also accept the wildcard reflection that
+# `allow_origin_regex='.*'` produces, but explicit listing is safer.
+#
+# Note: the terminal frontend uses Bearer tokens (Authorization header),
+# not cookies, so allow_credentials is intentionally False. If you ever
+# add cookie-based auth, switch to a strict list — wildcard + credentials
+# is rejected by browsers anyway.
+_CORS_ALLOWED_ORIGINS = [
+    "https://holygrade.com",
+    "https://www.holygrade.com",
+    "https://holygrade.myshopify.com",
+    "https://terminal.holygrade.com",
+    "https://terminal.holygrade.app",
+    "http://localhost:8000",
+    "http://localhost:3000",
+    "http://127.0.0.1:8000",
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Tighten in production
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origins=_CORS_ALLOWED_ORIGINS,
+    allow_origin_regex=r"^https://([a-z0-9-]+\.)?(holygrade\.com|holygrade\.app|myshopify\.com)$",
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["Cache-Control"],
+    max_age=3600,
 )
 
 # API Routers

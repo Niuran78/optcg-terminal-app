@@ -9,13 +9,22 @@ Safe because:
 - Rate-limited by CORS/Cloudflare at the edge
 - Only public price data (same as Cardmarket public pages)
 """
+from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Response, HTTPException
+from fastapi.responses import JSONResponse
 
 from db.init import get_pool
 
 router = APIRouter(prefix="/api/widget", tags=["widget"])
+
+
+# Cache headers for the public sealed-widget endpoint. 15 min cache at
+# any CDN, plus 60s stale-while-revalidate so users on holygrade.com always
+# get a quick response. The data is at most ~24h old anyway (scraper cadence),
+# so 15min is fine.
+_PUBLIC_CACHE = "public, max-age=900, stale-while-revalidate=60"
 
 
 @router.get("/set/{set_code}")
@@ -147,3 +156,202 @@ async def widget_set_data(
         "cards": cards,
         "count": {"sealed": len(sealed), "cards": len(cards)},
     }
+
+
+# ────────────────────────────────────────────────────────────────────
+# Public Sealed Widget API (Shopify integration)
+# ────────────────────────────────────────────────────────────────────
+# This is the canonical endpoint embedded into holygrade.com Shopify
+# product pages. It deliberately returns a small, stable JSON shape so the
+# frontend widget can render fast and cache aggressively.
+#
+# - No auth, public.
+# - Cache-Control: 15 minutes
+# - 404 with structured error body if no live data exists for the
+#   requested (set_code, language, product_type) tuple.
+# - Telemetry: sealed_widget_view
+
+_PRODUCT_TYPE_NORMALIZE = {
+    "booster_box": "booster box",
+    "booster":     "booster",
+    "case":        "case",
+    "display":     "display",
+    "sleeved_booster": "sleeved booster",
+}
+
+
+@router.get("/sealed/{set_code}")
+async def widget_sealed_one(
+    set_code: str,
+    response: Response,
+    language: Optional[str] = Query(None, description="EN or JP"),
+    type: Optional[str] = Query(
+        "booster_box",
+        description="booster_box | case | booster (default: booster_box)",
+    ),
+):
+    """Single-product sealed-widget endpoint for Shopify embeds.
+
+    Returns a small stable JSON object with current Cardmarket live data
+    for one (set_code, language, product_type). 404 with a structured
+    body if no live data exists.
+    """
+    set_code = set_code.upper().strip()
+    pt_norm = _PRODUCT_TYPE_NORMALIZE.get(
+        (type or "booster_box").lower().strip(),
+        (type or "booster_box").lower().replace("_", " "),
+    )
+    lang_norm = language.upper().strip() if language else None
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        # Build a permissive query — if no language is given, prefer JP,
+        # falling back to EN (or whatever exists).
+        rows = await conn.fetch(
+            """
+            SELECT product_name, set_code, set_name, product_type, language,
+                   image_url, cm_live_trend, cm_live_30d_avg, cm_live_7d_avg,
+                   cm_live_lowest, cm_live_available, cm_live_url, cm_live_status,
+                   cm_live_updated_at, expected_value_eur
+            FROM sealed_unified
+            WHERE set_code = $1
+              AND product_type = $2
+              AND ($3::text IS NULL OR language = $3)
+              AND cm_live_trend IS NOT NULL
+            ORDER BY
+                CASE WHEN $3 IS NULL THEN
+                    CASE language WHEN 'JP' THEN 0 WHEN 'EN' THEN 1 ELSE 2 END
+                ELSE 0 END,
+                cm_live_updated_at DESC NULLS LAST
+            LIMIT 1
+            """,
+            set_code, pt_norm, lang_norm,
+        )
+
+    if not rows:
+        # Telemetry: emit a miss so we can monitor for popular set codes
+        # without live data.
+        try:
+            from services.telemetry import emit
+            await emit(
+                "sealed_widget_view",
+                properties={
+                    "set_code":     set_code,
+                    "language":     lang_norm,
+                    "product_type": pt_norm,
+                    "hit":          False,
+                },
+            )
+        except Exception:
+            pass
+        return JSONResponse(
+            status_code=404,
+            content={
+                "error":   "no_live_data",
+                "set_code": set_code,
+                "language": lang_norm,
+                "product_type": pt_norm,
+                "message": (
+                    "No live Cardmarket data for this product yet. The data "
+                    "will appear automatically once our scraper has refreshed."
+                ),
+                "powered_by": {
+                    "name":         "Holygrade Terminal",
+                    "url":          "https://terminal.holygrade.com",
+                    "attribution": "Live data via Cardmarket scrape",
+                },
+            },
+            headers={"Cache-Control": "public, max-age=300"},
+        )
+
+    r = rows[0]
+    trend = float(r["cm_live_trend"]) if r["cm_live_trend"] else None
+    lowest = float(r["cm_live_lowest"]) if r["cm_live_lowest"] else None
+    spread_pct = None
+    if trend and lowest and trend > 0:
+        spread_pct = round((trend - lowest) / trend * 100.0, 1)
+
+    updated_at = r["cm_live_updated_at"]
+    fresh = False
+    if updated_at:
+        age_h = (datetime.now(timezone.utc) - updated_at).total_seconds() / 3600.0
+        fresh = age_h < 48.0
+
+    ev = r["expected_value_eur"]
+    ev_pct = None
+    if ev is not None and trend and trend > 0:
+        try:
+            ev_pct = round((float(ev) - trend) / trend * 100.0, 1)
+        except Exception:
+            ev_pct = None
+
+    body = {
+        "set_code":      r["set_code"],
+        "set_name":      r["set_name"],
+        "language":      r["language"],
+        "product_type":  r["product_type"],
+        "product_name":  r["product_name"],
+        "image_url":     r["image_url"],
+        "price": {
+            "trend_eur":           round(trend, 2) if trend is not None else None,
+            "lowest_eur":          round(lowest, 2) if lowest is not None else None,
+            "avg_7d_eur":          round(float(r["cm_live_7d_avg"]), 2) if r["cm_live_7d_avg"] else None,
+            "avg_30d_eur":         round(float(r["cm_live_30d_avg"]), 2) if r["cm_live_30d_avg"] else None,
+            "available_listings":  int(r["cm_live_available"]) if r["cm_live_available"] else 0,
+        },
+        "spread_pct":      spread_pct,
+        "cardmarket_url":  r["cm_live_url"],
+        "updated_at":      updated_at.isoformat() if updated_at else None,
+        "data_freshness":  "fresh" if fresh else "stale",
+        "ev": {
+            "expected_value_eur": round(float(ev), 2) if ev is not None else None,
+            "vs_box_pct":         ev_pct,
+            "label":              "estimate",
+        } if ev is not None else None,
+        "powered_by": {
+            "name":        "Holygrade Terminal",
+            "url":         "https://terminal.holygrade.com",
+            "attribution": "Live data via Cardmarket scrape",
+        },
+    }
+
+    # Telemetry (best-effort, never blocks)
+    try:
+        from services.telemetry import emit
+        await emit(
+            "sealed_widget_view",
+            properties={
+                "set_code":     set_code,
+                "language":     r["language"],
+                "product_type": r["product_type"],
+                "hit":          True,
+            },
+        )
+    except Exception:
+        pass
+
+    response.headers["Cache-Control"] = _PUBLIC_CACHE
+    response.headers["Vary"] = "Origin"
+    return body
+
+
+@router.post("/sealed/{set_code}/click")
+async def widget_sealed_click(
+    set_code: str,
+    language: Optional[str] = Query(None),
+    type: Optional[str] = Query("booster_box"),
+):
+    """Telemetry: user clicked the Cardmarket-link inside the Shopify widget."""
+    try:
+        from services.telemetry import emit
+        await emit(
+            "sealed_widget_click",
+            properties={
+                "set_code":     set_code.upper(),
+                "language":     (language or "").upper() or None,
+                "product_type": (type or "booster_box").lower(),
+            },
+        )
+    except Exception:
+        pass
+    return {"ok": True}

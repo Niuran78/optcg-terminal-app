@@ -25,7 +25,8 @@ const State = {
     total:    0,
     loading:  false,
     filters:  { set: 'all', type: 'all', lang: 'all' },
-    sort:     'eu_price',
+    sort:     'cm_live_trend',
+    showAll:  false,   // when true (Pro only) -> live_only=false on backend
   },
 
   arbitrage: {
@@ -1238,6 +1239,24 @@ function initSealedFilters() {
       loadSealedData();
     });
   });
+
+  // Show-all toggle (Pro-only). Flips live_only=false on backend.
+  const showAllLink = $('sealed-show-all-toggle');
+  if (showAllLink) {
+    showAllLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      const isPro = State.user && (State.user.tier === 'pro' || State.user.tier === 'elite');
+      if (!isPro) {
+        showUpgradeModal('pro');
+        return;
+      }
+      State.sealed.showAll = !State.sealed.showAll;
+      showAllLink.textContent = State.sealed.showAll
+        ? 'Show live only'
+        : 'Show all (Pro)';
+      loadSealedData();
+    });
+  }
 }
 
 async function loadSealedData() {
@@ -1245,34 +1264,311 @@ async function loadSealedData() {
   State.sealed.loading = true;
   showLoadingBar();
 
-  const grid = $('sealed-grid');
-  if (grid) grid.innerHTML = skeletonProductCards(8);
+  const sectionsEl = $('sealed-sections');
+  if (sectionsEl) sectionsEl.innerHTML = skeletonProductCards(8);
 
-  const { filters, sort } = State.sealed;
+  const { filters, sort, showAll } = State.sealed;
   const params = new URLSearchParams({ sort, limit: '200' });
   if (filters.set  !== 'all') params.set('set_code', filters.set);
   if (filters.type !== 'all') params.set('product_type', filters.type);
   if (filters.lang !== 'all') params.set('language', filters.lang);
+  // Default: live_only=true. Pro+ may flip to false to see reference-only sealed.
+  params.set('live_only', showAll ? 'false' : 'true');
 
   try {
     const data = await apiFetch(`/api/cards/sealed?${params}`);
     State.sealed.products = data.products || [];
     State.sealed.total    = data.total || 0;
     State.sealed.lastData = data;
-    renderSealedGrid(data);
+    renderSealedSections(data);
+    try {
+      trackEvent('sealed_view_load', {
+        total: data.total, tier: data.tier, live_only: data.live_only,
+        filters: { set: filters.set, type: filters.type, lang: filters.lang },
+      });
+    } catch (_) {}
   } catch (err) {
     showToast(err.message, 'error');
-    if (grid) grid.innerHTML = `<div style="grid-column:1/-1;"><div class="empty-state">
+    if (sectionsEl) sectionsEl.innerHTML = `<div class="empty-state">
       <div class="empty-icon">⚠️</div>
       <div class="empty-title">Failed to load</div>
       <div class="empty-desc">${escHtml(err.message)}</div>
-    </div></div>`;
+    </div>`;
   } finally {
     State.sealed.loading = false;
     hideLoadingBar();
   }
 }
 
+/* Group products by lang+type, render a header per section + the cards grid. */
+function renderSealedSections(data) {
+  const products = data.products || [];
+  const root = $('sealed-sections');
+  if (!root) return;
+
+  const countEl = $('sealed-count');
+  if (countEl) {
+    const liveLabel = data.live_only ? 'live' : 'all (incl. reference)';
+    countEl.textContent = `${fmt.int(data.total || products.length)} ${liveLabel} products`;
+  }
+
+  if (!products.length) {
+    root.innerHTML = `<div class="empty-state">
+      <div class="empty-icon">📦</div>
+      <div class="empty-title">No sealed products with live data</div>
+      <div class="empty-desc">Try changing the set filter, or click "Show all" if you're on Pro.</div>
+    </div>`;
+    return;
+  }
+
+  // Bucket: 'box-EN', 'box-JP', 'case-JP', 'case-EN', or 'other'
+  const buckets = { 'box-EN': [], 'box-JP': [], 'case-JP': [], 'case-EN': [], 'other': [] };
+  products.forEach(p => {
+    const lang = (p.language || 'JP').toUpperCase();
+    const pt = (p.product_type || '').toLowerCase();
+    if (pt === 'booster box' && lang === 'EN') buckets['box-EN'].push(p);
+    else if (pt === 'booster box' && lang === 'JP') buckets['box-JP'].push(p);
+    else if (pt === 'case' && lang === 'JP') buckets['case-JP'].push(p);
+    else if (pt === 'case' && lang === 'EN') buckets['case-EN'].push(p);
+    else buckets['other'].push(p);
+  });
+
+  const sectionDefs = [
+    ['box-EN', '🇬🇧 Booster Boxes (EN)', 'Sealed English booster boxes with live Cardmarket data'],
+    ['box-JP', '🇯🇵 Booster Boxes (JP)', 'Sealed Japanese booster boxes with live Cardmarket data'],
+    ['case-JP', '📦 Cases (JP)', 'Full sealed cases (12 boxes) with live Cardmarket data'],
+    ['case-EN', '📦 Cases (EN)', 'Full sealed cases (12 boxes) with live Cardmarket data'],
+    ['other', '… Other Sealed', 'Reference-only or other sealed products'],
+  ];
+
+  const html = sectionDefs.map(([key, title, desc]) => {
+    const items = buckets[key];
+    if (!items.length) return '';
+    const cards = items.map(renderSealedCard).join('');
+    return `
+      <div class="sealed-section">
+        <div class="sealed-section-header">
+          <h3 class="sealed-section-title">${escHtml(title)}
+            <span class="sealed-section-count">${items.length}</span>
+          </h3>
+          <div class="sealed-section-desc">${escHtml(desc)}</div>
+        </div>
+        <div class="product-grid sealed-section-grid">${cards}</div>
+      </div>
+    `;
+  }).join('');
+
+  root.innerHTML = html;
+
+  // Wire up card clicks for telemetry + EV modal
+  root.querySelectorAll('[data-sealed-ev]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const sc = btn.dataset.setCode;
+      const lang = btn.dataset.lang;
+      const pt = btn.dataset.type;
+      openSealedEvModal(sc, lang, pt);
+    });
+  });
+  root.querySelectorAll('[data-sealed-card]').forEach(card => {
+    card.addEventListener('click', () => {
+      try { trackEvent('sealed_card_clicked', {
+        set_code: card.dataset.setCode, language: card.dataset.lang,
+        product_type: card.dataset.type,
+      }); } catch (_) {}
+    });
+  });
+}
+
+/* Render a single sealed-card tile. */
+function renderSealedCard(p) {
+  const lang = (p.language || 'JP').toUpperCase();
+  const langBadge = lang === 'EN'
+    ? `<span class="sealed-badge sealed-badge-en">🇬🇧 EN</span>`
+    : `<span class="sealed-badge sealed-badge-jp">🇯🇵 JP</span>`;
+  const liveBadge = p.has_live
+    ? `<span class="sealed-badge sealed-badge-live" title="Live Cardmarket data">🎯 LIVE</span>`
+    : `<span class="sealed-badge sealed-badge-ref" title="Reference price only — no live Cardmarket data">REF</span>`;
+
+  // Spread badge: only when >= 10%
+  const spreadBadge = (p.spread_pct != null && p.spread_pct >= 10)
+    ? `<span class="sealed-spread-badge" title="Lowest is ${p.spread_pct}% below trend">↓ ${p.spread_pct}%</span>`
+    : '';
+
+  // EV badge: only on booster boxes/cases with persisted EV
+  let evBadge = '';
+  if (p.ev_eur != null && p.ev_pct != null) {
+    const pos = p.ev_pct >= 0;
+    const sign = pos ? '+' : '';
+    const cls = pos ? 'ev-positive' : 'ev-negative';
+    const tip = `Estimated value if opened: €${(p.ev_eur || 0).toFixed(2)} vs box price €${(p.cm_live_trend || 0).toFixed(2)} (estimate)`;
+    evBadge = `<button class="sealed-ev-badge ${cls}" data-sealed-ev data-set-code="${escHtml(p.set_code)}" data-lang="${escHtml(lang)}" data-type="${escHtml(p.product_type || 'booster box')}" title="${escHtml(tip)}">EV ${sign}${p.ev_pct.toFixed(0)}%</button>`;
+  }
+
+  const cmLink = p.cm_live_url || p.links?.cardmarket || '';
+  const updated = p.cm_live_updated_at ? formatRelativeTime(p.cm_live_updated_at) : '';
+  const listings = p.cm_live_available != null ? `${p.cm_live_available} listings` : '';
+  const lowest = p.cm_live_lowest != null ? `Lowest ${fmt.eur(p.cm_live_lowest)}` : '';
+  const avg7d = p.cm_live_7d_avg != null ? `7d Ø ${fmt.eur(p.cm_live_7d_avg)}` : '';
+  const trendPrice = p.eu_price != null ? fmt.eur(p.eu_price) : '—';
+
+  return `
+    <div class="sealed-card" data-sealed-card data-set-code="${escHtml(p.set_code || '')}" data-lang="${escHtml(lang)}" data-type="${escHtml(p.product_type || '')}">
+      <div class="sealed-card-img">
+        ${p.image_url
+          ? `<img src="${escHtml(p.image_url)}" alt="${escHtml(p.product_name || '')}" loading="lazy" onerror="this.style.display='none'" />`
+          : `<div class="sealed-card-img-placeholder">📦</div>`
+        }
+        <div class="sealed-card-badges-tl">${langBadge}${liveBadge}</div>
+        <div class="sealed-card-badges-tr">${spreadBadge}${evBadge}</div>
+      </div>
+      <div class="sealed-card-body">
+        <div class="sealed-card-title">${escHtml(p.product_name || 'Sealed Product')}</div>
+        <div class="sealed-card-set">
+          <span class="set-pill">${escHtml(p.set_code || '')}</span>
+          <span class="sealed-card-setname">${escHtml(p.set_name || '')}</span>
+        </div>
+        <div class="sealed-card-price-row">
+          <div class="sealed-card-price-main">${trendPrice}</div>
+          <div class="sealed-card-price-label">Cardmarket trend</div>
+        </div>
+        <div class="sealed-card-stats">
+          ${lowest ? `<span>${lowest}</span>` : ''}
+          ${avg7d ? `<span>${avg7d}</span>` : ''}
+          ${listings ? `<span>${listings}</span>` : ''}
+        </div>
+        ${updated ? `<div class="sealed-card-updated">Updated ${escHtml(updated)}</div>` : ''}
+        <div class="sealed-card-actions">
+          ${cmLink
+            ? `<a class="sealed-card-cta" href="${escHtml(cmLink)}" target="_blank" rel="noopener nofollow">View on Cardmarket ↗</a>`
+            : `<span class="sealed-card-cta sealed-card-cta-disabled">No Cardmarket link</span>`}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function formatRelativeTime(iso) {
+  try {
+    const t = new Date(iso).getTime();
+    if (!t) return '';
+    const diffMs = Date.now() - t;
+    const m = Math.floor(diffMs / 60000);
+    if (m < 60) return `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h ago`;
+    const d = Math.floor(h / 24);
+    return `${d}d ago`;
+  } catch (_) { return ''; }
+}
+
+/* EV detail modal: per-rarity breakdown */
+async function openSealedEvModal(setCode, language, productType) {
+  let modal = $('sealed-ev-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'sealed-ev-modal';
+    modal.className = 'sealed-ev-modal-overlay';
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML = `<div class="sealed-ev-modal">
+    <div class="sealed-ev-modal-header">
+      <div>
+        <div class="sealed-ev-modal-title">Sealed EV — ${escHtml(setCode)} ${escHtml(language)}</div>
+        <div class="sealed-ev-modal-sub">Loading per-rarity breakdown…</div>
+      </div>
+      <button class="sealed-ev-modal-close" aria-label="Close">×</button>
+    </div>
+    <div class="sealed-ev-modal-body"><div class="empty-state"><div class="empty-icon">⏳</div><div class="empty-title">Computing…</div></div></div>
+  </div>`;
+  modal.style.display = 'flex';
+  const closeFn = () => { modal.style.display = 'none'; };
+  modal.querySelector('.sealed-ev-modal-close').addEventListener('click', closeFn);
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeFn(); });
+
+  try {
+    const params = new URLSearchParams({ language, product_type: productType || 'booster box' });
+    const data = await apiFetch(`/api/cards/sealed/ev/${encodeURIComponent(setCode)}?${params}`);
+    renderSealedEvModal(modal, data);
+  } catch (err) {
+    modal.querySelector('.sealed-ev-modal-body').innerHTML = `<div class="empty-state">
+      <div class="empty-icon">⚠️</div>
+      <div class="empty-title">Failed to compute EV</div>
+      <div class="empty-desc">${escHtml(err.message || 'Unknown error')}</div>
+    </div>`;
+  }
+}
+
+function renderSealedEvModal(modal, data) {
+  const sub = modal.querySelector('.sealed-ev-modal-sub');
+  const body = modal.querySelector('.sealed-ev-modal-body');
+  const evBox = data.ev_per_box_eur || 0;
+  const boxPrice = data.box_price_eur;
+  const evPct = data.ev_pct;
+  const evMinus = data.ev_minus_box;
+  const sign = (evPct != null && evPct >= 0) ? '+' : '';
+  const cls = (evPct != null && evPct >= 0) ? 'ev-positive' : 'ev-negative';
+
+  if (sub) sub.textContent = `${data.product_name || ''} · ${data.packs_per_unit} packs/${data.product_type === 'case' ? 'case' : 'box'} · estimate`;
+
+  const headStats = `
+    <div class="sealed-ev-stats">
+      <div class="sealed-ev-stat">
+        <div class="sealed-ev-stat-label">EV per ${data.product_type === 'case' ? 'case' : 'box'}</div>
+        <div class="sealed-ev-stat-value">${fmt.eur(evBox)}</div>
+      </div>
+      <div class="sealed-ev-stat">
+        <div class="sealed-ev-stat-label">Box price (Cardmarket trend)</div>
+        <div class="sealed-ev-stat-value">${boxPrice != null ? fmt.eur(boxPrice) : '—'}</div>
+      </div>
+      <div class="sealed-ev-stat">
+        <div class="sealed-ev-stat-label">EV − box</div>
+        <div class="sealed-ev-stat-value ${cls}">${evMinus != null ? (evMinus >= 0 ? '+' : '') + fmt.eur(evMinus) : '—'} <span style="font-size:11px;font-weight:600;">${evPct != null ? `(${sign}${evPct.toFixed(1)}%)` : ''}</span></div>
+      </div>
+      <div class="sealed-ev-stat">
+        <div class="sealed-ev-stat-label">EV per pack</div>
+        <div class="sealed-ev-stat-value">${fmt.eur(data.ev_per_pack_eur)}</div>
+      </div>
+    </div>
+  `;
+
+  const breakdown = (data.rarities_breakdown || []).map(r => {
+    const med = r.median_eur != null ? fmt.eur(r.median_eur) : '<span class="muted">no live data</span>';
+    const contrib = r.ev_contribution != null ? fmt.eur(r.ev_contribution) : '€0.00';
+    return `<tr>
+      <td>${escHtml(r.rarity)}</td>
+      <td style="text-align:right;">${(r.pull_rate * 100).toFixed(2)}%</td>
+      <td style="text-align:right;">${med}</td>
+      <td style="text-align:right;">${r.sample_size || 0}</td>
+      <td style="text-align:right;font-weight:700;">${contrib}</td>
+    </tr>`;
+  }).join('');
+
+  body.innerHTML = `
+    ${headStats}
+    <table class="sealed-ev-table">
+      <thead>
+        <tr>
+          <th>Rarity</th>
+          <th style="text-align:right;">Pull/pack</th>
+          <th style="text-align:right;">Median €</th>
+          <th style="text-align:right;">Sample</th>
+          <th style="text-align:right;">EV/pack</th>
+        </tr>
+      </thead>
+      <tbody>${breakdown}</tbody>
+    </table>
+    <div class="sealed-ev-disclaimer">
+      ⚠ Estimate. Pull rates are community-derived (~50 box openings sample); Bandai does not
+      publish official rates for OPTCG. Median trend is computed across
+      <strong>cards_investable</strong> live Cardmarket data. Real-world realisation will be lower
+      — you can't always sell every card at trend.
+    </div>
+  `;
+}
+
+/* @deprecated kept only to avoid breaking calls from other places */
 function renderSealedGrid(data) {
   const products = data.products || [];
   const grid = $('sealed-grid');

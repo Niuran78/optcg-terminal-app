@@ -322,7 +322,7 @@
 
   </section>
 
-  <!-- ─── TAB 2: SEALED TRACKER ────────────────────────────────── -->
+  <!-- ─── TAB 2: SEALED ─────────────────────────────────────────── -->
   <section id="panel-sealed" class="tab-panel" role="tabpanel" aria-labelledby="tab-sealed">
 
     <!-- Filter bar -->
@@ -336,7 +336,7 @@
       </div>
 
       <div class="filter-group">
-        <span class="filter-label" id="lang-sealed-label">Market</span>
+        <span class="filter-label" id="lang-sealed-label">Language</span>
         <div class="pill-group" role="group" aria-labelledby="lang-sealed-label">
           <button class="pill active" data-sealed-lang="all">All</button>
           <button class="pill" data-sealed-lang="EN">🇬🇧 EN</button>
@@ -345,23 +345,37 @@
       </div>
 
       <div class="filter-group">
-        <span class="filter-label" id="type-label">Type</span>
+        <span class="filter-label" id="type-label">Product</span>
         <div class="pill-group" role="group" aria-labelledby="type-label">
           <button class="pill active" data-type="all">All</button>
           <button class="pill" data-type="booster box">🎴 Booster Box</button>
-          <button class="pill" data-type="case">📦 Cases</button>
+          <button class="pill" data-type="case">📦 Case</button>
         </div>
       </div>
 
       <div class="filter-group" style="margin-left:auto;">
         <span class="filter-label" id="sort-sealed-label">Sort</span>
         <div class="pill-group" role="group" aria-labelledby="sort-sealed-label">
-          <button class="pill active" data-sort-sealed="eu_price">💰 Price</button>
-          <button class="pill" data-sort-sealed="eu_trend">📈 Trend</button>
+          <button class="pill active" data-sort-sealed="cm_live_trend">💰 Trend</button>
+          <button class="pill" data-sort-sealed="cm_live_lowest">⬇ Lowest</button>
+          <button class="pill" data-sort-sealed="expected_value_eur">🎯 EV</button>
           <button class="pill" data-sort-sealed="set_code">📋 Set</button>
         </div>
       </div>
 
+    </div>
+
+    <!-- Live-only banner: explains the honest filter -->
+    <div class="sealed-banner">
+      <div class="sealed-banner-icon">🎯</div>
+      <div class="sealed-banner-body">
+        <div class="sealed-banner-title">Live Cardmarket data only</div>
+        <div class="sealed-banner-desc">
+          Showing only sealed products with verified live trend prices from Cardmarket EU.
+          Reference-only sealed (booster packs, tins, displays) are hidden from the default view.
+          <a href="#" id="sealed-show-all-toggle" class="sealed-banner-link" data-pro-only="1">Show all (Pro)</a>
+        </div>
+      </div>
     </div>
 
     <!-- Section header -->
@@ -372,10 +386,13 @@
       </div>
     </div>
 
-    <!-- Product grid -->
-    <div class="product-grid" id="sealed-grid" aria-label="Sealed product grid" aria-live="polite">
+    <!-- Sectioned grid (Booster Boxes EN / JP / Cases) -->
+    <div id="sealed-sections" aria-label="Sealed product sections" aria-live="polite">
       <!-- Populated by app.js -->
     </div>
+
+    <!-- Backwards-compatible flat grid kept hidden as fallback container -->
+    <div class="product-grid" id="sealed-grid" style="display:none;" aria-hidden="true"></div>
 
   </section>
 

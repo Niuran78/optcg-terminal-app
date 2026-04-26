@@ -46,6 +46,10 @@ SEALED_SORT_COLUMNS = {
     "product_name",
     "set_code",
     "product_type",
+    "cm_live_trend",
+    "cm_live_lowest",
+    "cm_live_available",
+    "expected_value_eur",
 }
 
 
@@ -131,6 +135,28 @@ def _row_to_sealed(row: dict) -> dict:
     effective_price = cm_live_trend if has_live else row.get("eu_price")
     price_source = "Cardmarket LIVE" if has_live else row.get("eu_source", "Reference (PriceCharting)")
 
+    # Spread % = (trend - lowest) / trend * 100. Only meaningful when both live.
+    cm_live_lowest = row.get("cm_live_lowest")
+    spread_pct = None
+    if cm_live_trend and cm_live_lowest and cm_live_trend > 0:
+        try:
+            spread_pct = round((cm_live_trend - cm_live_lowest) / cm_live_trend * 100.0, 1)
+        except Exception:
+            spread_pct = None
+
+    # EV fields (persisted nightly by services.sealed_ev)
+    ev_eur = row.get("expected_value_eur")
+    if ev_eur is not None:
+        try:
+            ev_eur = float(ev_eur)
+        except Exception:
+            ev_eur = None
+    ev_pct = None
+    ev_minus_box = None
+    if ev_eur is not None and cm_live_trend and cm_live_trend > 0:
+        ev_minus_box = round(ev_eur - float(cm_live_trend), 2)
+        ev_pct = round((ev_eur - float(cm_live_trend)) / float(cm_live_trend) * 100.0, 1)
+
     return {
         "product_name": row.get("product_name"),
         "set_code": row.get("set_code"),
@@ -146,12 +172,22 @@ def _row_to_sealed(row: dict) -> dict:
         "eu_source": price_source,
         "eu_updated_at": str(row.get("cm_live_updated_at") or row.get("eu_updated_at")) if (row.get("cm_live_updated_at") or row.get("eu_updated_at")) else None,
         # Explicit live-data fields for transparency in the UI
-        "cm_live_trend": cm_live_trend,
-        "cm_live_lowest": row.get("cm_live_lowest"),
+        "cm_live_trend":     cm_live_trend,
+        "cm_live_30d_avg":   row.get("cm_live_30d_avg"),
+        "cm_live_7d_avg":    row.get("cm_live_7d_avg"),
+        "cm_live_lowest":    cm_live_lowest,
         "cm_live_available": row.get("cm_live_available"),
-        "cm_live_url": row.get("cm_live_url"),
-        "cm_live_status": row.get("cm_live_status"),
-        "has_live": has_live,
+        "cm_live_url":       row.get("cm_live_url"),
+        "cm_live_status":    row.get("cm_live_status"),
+        "cm_live_updated_at": str(row.get("cm_live_updated_at")) if row.get("cm_live_updated_at") else None,
+        "spread_pct":        spread_pct,
+        "has_live":          has_live,
+        # EV (estimate)
+        "ev_eur":             round(ev_eur, 2) if ev_eur is not None else None,
+        "ev_minus_box":       ev_minus_box,
+        "ev_pct":             ev_pct,
+        "ev_computed_at":     str(row.get("ev_computed_at")) if row.get("ev_computed_at") else None,
+        "ev_label":           "estimate",
         # Keep legacy/reference fields for fallback display
         "reference_eu_price": row.get("eu_price"),
         "rapidapi_product_id": row.get("rapidapi_product_id"),
@@ -759,19 +795,32 @@ async def browse_sealed(
     set_code: Optional[str] = Query(None, description="Filter by set code"),
     product_type: Optional[str] = Query(None, description="case, booster_box, booster"),
     language: Optional[str] = Query(None, description="EN or JP"),
-    sort: str = Query("eu_price", description="Sort column"),
+    sort: str = Query("cm_live_trend", description="Sort column"),
     order: str = Query("desc", description="asc or desc"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    live_only: bool = Query(True, description="Default true: only show items with cm_live_trend."),
+    include: Optional[str] = Query(None, description="'all' = include reference-only items (Pro+)"),
     user: UserInfo = Depends(require_auth),
 ):
-    """Browse sealed products with EU Cardmarket prices."""
+    """Browse sealed products. Defaults to live-only (cm_live_trend IS NOT NULL).
+
+    Set live_only=false (Pro+ only) or include=all to show reference-only sealed.
+    """
     if sort not in SEALED_SORT_COLUMNS:
-        sort = "eu_price"
+        sort = "cm_live_trend"
     order_sql = "DESC" if order.lower() != "asc" else "ASC"
 
+    # Honour both `live_only=false` and `include=all` for non-live items, but
+    # gate that behind Pro+. Free + default = live-only, period.
+    is_pro = user.can_access("pro")
+    show_reference = (not live_only) or (include and include.lower() == "all")
+    if show_reference and not is_pro:
+        # Free users can't see reference-only sealed.
+        show_reference = False
+
     allowed_sets: Optional[list[str]] = None
-    if not user.can_access("pro"):
+    if not is_pro:
         allowed_sets = FREE_TIER_SETS
 
     conditions = []
@@ -816,6 +865,11 @@ async def browse_sealed(
             params.append(lang_norm)
             param_idx += 1
 
+    # Live-only filter: by default, hide sealed without live Cardmarket data.
+    # Pro+ may opt out via live_only=false (or include=all).
+    if not show_reference:
+        conditions.append("cm_live_trend IS NOT NULL")
+
     where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
     count_query = f"SELECT COUNT(*) FROM sealed_unified {where_clause}"
     data_query = (
@@ -838,8 +892,73 @@ async def browse_sealed(
         "sort": sort,
         "order": order,
         "tier": user.tier,
+        "is_pro": is_pro,
+        "live_only": not show_reference,
         "products": products,
     }
+
+
+@router.get("/sealed/ev/{set_code}")
+async def sealed_ev_endpoint(
+    set_code: str,
+    language: str = Query("JP"),
+    product_type: str = Query("booster box"),
+    user: UserInfo = Depends(require_auth),
+):
+    """Compute Sealed EV on-demand for a given set/language/product_type.
+
+    Returns full breakdown including per-rarity contributions. The persisted
+    expected_value_eur in sealed_unified is updated nightly; this endpoint
+    re-computes live and is mainly used by the Sealed-Tab EV detail modal.
+
+    Pro+ gated.
+    """
+    if not user.can_access("pro"):
+        raise HTTPException(
+            403,
+            detail={
+                "error": "PRO_REQUIRED",
+                "message": "Sealed EV is a Pro feature.",
+                "upgrade_url": "/?upgrade=pro",
+            },
+        )
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT cm_live_trend, product_name, image_url, cm_live_url
+            FROM sealed_unified
+            WHERE set_code = $1 AND language = $2 AND product_type = $3
+            LIMIT 1
+            """,
+            set_code.upper(), language.upper(), product_type.lower(),
+        )
+
+    box_price = float(row["cm_live_trend"]) if row and row["cm_live_trend"] else None
+    from services.sealed_ev import compute_sealed_ev
+    ev = await compute_sealed_ev(
+        set_code=set_code,
+        language=language,
+        box_price_eur=box_price,
+        product_type=product_type,
+    )
+    if row:
+        ev["product_name"] = row["product_name"]
+        ev["image_url"] = row["image_url"]
+        ev["cardmarket_url"] = row["cm_live_url"]
+
+    # Telemetry: sealed_ev_viewed
+    try:
+        from services.telemetry import emit
+        await emit("sealed_ev_viewed", user_id=user.user_id, tier=user.tier,
+                   properties={"set_code": set_code.upper(),
+                               "language": language.upper(),
+                               "product_type": product_type})
+    except Exception:
+        pass
+
+    return ev
 
 
 # ─── Arbitrage scanner ────────────────────────────────────────────────────────

@@ -190,6 +190,28 @@ async def init_db():
             ALTER TABLE sealed_unified ADD COLUMN IF NOT EXISTS language VARCHAR(10) DEFAULT 'JP';
             ALTER TABLE sealed_unified ADD COLUMN IF NOT EXISTS en_price_usd REAL;
 
+            -- Sealed live Cardmarket columns (scraped directly).
+            -- These are the authoritative Sealed prices once available; the
+            -- legacy eu_price column stays as fallback only.
+            ALTER TABLE sealed_unified ADD COLUMN IF NOT EXISTS cm_live_trend       REAL;
+            ALTER TABLE sealed_unified ADD COLUMN IF NOT EXISTS cm_live_30d_avg     REAL;
+            ALTER TABLE sealed_unified ADD COLUMN IF NOT EXISTS cm_live_7d_avg      REAL;
+            ALTER TABLE sealed_unified ADD COLUMN IF NOT EXISTS cm_live_lowest      REAL;
+            ALTER TABLE sealed_unified ADD COLUMN IF NOT EXISTS cm_live_available   INTEGER;
+            ALTER TABLE sealed_unified ADD COLUMN IF NOT EXISTS cm_live_url         TEXT;
+            ALTER TABLE sealed_unified ADD COLUMN IF NOT EXISTS cm_live_status      TEXT;
+            ALTER TABLE sealed_unified ADD COLUMN IF NOT EXISTS cm_live_updated_at  TIMESTAMPTZ;
+            ALTER TABLE sealed_unified ADD COLUMN IF NOT EXISTS pricecharting_id    TEXT;
+
+            -- Sealed Expected Value (EV) — computed nightly from card pull-rates
+            -- and median Cardmarket trend prices for the set. Estimate, not truth.
+            ALTER TABLE sealed_unified ADD COLUMN IF NOT EXISTS expected_value_eur  NUMERIC(10,2);
+            ALTER TABLE sealed_unified ADD COLUMN IF NOT EXISTS ev_computed_at      TIMESTAMPTZ;
+
+            CREATE INDEX IF NOT EXISTS idx_sealed_unified_live
+                ON sealed_unified(set_code, language)
+                WHERE cm_live_trend IS NOT NULL;
+
             CREATE UNIQUE INDEX IF NOT EXISTS sealed_unified_set_type_lang
                 ON sealed_unified(set_code, product_type, language);
 

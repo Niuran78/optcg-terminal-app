@@ -46,6 +46,13 @@ ALLOWED_EVENTS = {
     "radar_opened",
     "radar_signal_clicked",
     "markets_view_load",
+    # Sealed pivot — day 2
+    "sealed_view_load",
+    "sealed_card_clicked",
+    "sealed_ev_viewed",
+    # Public Shopify widget on holygrade.com
+    "sealed_widget_view",
+    "sealed_widget_click",
 }
 
 
