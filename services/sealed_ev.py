@@ -121,26 +121,46 @@ async def compute_sealed_ev(
 
     breakdown = []
     ev_per_pack = 0.0
+    # Sanity guards: a rarity bucket only counts toward EV if we have at least
+    # MIN_SAMPLES live cards for it (otherwise the median is just that one
+    # outlier card's price). Without this, sets with one €1234 alt-art and
+    # nothing else end up with absurd 5-figure EVs.
+    MIN_SAMPLES_FOR_EV = 3
+
     for rarity, rate in pull_rates.items():
         median_eur = medians.get(rarity)
+        sample_n = sample_sizes.get(rarity, 0)
+
         if median_eur is None or median_eur <= 0:
-            # We have no live data for that rarity — skip but still record
             breakdown.append({
                 "rarity": rarity,
                 "pull_rate": round(rate, 4),
                 "median_eur": None,
-                "sample_size": sample_sizes.get(rarity, 0),
+                "sample_size": sample_n,
                 "ev_contribution": 0.0,
                 "note": "no live data",
             })
             continue
+
+        if sample_n < MIN_SAMPLES_FOR_EV:
+            # Too few samples — median would just be one outlier price.
+            breakdown.append({
+                "rarity": rarity,
+                "pull_rate": round(rate, 4),
+                "median_eur": round(median_eur, 2),
+                "sample_size": sample_n,
+                "ev_contribution": 0.0,
+                "note": f"sample too thin (<{MIN_SAMPLES_FOR_EV} cards)",
+            })
+            continue
+
         contribution = median_eur * rate
         ev_per_pack += contribution
         breakdown.append({
             "rarity": rarity,
             "pull_rate": round(rate, 4),
             "median_eur": round(median_eur, 2),
-            "sample_size": sample_sizes.get(rarity, 0),
+            "sample_size": sample_n,
             "ev_contribution": round(contribution, 4),
         })
 
@@ -178,6 +198,28 @@ async def compute_sealed_ev(
         out["ev_minus_box"]    = round(diff, 2)
         out["ev_pct"]          = round(diff / box_price_eur * 100.0, 1)
 
+        # Plausibility checks: drop EVs that are clearly nonsense.
+        # 1) EV > 5× box price: would have been arbitraged away if real
+        # 2) EV < 30% of box price: thin samples, missing rarities, or wrong pull rate
+        unreliable_reason = None
+        if ev_per_box > 5.0 * float(box_price_eur):
+            unreliable_reason = (
+                f"computed EV (€{round(ev_per_box,2)}) exceeded 5× box price "
+                f"(€{round(float(box_price_eur),2)}) — likely thin-sample bias"
+            )
+        elif ev_per_box < 0.3 * float(box_price_eur):
+            unreliable_reason = (
+                f"computed EV (€{round(ev_per_box,2)}) below 30% of box price "
+                f"(€{round(float(box_price_eur),2)}) — likely missing rarities in sample"
+            )
+        if unreliable_reason:
+            out["ev_per_box_eur"] = None
+            out["ev_per_pack_eur"] = None
+            out["ev_minus_box"] = None
+            out["ev_pct"] = None
+            out["unreliable"] = True
+            out["unreliable_reason"] = unreliable_reason
+
     return out
 
 
@@ -209,8 +251,8 @@ async def compute_and_persist_all_ev() -> dict:
                 box_price_eur=float(r["cm_live_trend"]),
                 product_type=r["product_type"] or "booster box",
             )
-            ev = res.get("ev_per_box_eur") or 0.0
-            if ev <= 0:
+            ev = res.get("ev_per_box_eur")
+            if ev is None or ev <= 0 or res.get("unreliable"):
                 skipped += 1
                 continue
             async with pool.acquire() as conn2:
