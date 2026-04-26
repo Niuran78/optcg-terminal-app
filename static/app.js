@@ -34,7 +34,7 @@ const State = {
     total:   0,
     offset:  0,
     loading: false,
-    filters: { signal: 'all', minSpread: 5, set: 'all', source: 'live' },  // default: LIVE-only
+    filters: { signal: 'all', minSpread: 0, set: 'all', source: 'live' },  // default: LIVE-only, all profitable spreads
   },
 
   overview: {
@@ -1678,9 +1678,10 @@ async function loadArbitrageData() {
   const { filters, offset } = State.arbitrage;
   const params = new URLSearchParams({
     min_profit_pct: filters.minSpread,
-    limit:  50,
+    limit:  100,
     offset: offset,
   });
+  if (filters.source === 'live') params.set('live_only', 'true');
   if (filters.signal !== 'all') params.set('signal', filters.signal);
   if (filters.set    !== 'all') params.set('set_code', filters.set);
 
@@ -1706,11 +1707,8 @@ async function loadArbitrageData() {
 
 function renderArbitrageView(data) {
   let opps = data.opportunities || [];
-
-  // Client-side LIVE-only filter
-  if (State.arbitrage.filters.source === 'live') {
-    opps = opps.filter(o => o.is_live);
-  }
+  // Live-only is now applied server-side via live_only=true; no client-side
+  // filtering needed. The 'source' filter purely controls which API call we made.
 
   // Stat cards
   const liveCount = opps.filter(o => o.is_live).length;
@@ -1751,16 +1749,26 @@ function renderArbitrageView(data) {
     `;
   }
 
-  // Transparent note if the live dataset is still small
+  // Transparent note explaining the data source
   const noteEl = $('arb-note');
   if (noteEl) {
-    if (opps.length < 20) {
-      noteEl.innerHTML = `
-        <strong>Showing only verified live arbitrage.</strong> ${opps.length} opportunities with 🎯 LIVE Cardmarket prices on both JP and EN sides. More pairs appear after each nightly scraper run (next: 03:30 CEST).`;
+    const isLive = State.arbitrage.filters.source === 'live';
+    if (isLive) {
+      noteEl.innerHTML = `<strong>Verified live arbitrage only.</strong> ${data.total || 0} pairs where BOTH JP and EN sides have current Cardmarket listings. Switch to <a href="#" data-arb-source="all" style="color:var(--accent);">all sources</a> for a wider view (mix of live + reference).`;
       noteEl.style.display = 'block';
     } else {
-      noteEl.style.display = 'none';
+      noteEl.innerHTML = `<strong>Showing all sources.</strong> ${data.total || 0} pairs incl. reference data (PriceCharting USD→EUR). Switch to <a href="#" data-arb-source="live" style="color:var(--accent);">live only</a> for fully verified opportunities.`;
+      noteEl.style.display = 'block';
     }
+    // Wire toggle links
+    noteEl.querySelectorAll('[data-arb-source]').forEach(a => {
+      a.onclick = (e) => {
+        e.preventDefault();
+        State.arbitrage.filters.source = a.dataset.arbSource;
+        State.arbitrage.offset = 0;
+        loadArbitrageData();
+      };
+    });
   }
 
   renderArbitrageTable(opps);
@@ -1850,21 +1858,23 @@ async function loadOverviewData() {
   showLoadingBar();
 
   try {
-    // Fetch both endpoints in parallel: market-summary (reliable) + overview (for sets/movers)
-    const [summary, overview] = await Promise.all([
+    // Fetch in parallel: market-summary, overview, AND today's radar signals
+    const [summary, overview, radar] = await Promise.all([
       apiFetch('/api/cards/market-summary').catch(() => null),
       apiFetch('/api/market/overview').catch(() => null),
+      apiFetch('/api/radar/today').catch(() => null),
     ]);
 
-    // Merge into a single data object for renderOverview
     const data = {
       stats:         overview?.stats || summary || {},
       top_valuable:  overview?.top_valuable || [],
       arbitrage:     overview?.arbitrage  || [],
       recent_sets:   overview?.recent_sets || [],
+      radar:         radar || null,
     };
 
     State.overview.data = data;
+    renderBriefingTop(radar);
     renderOverview(data);
   } catch (err) {
     showToast(err.message, 'error');
@@ -1879,6 +1889,81 @@ async function loadOverviewData() {
     hideLoadingBar();
   }
 }
+
+function renderBriefingTop(radarData) {
+  const el = $('briefing-signals');
+  const dateEl = $('briefing-date');
+  if (!el) return;
+
+  // Update date label (e.g. "Today · Sun, Apr 26")
+  if (dateEl) {
+    const today = new Date();
+    const opts = { weekday: 'short', month: 'short', day: 'numeric' };
+    dateEl.textContent = `Today · ${today.toLocaleDateString('en-US', opts)}`;
+  }
+
+  // Wire "All signals →" link
+  document.querySelectorAll('[data-tab-link]').forEach(a => {
+    a.onclick = (e) => { e.preventDefault(); switchTab(a.dataset.tabLink); };
+  });
+
+  if (!radarData || radarData.upgrade_required) {
+    const tier = radarData?.tier || 'free';
+    if (tier === 'free') {
+      el.innerHTML = `
+        <div class="briefing-paywall">
+          <div class="briefing-paywall-title">Daily signals are a Pro feature</div>
+          <div class="briefing-paywall-desc">Get personalized price drops, fair-value opportunities and portfolio P&amp;L every day.</div>
+          <button onclick="openUpgradeModal('pro')" class="btn-primary" style="border:none;cursor:pointer;">Upgrade to Pro</button>
+        </div>`;
+    } else {
+      el.innerHTML = `<div class="briefing-empty">No signals computed yet today — check back after the nightly refresh.</div>`;
+    }
+    return;
+  }
+
+  const signals = (radarData.signals || []).slice(0, 3);
+  if (!signals.length) {
+    el.innerHTML = `<div class="briefing-empty">The market is quiet today. No signals fired — a good day to hold.</div>`;
+    return;
+  }
+
+  // Locale
+  const lang = (navigator.language || 'en').toLowerCase().startsWith('de') ? 'de' : 'en';
+  const typeLabels = {
+    price_drop:    { en: 'Price drop', de: 'Preisrückgang' },
+    fv_deviation:  { en: 'Below fair value', de: 'Unter Fair Value' },
+    portfolio_pnl: { en: 'Portfolio change', de: 'Änderung Portfolio' },
+  };
+
+  el.innerHTML = `<div class="briefing-grid">${signals.map((s, i) => {
+    const p = s.payload || {};
+    const text = (p.wording && (p.wording[lang] || p.wording.en || p.wording.de))
+                 || `${s.signal_type} on ${s.entity_id}`;
+    const tlabel = (typeLabels[s.signal_type] && typeLabels[s.signal_type][lang]) || s.signal_type;
+    return `
+      <div class="briefing-card" data-signal-id="${s.id}" data-entity-type="${s.entity_type}" data-entity-id="${escHtml(s.entity_id)}">
+        <div class="briefing-card-rank">${i + 1}</div>
+        <div class="briefing-card-body">
+          <div class="briefing-card-type">
+            <span class="briefing-dot ${s.severity}" aria-hidden="true"></span>
+            ${tlabel}
+          </div>
+          <div class="briefing-card-headline">${escHtml(text)}</div>
+          ${p.set_code ? `<div class="briefing-card-meta">${escHtml(p.set_code)} · ${escHtml(p.card_id || '')}</div>` : ''}
+        </div>
+      </div>`;
+  }).join('')}</div>`;
+
+  // Click handlers — reuse the radar click logic
+  $$('.briefing-card', el).forEach(card => {
+    card.addEventListener('click', () => {
+      // Wire row to radar's onClick handler
+      onRadarRowClick(card);
+    });
+  });
+}
+window.renderBriefingTop = renderBriefingTop;
 
 function renderOverview(data) {
   const stats = data.stats || {};

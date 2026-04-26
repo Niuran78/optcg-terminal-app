@@ -593,6 +593,20 @@
 
   <section id="panel-overview" class="tab-panel" role="tabpanel" aria-labelledby="tab-overview">
 
+    <!-- Daily Briefing — Top 3 signals (above the fold) -->
+    <div class="briefing-top">
+      <div class="briefing-top-header">
+        <div>
+          <div class="briefing-eyebrow">Daily Briefing</div>
+          <h1 class="briefing-title" id="briefing-date">Today's signals</h1>
+        </div>
+        <a class="briefing-link" href="#" data-tab-link="radar">All signals →</a>
+      </div>
+      <div class="briefing-signals" id="briefing-signals" aria-live="polite">
+        <div class="briefing-loading">Loading…</div>
+      </div>
+    </div>
+
     <!-- Hero stat bar -->
     <div class="overview-hero" id="overview-hero" aria-live="polite">
       <!-- Populated by app.js -->

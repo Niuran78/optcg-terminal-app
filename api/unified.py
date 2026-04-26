@@ -967,6 +967,7 @@ async def sealed_ev_endpoint(
 async def arbitrage_scanner(
     set_code: Optional[str] = Query(None, description="Filter by set code"),
     min_profit_pct: float = Query(5.0, ge=0.0, description="Minimum profit percentage"),
+    live_only: bool = Query(False, description="Only show pairs where BOTH sides have cm_live_trend (verified live)"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     user: UserInfo = Depends(require_auth),
@@ -1009,6 +1010,16 @@ async def arbitrage_scanner(
         params.append(set_code.upper())
         param_idx += 1
 
+    # When live_only=true, BOTH sides must have an actual cm_live_trend.
+    # Without this guard, the result mixes verified live data with reference
+    # values from PriceCharting * FX, and ranks them by phantom spreads.
+    live_filter = ""
+    if live_only:
+        live_filter = (
+            " AND jp.cm_live_trend IS NOT NULL AND jp.cm_live_trend > 0"
+            " AND en.cm_live_trend IS NOT NULL AND en.cm_live_trend > 0"
+        )
+
     query = f"""
         SELECT
             jp.card_id, jp.variant, jp.name, jp.set_code, jp.set_name,
@@ -1033,6 +1044,7 @@ async def arbitrage_scanner(
         WHERE jp.language = 'JP'
           AND COALESCE(jp.cm_live_trend, jp.pc_price_usd * $LANG_USD_TO_EUR$) > 1.0
           AND COALESCE(en.cm_live_trend, en.pc_price_usd * $LANG_USD_TO_EUR$) > 1.0
+          {live_filter}
           {set_filter}
         ORDER BY (
             COALESCE(en.cm_live_trend, en.pc_price_usd * $LANG_USD_TO_EUR$) -
@@ -1061,6 +1073,7 @@ async def arbitrage_scanner(
         "limit": limit,
         "offset": offset,
         "min_profit_pct": min_profit_pct,
+        "live_only": live_only,
         "tier": user.tier,
         "fx_rate": {"usd_to_eur": float(USD_TO_EUR), "eur_to_usd": float(EUR_TO_USD)},
         "opportunities": page,
