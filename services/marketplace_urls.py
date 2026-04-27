@@ -40,6 +40,9 @@ def tcgplayer_search_url(card_name: str, card_id: Optional[str] = None) -> Optio
 _JP_SET_SUFFIX_OVERRIDES: dict[str, str] = {
     "Starter-Deck-The-Seven-Warlords-of-the-Sea": "-Non-English",
     "The-Best":                                    "-Non-English",  # confirmed Apr 2026
+    "The-Best-Vol2":                               "-Vol-2-Non-English",  # PRB02 JP has hyphenated slug
+    "Heroines-Edition":                            "-Asia-Region-Legal",  # EB03 JP
+    "Egghead-Crisis-Asia-Region-Legal":            "",  # EB04: only one slug for both langs
     "Unnumbered-Promos":                           "-Japanese",     # confirmed Apr 2026
     # (add more exceptions here as we discover them)
 }
@@ -82,12 +85,17 @@ CM_SET_SLUGS: dict[str, str] = {
     "OP13": "Carrying-on-his-Will",
     "OP14": "The-Azure-Seas-Seven",  # verified
     "OP15": "Adventure-on-Kamis-Island",  # verified
-    "EB01": "Extra-Booster-Memorial-Collection",
-    "EB02": "Extra-Booster-Anime-25th-Collection",
-    "EB03": "Extra-Booster-Heroines-Edition",
-    "EB04": "Egghead-Crisis-Asia-Region-Legal",  # verified: no EN version, only JP Asia-Legal
-    "PRB01": "Premium-Booster-The-Best",
-    "PRB02": "The-Best-Vol2",  # verified: short name, not 'Premium-Booster-'
+    # Reprint sets — verified Apr 2026 by crawling Cardmarket. The slugs are
+    # SHORTER than the long marketing names; using the wrong slug causes the
+    # builder to fall back to canonical-from-card-id which routes reprint
+    # cards to their original-set page (the EB02 Boa-Hancock reprint worth
+    # 1600 EUR was getting the OP07 URL with 0.10 EUR price).
+    "EB01": "Memorial-Collection",
+    "EB02": "Anime-25th-Collection",
+    "EB03": "Heroines-Edition",
+    "EB04": "Egghead-Crisis-Asia-Region-Legal",
+    "PRB01": "The-Best",
+    "PRB02": "The-Best-Vol2",
     "ST01": "Starter-Deck-Straw-Hat-Crew",
     "ST02": "Starter-Deck-Worst-Generation",
     "ST03": "Starter-Deck-The-Seven-Warlords-of-the-Sea",
@@ -183,6 +191,11 @@ def _canonical_set_from_card_id(card_id: str) -> Optional[str]:
 PROMO_VARIANTS = {"V5", "V6", "V7", "V8", "V9", "V10", "SP", "SP Gold", "SP Silver", "Top Prize",
                   "Manga", "Red Manga", "Pre-Release", "Magazine", "2nd Anniversary", "Wanted"}
 
+# Reprint compilations — these sets contain cards whose card_id keeps the
+# original set's prefix (e.g. EB02 contains 'OP07-038' Boa Hancock as a reprint).
+# For these sets, the URL slug MUST come from set_code, not from the card_id.
+_REPRINT_SETS = {"EB01", "EB02", "EB03", "EB04", "PRB01", "PRB02"}
+
 
 def _is_promo_variant(variant: Optional[str]) -> bool:
     if not variant:
@@ -213,7 +226,17 @@ def cardmarket_card_url(
         return None
 
     # Promo/prize variants live on a different Cardmarket page
-    if _is_promo_variant(variant):
+    # Reprint sets take precedence over promo-variant routing because their
+    # 'Manga'/'SP' variants are listed on the reprint set's page, not on the
+    # generic /Unnumbered-Promos/ page.
+    if set_code and set_code.upper() in _REPRINT_SETS:
+        # Reprint sets: ALWAYS use the set_code's slug, NEVER the canonical-from-card-id
+        # (the bug we fixed in Apr 2026: EB02 Boa-Hancock reprint was getting the OP07 URL
+        # because card_id='OP07-038' but the card lives in set_code='EB02').
+        base_slug = CM_SET_SLUGS.get(set_code.upper())
+        if not base_slug:
+            return cardmarket_search_url(f"{name} {card_id}")
+    elif _is_promo_variant(variant):
         base_slug = "Unnumbered-Promos"
     elif _is_starter_altart(card_id, variant):
         # Alt-Art reprints of Starter-Deck (STxx) cards are fragmented across
