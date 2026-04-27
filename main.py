@@ -32,6 +32,7 @@ from api.portfolio import router as portfolio_router
 from api.alerts import router as alerts_router
 from api.widget_public import router as widget_router
 from api.admin import router as admin_router
+from api.admin_pricing import router as admin_pricing_router
 from api.shopify_hooks import router as shopify_router
 
 logging.basicConfig(
@@ -290,6 +291,7 @@ app.include_router(scraper_router)
 app.include_router(portfolio_router)
 app.include_router(alerts_router)
 app.include_router(admin_router)
+app.include_router(admin_pricing_router)
 app.include_router(shopify_router)  # Phase C — purchase webhook + claim flow
 
 

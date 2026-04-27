@@ -1,0 +1,28 @@
+# Render Blueprint snippet for the weekly pricing-report cron job.
+# Copy/paste this into the existing render.yaml (or create one if missing).
+# Render docs: https://render.com/docs/cronjobs
+#
+# Schedule: Monday 05:00 UTC = 07:00 CEST (summer) / 06:00 CET (winter).
+# Render uses cron in UTC. If you want a strict 07:00 local in winter,
+# change the hour to 06.
+
+services:
+  - type: cron
+    name: holygrade-weekly-pricing-report
+    runtime: python
+    schedule: "0 5 * * 1"    # Mon 05:00 UTC
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python scripts/run_weekly_pricing_report.py"
+    envVars:
+      - key: SUPABASE_DSN
+        sync: false           # set in dashboard
+      - key: SHOPIFY_ADMIN_TOKEN
+        sync: false
+      - key: ADMIN_EMAIL
+        value: mail@blockreaction-investments.ch
+      - key: RESEND_API_KEY
+        sync: false           # OR configure SMTP_*
+      - key: RESEND_FROM
+        value: "Holygrade Pricing <pricing@holygrade.com>"
+      - key: ADMIN_SECRET
+        sync: false           # set in Render dashboard
