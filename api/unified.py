@@ -852,11 +852,13 @@ async def browse_sealed(
         params.append(product_type.lower().replace("_", " "))
         param_idx += 1
     else:
-        # Default: nur Booster Boxes und Cases (Shop-relevant).
-        # Blendet Booster Packs, Sleeved Booster, Tins, Displays, Double-Packs
-        # aus — diese sind entweder nicht in unserem Shop-Scope oder existieren
-        # gar nicht als eigenständige Cardmarket-Produkte.
-        conditions.append("product_type IN ('booster box', 'case')")
+        # Default: alle Shop-relevanten Bundle-Typen.
+        # - 'booster box' / 'case': Standard OP/EB Sets
+        # - 'set' / 'carton': Anniversary Sets (3rd Anniversary etc.)
+        # Blendet Booster Packs, Sleeved Booster, Tins, einzelne Displays,
+        # Double-Packs aus — diese sind entweder nicht in unserem Shop-Scope
+        # oder existieren gar nicht als eigenständige Cardmarket-Produkte.
+        conditions.append("product_type IN ('booster box', 'case', 'set', 'carton')")
 
     if language:
         lang_norm = language.strip().upper()

@@ -1362,8 +1362,12 @@ function renderSealedSections(data) {
     return;
   }
 
-  // Bucket: 'box-EN', 'box-JP', 'case-JP', 'case-EN', or 'other'
-  const buckets = { 'box-EN': [], 'box-JP': [], 'case-JP': [], 'case-EN': [], 'other': [] };
+  // Bucket: 'box-JP', 'case-JP', 'special-JP', 'box-EN', 'case-EN', or 'other'
+  const buckets = {
+    'box-JP': [], 'case-JP': [], 'special-JP': [],
+    'box-EN': [], 'case-EN': [],
+    'other': [],
+  };
   products.forEach(p => {
     const lang = (p.language || 'JP').toUpperCase();
     const pt = (p.product_type || '').toLowerCase();
@@ -1371,15 +1375,18 @@ function renderSealedSections(data) {
     else if (pt === 'booster box' && lang === 'JP') buckets['box-JP'].push(p);
     else if (pt === 'case' && lang === 'JP') buckets['case-JP'].push(p);
     else if (pt === 'case' && lang === 'EN') buckets['case-EN'].push(p);
+    else if ((pt === 'set' || pt === 'carton') && lang === 'JP') buckets['special-JP'].push(p);
     else buckets['other'].push(p);
   });
 
   // JP zuerst — User verkauft primär japanische Produkte.
+  // Special-JP umfasst Anniversary-Sets / Cartons (eigener Produkttyp neben Box/Case).
   const sectionDefs = [
-    ['box-JP', '🇯🇵 Booster Boxes (JP)', 'Sealed Japanese booster boxes with live Cardmarket data'],
-    ['case-JP', '📦 Cases (JP)', 'Full sealed cases (12 boxes) with live Cardmarket data'],
-    ['box-EN', '🇬🇧 Booster Boxes (EN)', 'Sealed English booster boxes with live Cardmarket data'],
-    ['case-EN', '📦 Cases (EN)', 'Full sealed cases (12 boxes) with live Cardmarket data'],
+    ['box-JP', '🇯🇵 Booster Boxes (JP)', 'Sealed Japanese booster boxes with live market data'],
+    ['case-JP', '📦 Cases (JP)', 'Full sealed cases (12 boxes) with live market data'],
+    ['special-JP', '🎁 Special Sets (JP)', 'Anniversary Sets, Cartons und Sondereditionen'],
+    ['box-EN', '🇬🇧 Booster Boxes (EN)', 'Sealed English booster boxes with live market data'],
+    ['case-EN', '📦 Cases (EN)', 'Full sealed cases (12 boxes) with live market data'],
     ['other', '… Other Sealed', 'Reference-only or other sealed products'],
   ];
 
