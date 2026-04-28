@@ -3,34 +3,56 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Holygrade Terminal — Marktdaten</title>
-  <meta name="description" content="Live-Marktdaten zum Holygrade Sealed-Produkt — Preisverlauf, Trend und Handelsaktivität." />
+  <meta http-equiv="cache-control" content="public, max-age=300" />
+  <title>Holygrade Terminal — Wertentwicklung</title>
+  <meta name="description" content="Wertentwicklung & Marktindex für Holygrade Sealed-Produkte. Bloomberg-Style Performance-Tracking auf Cardmarket-Basis." />
   <meta name="robots" content="index, follow" />
+  <meta property="og:title" content="Holygrade Terminal · Wertentwicklung" />
+  <meta property="og:description" content="Marktindex & Performance-Chart für One Piece TCG Sealed-Produkte." />
   <link rel="stylesheet" href="/static/style.css" />
   <style>
     :root {
       --bg: #0f1413;
       --bg-card: #161e1c;
+      --bg-stat: #121817;
       --border: #1e2a28;
+      --border-soft: #1a2422;
       --text: #e8e6e0;
+      --text-dim: #b8b5ac;
       --muted: #8a8780;
+      --muted-deep: #5e5b54;
       --accent: #00e5c0;
+      --accent-deep: #00b89a;
       --accent-soft: rgba(0, 229, 192, 0.12);
+      --accent-glow: rgba(0, 229, 192, 0.35);
+      --down: #ff6b6b;
+      --down-soft: rgba(255, 107, 107, 0.12);
+      --down-glow: rgba(255, 107, 107, 0.35);
       --warn: #f5b942;
+      --grid-line: #1e2a28;
     }
     * { box-sizing: border-box; }
+    html, body { height: 100%; }
     body {
       background: var(--bg);
       color: var(--text);
-      font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
       margin: 0; padding: 0;
       min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: optimizeLegibility;
+    }
+    .mono {
+      font-family: 'JetBrains Mono', 'SF Mono', 'Menlo', ui-monospace, monospace;
+      font-variant-numeric: tabular-nums;
     }
     .pv-container {
-      max-width: 760px;
+      max-width: 820px;
       margin: 0 auto;
-      padding: 32px 20px 48px 20px;
+      padding: 28px 20px 56px 20px;
     }
+    /* ── Top nav ───────────────────────────────────────── */
     .pv-back {
       display: inline-flex;
       align-items: center;
@@ -41,27 +63,49 @@
       font-size: 11px;
       letter-spacing: 0.06em;
       text-transform: uppercase;
-      margin-bottom: 20px;
+      margin-bottom: 18px;
+      transition: color 120ms ease;
     }
     .pv-back:hover { color: var(--accent); }
     .pv-brand {
       font-family: 'JetBrains Mono', ui-monospace, monospace;
-      font-size: 11px; font-weight: 700;
+      font-size: 10.5px; font-weight: 700;
       color: var(--accent);
-      letter-spacing: 0.14em;
+      letter-spacing: 0.18em;
       text-transform: uppercase;
-      margin-bottom: 12px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
+    .pv-brand::before {
+      content: "";
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent-glow);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.45; }
+    }
+
+    /* ── Hero ──────────────────────────────────────────── */
     .pv-hero h1 {
-      font-size: 26px; font-weight: 700;
-      margin: 0 0 8px 0;
-      line-height: 1.25;
+      font-size: 28px; font-weight: 700;
+      margin: 0 0 6px 0;
+      line-height: 1.2;
+      letter-spacing: -0.01em;
     }
     .pv-hero .pv-subtitle {
       color: var(--muted);
       font-size: 14px;
-      margin: 0 0 24px 0;
+      margin: 0 0 26px 0;
+      line-height: 1.4;
     }
+
+    /* ── Card ──────────────────────────────────────────── */
     .pv-card {
       background: var(--bg-card);
       border: 1px solid var(--border);
@@ -69,13 +113,282 @@
       padding: 24px;
       margin-bottom: 20px;
     }
+    @media (min-width: 600px) {
+      .pv-card { padding: 28px; }
+    }
+
+    /* ── Index display (centerpiece) ───────────────────── */
+    .pv-index-row {
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+      flex-wrap: wrap;
+      margin-bottom: 6px;
+    }
+    .pv-index-big {
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-variant-numeric: tabular-nums;
+      font-size: 44px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: -0.02em;
+      color: var(--accent);
+      transition: color 200ms ease;
+    }
+    .pv-index-big.is-down { color: var(--down); }
+    .pv-index-big.is-flat { color: var(--text); }
+    .pv-index-period-label {
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 11px; font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      padding: 4px 9px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+    }
+    .pv-index-explain {
+      color: var(--muted);
+      font-size: 12.5px;
+      line-height: 1.5;
+      margin: 6px 0 18px 0;
+    }
+    .pv-index-explain strong {
+      color: var(--text-dim);
+      font-weight: 600;
+    }
+
+    /* ── Period tabs ───────────────────────────────────── */
+    .pv-tabs {
+      display: inline-flex;
+      gap: 4px;
+      padding: 4px;
+      background: var(--bg-stat);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin: 4px 0 18px 0;
+    }
+    .pv-tab {
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 11px; font-weight: 700;
+      letter-spacing: 0.08em;
+      padding: 7px 14px;
+      background: transparent;
+      color: var(--muted);
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: all 140ms ease;
+    }
+    .pv-tab:hover:not(:disabled):not(.is-active) {
+      color: var(--text-dim);
+    }
+    .pv-tab.is-active {
+      background: var(--accent);
+      color: #0a0a0b;
+    }
+    .pv-tab:disabled {
+      opacity: 0.32;
+      cursor: not-allowed;
+    }
+
+    /* ── Chart ─────────────────────────────────────────── */
+    .pv-chart-wrap {
+      position: relative;
+      width: 100%;
+      height: 280px;
+      margin: 8px 0 4px 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    @media (max-width: 600px) {
+      .pv-chart-wrap { height: 200px; }
+    }
+    .pv-chart-svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+      overflow: visible;
+    }
+    .pv-chart-grid {
+      stroke: var(--grid-line);
+      stroke-width: 1;
+      stroke-dasharray: 3 4;
+      opacity: 0.7;
+    }
+    .pv-chart-area {
+      transition: opacity 200ms ease;
+    }
+    .pv-chart-line {
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .pv-chart-line.is-anim {
+      stroke-dasharray: 2000;
+      stroke-dashoffset: 2000;
+      animation: draw 900ms cubic-bezier(0.5, 0, 0.2, 1) forwards;
+    }
+    @keyframes draw {
+      to { stroke-dashoffset: 0; }
+    }
+    .pv-chart-dot {
+      fill: var(--bg-card);
+      stroke-width: 2;
+      transition: r 120ms ease;
+    }
+    .pv-chart-dot:hover, .pv-chart-dot.is-active {
+      r: 5.5;
+    }
+    .pv-chart-hover-line {
+      stroke-width: 1;
+      stroke-dasharray: 3 3;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 100ms ease;
+    }
+    .pv-chart-hover-line.is-visible { opacity: 0.6; }
+    .pv-chart-axis-label {
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 10px;
+      fill: var(--muted-deep);
+      letter-spacing: 0.04em;
+    }
+    .pv-chart-tick {
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 9.5px;
+      fill: var(--muted-deep);
+      letter-spacing: 0.04em;
+    }
+
+    /* ── Tooltip ───────────────────────────────────────── */
+    .pv-tooltip {
+      position: absolute;
+      pointer-events: none;
+      background: rgba(10, 14, 13, 0.96);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 11px;
+      color: var(--text);
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.45);
+      transform: translate(-50%, -100%);
+      opacity: 0;
+      transition: opacity 120ms ease;
+      z-index: 5;
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+    }
+    .pv-tooltip.is-visible { opacity: 1; }
+    .pv-tooltip-date {
+      color: var(--muted);
+      font-size: 10px;
+      margin-bottom: 2px;
+      letter-spacing: 0.04em;
+    }
+    .pv-tooltip-val {
+      font-weight: 700;
+      font-size: 13px;
+      color: var(--accent);
+    }
+    .pv-tooltip-val.is-down { color: var(--down); }
+
+    /* ── Skeleton ──────────────────────────────────────── */
+    .pv-chart-skeleton {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg,
+        rgba(30, 42, 40, 0.3) 0%,
+        rgba(30, 42, 40, 0.55) 50%,
+        rgba(30, 42, 40, 0.3) 100%);
+      background-size: 200% 100%;
+      animation: skel 1.6s ease-in-out infinite;
+      border-radius: 8px;
+    }
+    @keyframes skel {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    /* ── Empty state ───────────────────────────────────── */
+    .pv-chart-empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      padding: 20px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+      background: var(--bg-stat);
+      border: 1px dashed var(--border);
+      border-radius: 8px;
+    }
+    .pv-chart-empty-icon {
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 22px;
+      color: var(--muted-deep);
+      margin-bottom: 8px;
+      letter-spacing: 0.1em;
+    }
+
+    /* ── Stats row ─────────────────────────────────────── */
+    .pv-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin: 22px 0 8px 0;
+    }
+    @media (max-width: 520px) {
+      .pv-stats-grid { grid-template-columns: 1fr; }
+    }
+    .pv-stat {
+      background: var(--bg-stat);
+      border: 1px solid var(--border-soft);
+      border-radius: 10px;
+      padding: 12px 14px;
+    }
+    .pv-stat-label {
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 9.5px; font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 6px;
+    }
+    .pv-stat-value {
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .pv-stat-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .pv-stat-dot.is-green { background: var(--accent); box-shadow: 0 0 6px var(--accent-glow); }
+    .pv-stat-dot.is-amber { background: var(--warn); }
+
+    /* ── Set info row ──────────────────────────────────── */
     .pv-set-info {
-      display: flex; gap: 14px; align-items: center;
-      margin-bottom: 18px;
+      display: flex; gap: 12px; align-items: center;
+      margin-bottom: 16px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border-soft);
     }
     .pv-lang-badge {
       font-family: 'JetBrains Mono', ui-monospace, monospace;
-      font-size: 11px; font-weight: 700;
+      font-size: 10.5px; font-weight: 700;
       padding: 3px 8px;
       background: var(--accent-soft);
       color: var(--accent);
@@ -84,99 +397,45 @@
     }
     .pv-set-name {
       font-weight: 600;
-      font-size: 16px;
+      font-size: 15px;
       flex: 1;
+      color: var(--text-dim);
     }
-    .pv-price-row {
-      display: flex; align-items: baseline; gap: 14px;
-      margin: 12px 0;
-    }
-    .pv-price-big {
+    .pv-product-type {
       font-family: 'JetBrains Mono', ui-monospace, monospace;
-      font-size: 36px;
-      font-weight: 700;
-      color: var(--text);
-      line-height: 1;
-    }
-    .pv-price-label {
-      font-family: 'JetBrains Mono', ui-monospace, monospace;
-      font-size: 11px; font-weight: 700;
+      font-size: 10.5px;
       color: var(--muted);
       text-transform: uppercase;
       letter-spacing: 0.08em;
     }
-    .pv-stats-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-      gap: 14px;
-      margin: 18px 0 12px 0;
-    }
-    .pv-stat {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 12px;
-    }
-    .pv-stat-label {
-      font-family: 'JetBrains Mono', ui-monospace, monospace;
-      font-size: 10px; font-weight: 700;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      margin-bottom: 4px;
-    }
-    .pv-stat-value {
-      font-family: 'JetBrains Mono', ui-monospace, monospace;
-      font-size: 18px;
-      font-weight: 600;
-      color: var(--text);
-    }
-    .pv-spark-wrap {
-      margin: 18px 0;
-    }
-    .pv-spark-label {
-      font-family: 'JetBrains Mono', ui-monospace, monospace;
-      font-size: 10px;
-      color: var(--muted);
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      margin-bottom: 6px;
-    }
-    .pv-spark-svg {
-      width: 100%;
-      height: 80px;
-      display: block;
-    }
-    .pv-spark-empty {
-      padding: 14px;
-      text-align: center;
-      color: var(--muted);
-      font-size: 12px;
-      background: var(--bg);
-      border: 1px dashed var(--border);
-      border-radius: 8px;
-    }
+
+    /* ── Footer meta ───────────────────────────────────── */
     .pv-meta {
       font-family: 'JetBrains Mono', ui-monospace, monospace;
-      font-size: 11px;
+      font-size: 10.5px;
       color: var(--muted);
       letter-spacing: 0.04em;
       text-align: center;
-      padding-top: 8px;
-      border-top: 1px solid var(--border);
-      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border-soft);
+      margin-top: 18px;
     }
 
+    /* ── CTA card ──────────────────────────────────────── */
     .pv-cta-card {
-      background: linear-gradient(135deg, var(--bg-card) 0%, #182523 100%);
+      background:
+        radial-gradient(circle at 0% 0%, rgba(0, 229, 192, 0.06) 0%, transparent 50%),
+        linear-gradient(135deg, var(--bg-card) 0%, #182523 100%);
       border: 1px solid var(--accent-soft);
       border-radius: 14px;
-      padding: 28px;
+      padding: 30px 24px;
       text-align: center;
+      margin-top: 26px;
     }
     .pv-cta-title {
       font-size: 22px; font-weight: 700;
       margin: 0 0 8px 0;
+      letter-spacing: -0.01em;
     }
     .pv-cta-sub {
       color: var(--muted);
@@ -188,14 +447,14 @@
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 10px 18px;
-      max-width: 480px;
+      max-width: 520px;
       margin: 0 auto 24px auto;
       text-align: left;
     }
     .pv-cta-feature {
       display: flex; align-items: flex-start; gap: 10px;
       font-size: 13px;
-      color: var(--text);
+      color: var(--text-dim);
       line-height: 1.4;
     }
     .pv-cta-feature::before {
@@ -203,6 +462,8 @@
       color: var(--accent);
       font-weight: 700;
       flex-shrink: 0;
+      font-size: 14px;
+      line-height: 1.3;
     }
     .pv-btn-row {
       display: flex; gap: 12px; justify-content: center;
@@ -216,7 +477,7 @@
       padding: 12px 20px;
       border-radius: 8px;
       text-decoration: none;
-      transition: all 120ms ease;
+      transition: all 140ms ease;
       cursor: pointer;
     }
     .pv-btn-primary {
@@ -225,8 +486,9 @@
       border: 1px solid var(--accent);
     }
     .pv-btn-primary:hover {
-      background: #00b89a;
+      background: var(--accent-deep);
       transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(0, 229, 192, 0.18);
     }
     .pv-btn-ghost {
       background: transparent;
@@ -237,6 +499,8 @@
       background: var(--accent);
       color: #0a0a0b;
     }
+
+    /* ── Loading + Error ───────────────────────────────── */
     .pv-loading {
       text-align: center;
       padding: 40px;
@@ -247,36 +511,54 @@
       text-transform: uppercase;
     }
     .pv-error {
-      background: rgba(245, 185, 66, 0.1);
+      background: rgba(245, 185, 66, 0.08);
       border: 1px solid var(--warn);
       color: var(--warn);
       border-radius: 10px;
       padding: 16px;
       font-size: 13px;
       text-align: center;
+      line-height: 1.5;
     }
+
+    /* ── Mobile ────────────────────────────────────────── */
     @media (max-width: 480px) {
       .pv-container { padding: 20px 14px 36px 14px; }
       .pv-card { padding: 18px; }
+      .pv-cta-card { padding: 24px 18px; }
       .pv-cta-features { grid-template-columns: 1fr; }
-      .pv-price-big { font-size: 28px; }
+      .pv-index-big { font-size: 36px; }
       .pv-hero h1 { font-size: 22px; }
+      .pv-cta-title { font-size: 19px; }
+      .pv-btn { padding: 11px 16px; font-size: 11px; }
     }
   </style>
 </head>
 <body>
   <div class="pv-container">
     <a class="pv-back" href="https://holygrade.com/" rel="noopener">← Zurück zu holygrade.com</a>
-    <div class="pv-brand">Holygrade Terminal · Live Marktdaten</div>
+    <div class="pv-brand">Holygrade Terminal · Wertentwicklung</div>
 
     <div class="pv-hero">
       <h1 id="pv-hero-title">Lade Marktdaten…</h1>
-      <p class="pv-subtitle" id="pv-hero-sub">Live-Daten von Cardmarket · Verifiziert vor Veröffentlichung</p>
+      <p class="pv-subtitle" id="pv-hero-sub">Index basiert auf Cardmarket-Trend · Live-Tracking</p>
     </div>
 
     <div id="pv-content">
-      <div class="pv-loading">Lade Live-Daten…</div>
+      <div class="pv-card">
+        <div class="pv-loading">Lade Marktindex…</div>
+        <div class="pv-chart-wrap"><div class="pv-chart-skeleton"></div></div>
+      </div>
     </div>
+
+    <noscript>
+      <div class="pv-card">
+        <p style="color: var(--muted); font-size: 13px; text-align: center; margin: 0;">
+          Diese Wertentwicklung benötigt aktiviertes JavaScript.
+          Im vollen Holygrade Terminal findest du tagesaktuelle Marktdaten — registriere dich kostenlos.
+        </p>
+      </div>
+    </noscript>
 
     <div class="pv-cta-card">
       <h2 class="pv-cta-title">Verfolge alle Sets · alle Karten · alle Tage</h2>
@@ -284,9 +566,9 @@
         Diese Seite zeigt nur ein Set. Im vollen Holygrade Terminal siehst du:
       </p>
       <div class="pv-cta-features">
-        <div class="pv-cta-feature">Live-Preise für 8.400+ Karten (JP & EN)</div>
-        <div class="pv-cta-feature">Sealed-Tracker für 21+ Sets mit Sparkline</div>
-        <div class="pv-cta-feature">Holdings & Portfolio-Analyse mit P&amp;L</div>
+        <div class="pv-cta-feature">Live-Index für 8.400+ Karten (JP &amp; EN)</div>
+        <div class="pv-cta-feature">Sealed-Tracker für 21+ Sets mit Wertentwicklung</div>
+        <div class="pv-cta-feature">Holdings &amp; Portfolio-Analyse mit P&amp;L</div>
         <div class="pv-cta-feature">Arbitrage-Tipps zwischen Marktplätzen</div>
         <div class="pv-cta-feature">Preis-Alerts und Benachrichtigungen</div>
         <div class="pv-cta-feature">Marktradar mit Trend-Signalen</div>
@@ -304,21 +586,28 @@
 
   <script>
     (function () {
-      // Parse set_code from URL pattern /preview/sealed/OP15?language=JP&type=booster_box
+      'use strict';
+
+      // ── URL parsing ───────────────────────────────────
       var path = window.location.pathname.split('/');
       var setCode = (path[path.length - 1] || '').toUpperCase();
       var qs = new URLSearchParams(window.location.search);
       var language = (qs.get('language') || qs.get('lang') || 'JP').toUpperCase();
       var productType = qs.get('type') || qs.get('product_type') || 'booster_box';
 
+      // ── DOM refs ──────────────────────────────────────
       var contentEl = document.getElementById('pv-content');
       var titleEl = document.getElementById('pv-hero-title');
       var subEl = document.getElementById('pv-hero-sub');
 
-      function fmtEur(v) {
-        if (v === null || v === undefined) return '—';
-        return new Intl.NumberFormat('de-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v) + ' €';
-      }
+      // ── State ─────────────────────────────────────────
+      var state = {
+        history: [],          // full history points
+        period: 30,           // active period in days
+        productData: null,
+      };
+
+      // ── Helpers ───────────────────────────────────────
       function escHtml(s) {
         return String(s == null ? '' : s).replace(/[<>&"']/g, function (c) {
           return { '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[c];
@@ -328,39 +617,452 @@
         if (!iso) return '';
         var d = new Date(iso);
         if (isNaN(d.getTime())) return '';
-        var now = Date.now();
-        var diffMs = now - d.getTime();
+        var diffMs = Date.now() - d.getTime();
         var hr = Math.floor(diffMs / 3600000);
         if (hr < 1) return 'gerade aktualisiert';
         if (hr < 24) return 'aktualisiert vor ' + hr + ' Std.';
         var days = Math.floor(hr / 24);
         return 'aktualisiert vor ' + days + ' Tagen';
       }
-      function renderSparkline(points) {
-        if (!points || points.length < 2) return '';
-        var W = 700, H = 80, P = 4;
-        var values = points.map(function (p) { return p.trend || p.price || 0; }).filter(function (v) { return v > 0; });
-        if (values.length < 2) return '';
-        var min = Math.min.apply(null, values);
-        var max = Math.max.apply(null, values);
-        if (min === max) { min = min * 0.95; max = max * 1.05; }
-        var range = max - min;
-        var pts = points.map(function (p, i) {
-          var v = p.trend || p.price || 0;
-          var x = P + (W - 2 * P) * (i / (points.length - 1));
-          var y = H - P - (H - 2 * P) * ((v - min) / range);
-          return x.toFixed(1) + ',' + y.toFixed(1);
-        }).join(' ');
-        return ''
-          + '<svg class="pv-spark-svg" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" aria-hidden="true">'
-          +   '<polyline points="' + pts + '" fill="none" stroke="#00e5c0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />'
-          + '</svg>';
+      function fmtDate(iso) {
+        if (!iso) return '';
+        var d = new Date(iso + (iso.indexOf('T') < 0 ? 'T00:00:00Z' : ''));
+        if (isNaN(d.getTime())) return iso;
+        var months = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+        return d.getUTCDate() + '. ' + months[d.getUTCMonth()];
+      }
+      function fmtPct(v, withSign) {
+        if (v == null || isNaN(v)) return '–';
+        var sign = withSign && v > 0 ? '+' : (v < 0 ? '–' : '');
+        return sign + Math.abs(v).toFixed(1).replace('.', ',') + '%';
+      }
+      function fmtArrow(v) {
+        if (v == null || isNaN(v) || Math.abs(v) < 0.05) return '●';
+        return v > 0 ? '▲' : '▼';
       }
 
-      var url = '/api/widget/sealed/' + encodeURIComponent(setCode)
-        + '?language=' + encodeURIComponent(language)
-        + '&product_type=' + encodeURIComponent(productType)
-        + '&include_history=30';
+      // ── Compute index from history slice ──────────────
+      function computeIndexSeries(points) {
+        // Returns: [{ date, value (relative %) }] where value = (trend - first.trend) / first.trend * 100
+        if (!points || points.length === 0) return [];
+        // Filter out points without trend
+        var clean = points.filter(function (p) {
+          var t = p.trend_eur != null ? p.trend_eur : (p.trend != null ? p.trend : null);
+          return t != null && t > 0;
+        }).map(function (p) {
+          return {
+            date: p.date,
+            trend: p.trend_eur != null ? p.trend_eur : p.trend,
+          };
+        });
+        if (clean.length === 0) return [];
+        var base = clean[0].trend;
+        return clean.map(function (p) {
+          return {
+            date: p.date,
+            value: ((p.trend - base) / base) * 100,
+            trend: p.trend, // kept internally only — never displayed
+          };
+        });
+      }
+
+      // ── Slice history to N days from end ──────────────
+      function sliceForPeriod(allPoints, days) {
+        if (!allPoints || allPoints.length === 0) return [];
+        if (allPoints.length <= days) return allPoints.slice();
+        return allPoints.slice(-days);
+      }
+
+      // ── Render Index value (top number) ───────────────
+      function renderIndex(series, period) {
+        var indexEl = document.getElementById('pv-index-value');
+        var labelEl = document.getElementById('pv-index-label');
+        var explainEl = document.getElementById('pv-index-explain');
+        if (!indexEl || !labelEl || !explainEl) return;
+
+        var pts = series.length;
+        if (pts < 2) {
+          indexEl.textContent = '●  –';
+          indexEl.className = 'pv-index-big mono is-flat';
+          labelEl.textContent = period + ' TAGE';
+          explainEl.innerHTML = 'Noch nicht genug Daten für eine Wertentwicklung · ' +
+            'Daten werden täglich gesammelt';
+          return;
+        }
+        var last = series[series.length - 1].value;
+        var arrow = fmtArrow(last);
+        var cls = 'pv-index-big mono';
+        if (last > 0.05) cls += '';
+        else if (last < -0.05) cls += ' is-down';
+        else cls += ' is-flat';
+
+        // Animate counter from 0 to last
+        animateCounter(indexEl, last, arrow, 350);
+        indexEl.className = cls;
+        labelEl.textContent = period + ' TAGE';
+        explainEl.innerHTML =
+          'Wertentwicklung gegenüber Start des Zeitraums · ' +
+          '<strong>' + pts + ' ' + (pts === 1 ? 'Datentag' : 'Datentage') + '</strong> verfügbar';
+      }
+
+      function animateCounter(el, target, arrow, ms) {
+        var start = performance.now();
+        var from = 0;
+        function frame(now) {
+          var p = Math.min(1, (now - start) / ms);
+          var ease = 1 - Math.pow(1 - p, 3);
+          var v = from + (target - from) * ease;
+          var sign = v > 0 ? '+' : (v < 0 ? '–' : '');
+          el.textContent = arrow + '  ' + sign + Math.abs(v).toFixed(1).replace('.', ',') + '%';
+          if (p < 1) requestAnimationFrame(frame);
+        }
+        requestAnimationFrame(frame);
+      }
+
+      // ── Smooth path generator ─────────────────────────
+      // Catmull-Rom -> Bézier conversion for smooth curve
+      function smoothPath(coords) {
+        if (coords.length < 2) return '';
+        if (coords.length === 2) {
+          return 'M' + coords[0][0] + ',' + coords[0][1] + ' L' + coords[1][0] + ',' + coords[1][1];
+        }
+        var d = 'M' + coords[0][0] + ',' + coords[0][1];
+        for (var i = 0; i < coords.length - 1; i++) {
+          var p0 = coords[i - 1] || coords[i];
+          var p1 = coords[i];
+          var p2 = coords[i + 1];
+          var p3 = coords[i + 2] || p2;
+          var tension = 0.18;
+          var c1x = p1[0] + (p2[0] - p0[0]) * tension;
+          var c1y = p1[1] + (p2[1] - p0[1]) * tension;
+          var c2x = p2[0] - (p3[0] - p1[0]) * tension;
+          var c2y = p2[1] - (p3[1] - p1[1]) * tension;
+          d += ' C' + c1x.toFixed(2) + ',' + c1y.toFixed(2) +
+               ' ' + c2x.toFixed(2) + ',' + c2y.toFixed(2) +
+               ' ' + p2[0] + ',' + p2[1];
+        }
+        return d;
+      }
+
+      // ── Render chart SVG ──────────────────────────────
+      function renderChart(series) {
+        var wrap = document.getElementById('pv-chart-wrap');
+        if (!wrap) return;
+
+        if (series.length < 2) {
+          wrap.innerHTML =
+            '<div class="pv-chart-empty">' +
+              '<div class="pv-chart-empty-icon">— · —</div>' +
+              '<div>Noch nicht genug Daten für eine Kurve.<br>' +
+              'Index wird täglich um einen Datenpunkt erweitert.</div>' +
+            '</div>';
+          return;
+        }
+
+        // Chart dims (will scale via viewBox)
+        var W = 760, H = 260;
+        var padL = 8, padR = 8, padT = 14, padB = 26;
+        var cw = W - padL - padR;
+        var ch = H - padT - padB;
+
+        var values = series.map(function (s) { return s.value; });
+        var minV = Math.min.apply(null, values);
+        var maxV = Math.max.apply(null, values);
+        // Always include 0 line for context
+        if (minV > 0) minV = 0;
+        if (maxV < 0) maxV = 0;
+        // Add 12% headroom
+        var headroom = (maxV - minV) * 0.18 || 1;
+        minV -= headroom * 0.5;
+        maxV += headroom * 0.5;
+        if (minV === maxV) { minV -= 1; maxV += 1; }
+
+        function xAt(i) { return padL + cw * (i / (series.length - 1)); }
+        function yAt(v) { return padT + ch * (1 - (v - minV) / (maxV - minV)); }
+
+        var coords = series.map(function (s, i) { return [xAt(i), yAt(s.value)]; });
+
+        var pathD = smoothPath(coords);
+
+        // Area path: line + close to bottom
+        var areaD = pathD + ' L' + coords[coords.length - 1][0] + ',' + (padT + ch) +
+                    ' L' + coords[0][0] + ',' + (padT + ch) + ' Z';
+
+        // Color based on overall direction (last vs first)
+        var lastVal = series[series.length - 1].value;
+        var isDown = lastVal < -0.05;
+        var lineColor = isDown ? 'var(--down)' : 'var(--accent)';
+        var fillId = isDown ? 'pv-grad-down' : 'pv-grad-up';
+        var fillStop = isDown ? '#ff6b6b' : '#00e5c0';
+        var dotStroke = isDown ? '#ff6b6b' : '#00e5c0';
+        var hoverLineColor = isDown ? '#ff6b6b' : '#00e5c0';
+
+        // Y reference lines (3 horizontal): at min, mid, max of plotted range, including 0
+        var refLines = [];
+        // Always include zero
+        var yZero = yAt(0);
+        refLines.push({ y: yZero, label: '0%' });
+        // Two more lines: roughly at top and bottom of plotted range
+        var yTop = padT + ch * 0.18;
+        var yBot = padT + ch * 0.82;
+        var vTop = minV + (maxV - minV) * (1 - 0.18);
+        var vBot = minV + (maxV - minV) * (1 - 0.82);
+        // Avoid lines overlapping with zero line
+        if (Math.abs(yTop - yZero) > 24) refLines.push({ y: yTop, label: (vTop >= 0 ? '+' : '–') + Math.abs(vTop).toFixed(1).replace('.', ',') + '%' });
+        if (Math.abs(yBot - yZero) > 24) refLines.push({ y: yBot, label: (vBot >= 0 ? '+' : '–') + Math.abs(vBot).toFixed(1).replace('.', ',') + '%' });
+
+        var refLinesSvg = refLines.map(function (rl) {
+          return '<line class="pv-chart-grid" x1="' + padL + '" y1="' + rl.y.toFixed(1) +
+                 '" x2="' + (W - padR) + '" y2="' + rl.y.toFixed(1) + '"/>' +
+                 '<text class="pv-chart-tick" x="' + (W - padR) + '" y="' + (rl.y - 3).toFixed(1) +
+                 '" text-anchor="end">' + rl.label + '</text>';
+        }).join('');
+
+        // Dots
+        var dotsSvg = coords.map(function (c, i) {
+          return '<circle class="pv-chart-dot" data-i="' + i +
+                 '" cx="' + c[0].toFixed(2) + '" cy="' + c[1].toFixed(2) +
+                 '" r="3" stroke="' + dotStroke + '"/>';
+        }).join('');
+
+        // X axis labels (first + last date)
+        var firstDate = fmtDate(series[0].date);
+        var lastDate = fmtDate(series[series.length - 1].date);
+        var xLabels =
+          '<text class="pv-chart-axis-label" x="' + padL + '" y="' + (H - 6) + '" text-anchor="start">' + firstDate + '</text>' +
+          '<text class="pv-chart-axis-label" x="' + (W - padR) + '" y="' + (H - 6) + '" text-anchor="end">' + lastDate + '</text>';
+
+        var svg =
+          '<svg class="pv-chart-svg" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img" aria-label="Wertentwicklungs-Chart">' +
+            '<defs>' +
+              '<linearGradient id="' + fillId + '" x1="0" y1="0" x2="0" y2="1">' +
+                '<stop offset="0%" stop-color="' + fillStop + '" stop-opacity="0.32"/>' +
+                '<stop offset="100%" stop-color="' + fillStop + '" stop-opacity="0"/>' +
+              '</linearGradient>' +
+            '</defs>' +
+            refLinesSvg +
+            '<path class="pv-chart-area" d="' + areaD + '" fill="url(#' + fillId + ')"/>' +
+            '<path class="pv-chart-line is-anim" d="' + pathD + '" stroke="' + lineColor + '"/>' +
+            '<line id="pv-hover-line" class="pv-chart-hover-line" x1="0" y1="' + padT + '" x2="0" y2="' + (padT + ch) + '" stroke="' + hoverLineColor + '"/>' +
+            dotsSvg +
+            xLabels +
+          '</svg>' +
+          '<div class="pv-tooltip" id="pv-tooltip">' +
+            '<div class="pv-tooltip-date" id="pv-tt-date">—</div>' +
+            '<div class="pv-tooltip-val" id="pv-tt-val">—</div>' +
+          '</div>';
+
+        wrap.innerHTML = svg;
+
+        // ── Hover handlers ──
+        var svgEl = wrap.querySelector('svg');
+        var tt = document.getElementById('pv-tooltip');
+        var ttDate = document.getElementById('pv-tt-date');
+        var ttVal = document.getElementById('pv-tt-val');
+        var hoverLine = document.getElementById('pv-hover-line');
+        var lastIdx = -1;
+
+        function findClosest(svgX) {
+          var bestI = 0, bestDist = Infinity;
+          for (var i = 0; i < coords.length; i++) {
+            var dx = Math.abs(coords[i][0] - svgX);
+            if (dx < bestDist) { bestDist = dx; bestI = i; }
+          }
+          return bestI;
+        }
+
+        function showHoverFromClient(clientX, clientY) {
+          var rect = svgEl.getBoundingClientRect();
+          var localX = clientX - rect.left;
+          var svgX = (localX / rect.width) * W;
+          var idx = findClosest(svgX);
+          if (idx === lastIdx) return;
+          lastIdx = idx;
+          var pt = series[idx];
+          // Position tooltip in wrap-relative pixels
+          var wrapRect = wrap.getBoundingClientRect();
+          var dotClientX = rect.left + (coords[idx][0] / W) * rect.width;
+          var dotClientY = rect.top + (coords[idx][1] / H) * rect.height;
+          var ttX = dotClientX - wrapRect.left;
+          var ttY = dotClientY - wrapRect.top - 8;
+          tt.style.left = ttX + 'px';
+          tt.style.top = ttY + 'px';
+          tt.classList.add('is-visible');
+          ttDate.textContent = fmtDate(pt.date);
+          var ptDown = pt.value < -0.05;
+          ttVal.className = 'pv-tooltip-val' + (ptDown ? ' is-down' : '');
+          var sign = pt.value > 0 ? '+' : (pt.value < 0 ? '–' : '');
+          ttVal.textContent = 'Index: ' + sign + Math.abs(pt.value).toFixed(2).replace('.', ',') + '%';
+          // Hover line
+          hoverLine.setAttribute('x1', coords[idx][0]);
+          hoverLine.setAttribute('x2', coords[idx][0]);
+          hoverLine.classList.add('is-visible');
+          // Highlight dot
+          var dots = svgEl.querySelectorAll('.pv-chart-dot');
+          dots.forEach(function (d, i) {
+            if (i === idx) d.classList.add('is-active');
+            else d.classList.remove('is-active');
+          });
+        }
+
+        function hideHover() {
+          lastIdx = -1;
+          tt.classList.remove('is-visible');
+          hoverLine.classList.remove('is-visible');
+          var dots = svgEl.querySelectorAll('.pv-chart-dot');
+          dots.forEach(function (d) { d.classList.remove('is-active'); });
+        }
+
+        svgEl.addEventListener('mousemove', function (e) {
+          showHoverFromClient(e.clientX, e.clientY);
+        });
+        svgEl.addEventListener('mouseleave', hideHover);
+        // Touch
+        svgEl.addEventListener('touchstart', function (e) {
+          if (e.touches && e.touches[0]) {
+            showHoverFromClient(e.touches[0].clientX, e.touches[0].clientY);
+          }
+        }, { passive: true });
+        svgEl.addEventListener('touchmove', function (e) {
+          if (e.touches && e.touches[0]) {
+            showHoverFromClient(e.touches[0].clientX, e.touches[0].clientY);
+          }
+        }, { passive: true });
+        svgEl.addEventListener('touchend', function () {
+          // keep tooltip visible briefly, then hide
+          setTimeout(hideHover, 1500);
+        });
+      }
+
+      // ── Period switcher ───────────────────────────────
+      function setPeriod(days) {
+        state.period = days;
+        // Update tab UI
+        var tabs = document.querySelectorAll('.pv-tab');
+        tabs.forEach(function (t) {
+          if (parseInt(t.getAttribute('data-period'), 10) === days) {
+            t.classList.add('is-active');
+          } else {
+            t.classList.remove('is-active');
+          }
+        });
+        var slice = sliceForPeriod(state.history, days);
+        var series = computeIndexSeries(slice);
+        renderIndex(series, days);
+        renderChart(series);
+      }
+
+      // ── Render full content ───────────────────────────
+      function renderContent(data) {
+        state.productData = data;
+        state.history = (data.history && Array.isArray(data.history.points)) ? data.history.points : [];
+        var totalPoints = state.history.length;
+
+        var setName = data.set_name || setCode;
+        var langDisplay = (data.language || language) === 'JP' ? 'Japanisch' : 'Englisch';
+        var typeDisplay = (data.product_type === 'case' ? 'Booster Case' : 'Booster Display');
+
+        // Hero
+        titleEl.textContent = setName + ' · ' + langDisplay;
+        subEl.textContent = typeDisplay + ' · Index basiert auf Cardmarket-Trend';
+
+        // Stats
+        var listings = (data.price && data.price.available_listings) || 0;
+        var liquidity = listings >= 30
+          ? { dot: 'is-green', label: 'Liquide' }
+          : (listings >= 10
+            ? { dot: 'is-amber', label: 'Mittel' }
+            : { dot: 'is-amber', label: 'Selten' });
+        var freshness = data.data_freshness === 'fresh' ? 'Cardmarket Live' : (fmtRel(data.updated_at) || 'Cardmarket');
+
+        // Initial period: prefer 30 if we have ≥7 points, else 7
+        var initialPeriod = totalPoints >= 30 ? 30 : (totalPoints >= 7 ? 30 : 7);
+        // Actually default to 30 always — user will see "X von 30" feel right
+        initialPeriod = 30;
+
+        var html =
+          '<div class="pv-card">' +
+            '<div class="pv-set-info">' +
+              '<span class="pv-lang-badge">' + escHtml(data.language || language) + '</span>' +
+              '<span class="pv-set-name">' + escHtml(setName) + '</span>' +
+              '<span class="pv-product-type">' + escHtml(typeDisplay) + '</span>' +
+            '</div>' +
+
+            '<div class="pv-index-row">' +
+              '<span class="pv-index-big mono" id="pv-index-value">●  …</span>' +
+              '<span class="pv-index-period-label" id="pv-index-label">30 TAGE</span>' +
+            '</div>' +
+            '<p class="pv-index-explain" id="pv-index-explain">Berechne Wertentwicklung…</p>' +
+
+            '<div class="pv-tabs" role="tablist" aria-label="Zeitraum">' +
+              '<button class="pv-tab" data-period="7" role="tab"' +
+                (totalPoints < 2 ? ' disabled' : '') + '>7T</button>' +
+              '<button class="pv-tab is-active" data-period="30" role="tab"' +
+                (totalPoints < 2 ? ' disabled' : '') + '>30T</button>' +
+              '<button class="pv-tab" data-period="90" role="tab"' +
+                (totalPoints < 8 ? ' disabled' : '') + '>90T</button>' +
+            '</div>' +
+
+            '<div class="pv-chart-wrap" id="pv-chart-wrap"></div>' +
+
+            '<div class="pv-stats-grid">' +
+              '<div class="pv-stat">' +
+                '<div class="pv-stat-label">Marktaktivität</div>' +
+                '<div class="pv-stat-value">' +
+                  '<span class="pv-stat-dot ' + liquidity.dot + '"></span>' +
+                  escHtml(liquidity.label) +
+                '</div>' +
+              '</div>' +
+              '<div class="pv-stat">' +
+                '<div class="pv-stat-label">Aktive Angebote</div>' +
+                '<div class="pv-stat-value">' + listings + '</div>' +
+              '</div>' +
+              '<div class="pv-stat">' +
+                '<div class="pv-stat-label">Datenquelle</div>' +
+                '<div class="pv-stat-value" style="font-size:13px;">' + escHtml(freshness) + '</div>' +
+              '</div>' +
+            '</div>' +
+
+            '<div class="pv-meta">' +
+              escHtml(fmtRel(data.updated_at)) + ' · ' +
+              totalPoints + ' ' + (totalPoints === 1 ? 'Tag' : 'Tage') + ' Historie · Daily-Tracking' +
+            '</div>' +
+          '</div>';
+
+        contentEl.innerHTML = html;
+
+        // Wire tabs
+        var tabs = contentEl.querySelectorAll('.pv-tab');
+        tabs.forEach(function (t) {
+          t.addEventListener('click', function () {
+            if (t.disabled) return;
+            var p = parseInt(t.getAttribute('data-period'), 10);
+            setPeriod(p);
+          });
+        });
+
+        // Initial render
+        setPeriod(initialPeriod);
+      }
+
+      // ── Error rendering ───────────────────────────────
+      function renderError(msg) {
+        titleEl.textContent = 'Marktdaten zurzeit nicht verfügbar';
+        subEl.textContent = 'Wir sammeln gerade Daten für dieses Set';
+        contentEl.innerHTML =
+          '<div class="pv-card">' +
+            '<div class="pv-error">' +
+              (msg || ('Aktuell liegen keine Live-Daten für ' + escHtml(setCode) + ' vor. ' +
+                'Wir arbeiten daran. Im vollen Terminal findest du hunderte andere Sets und Karten mit Live-Marktdaten.')) +
+            '</div>' +
+          '</div>';
+      }
+
+      // ── Fetch ─────────────────────────────────────────
+      var url = '/api/widget/sealed/' + encodeURIComponent(setCode) +
+        '?language=' + encodeURIComponent(language) +
+        '&product_type=' + encodeURIComponent(productType) +
+        '&include_history=90';
 
       fetch(url, { method: 'GET', credentials: 'omit' })
         .then(function (r) {
@@ -368,72 +1070,8 @@
           if (!r.ok) throw new Error('HTTP_' + r.status);
           return r.json();
         })
-        .then(function (data) {
-          var p = data.price || {};
-          var price = p.trend_eur;
-          var avg7 = p.avg_7d_eur;
-          var avg30 = p.avg_30d_eur;
-          var listings = p.available_listings || 0;
-          // Note: lowest_eur is intentionally NOT shown — it usually represents
-          // damaged boxes, third-country listings, or sketchy sellers. Showing it
-          // makes Holygrade look overpriced when in fact our prices match the
-          // realistic market trend / 7d average.
-          var setName = data.set_name || setCode;
-          var langDisplay = (data.language || language) === 'JP' ? 'Japanisch' : 'English';
-
-          // Hero
-          titleEl.textContent = setName + ' · ' + langDisplay;
-          subEl.textContent = (data.product_type === 'case' ? 'Booster Case · ' : 'Booster Display · ') + 'Live-Daten von Cardmarket';
-
-          // Sparkline
-          var sparkHtml = '';
-          var historyPoints = (data.history && Array.isArray(data.history.points)) ? data.history.points : [];
-          if (historyPoints.length >= 2) {
-            sparkHtml = ''
-              + '<div class="pv-spark-wrap">'
-              +   '<div class="pv-spark-label">Marktentwicklung · letzte ' + historyPoints.length + ' Tage</div>'
-              +   renderSparkline(historyPoints)
-              + '</div>';
-          } else {
-            sparkHtml = ''
-              + '<div class="pv-spark-wrap">'
-              +   '<div class="pv-spark-label">Marktentwicklung</div>'
-              +   '<div class="pv-spark-empty">Preisverlauf wird aufgebaut · noch nicht genug Datentage</div>'
-              + '</div>';
-          }
-
-          var html = ''
-            + '<div class="pv-card">'
-            +   '<div class="pv-set-info">'
-            +     '<span class="pv-lang-badge">' + escHtml(data.language || language) + '</span>'
-            +     '<span class="pv-set-name">' + escHtml(setName) + '</span>'
-            +   '</div>'
-            +   '<div class="pv-price-row">'
-            +     '<span class="pv-price-big">' + escHtml(fmtEur(price)) + '</span>'
-            +     '<span class="pv-price-label">Cardmarket Trend</span>'
-            +   '</div>'
-            +   '<div class="pv-stats-grid">'
-            +     (avg7 != null ? '<div class="pv-stat"><div class="pv-stat-label">Ø 7 Tage</div><div class="pv-stat-value">' + escHtml(fmtEur(avg7)) + '</div></div>' : '')
-            +     (avg30 != null ? '<div class="pv-stat"><div class="pv-stat-label">Ø 30 Tage</div><div class="pv-stat-value">' + escHtml(fmtEur(avg30)) + '</div></div>' : '')
-            +     '<div class="pv-stat"><div class="pv-stat-label">Aktive Angebote</div><div class="pv-stat-value">' + listings + '</div></div>'
-            +   '</div>'
-            +   sparkHtml
-            +   '<div class="pv-meta">' + escHtml(fmtRel(data.updated_at)) + ' · Live-Daten von Cardmarket</div>'
-            + '</div>';
-
-          contentEl.innerHTML = html;
-        })
-        .catch(function (e) {
-          titleEl.textContent = 'Marktdaten zurzeit nicht verfügbar';
-          subEl.textContent = 'Wir sammeln gerade Daten für dieses Set';
-          contentEl.innerHTML = ''
-            + '<div class="pv-card">'
-            +   '<div class="pv-error">'
-            +     'Aktuell liegen keine Live-Daten für ' + escHtml(setCode) + ' vor. '
-            +     'Wir arbeiten daran. Im vollen Terminal findest du hunderte andere Sets und Karten mit Live-Marktdaten.'
-            +   '</div>'
-            + '</div>';
-        });
+        .then(function (data) { renderContent(data); })
+        .catch(function (e) { renderError(); });
     })();
   </script>
 </body>
