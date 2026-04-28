@@ -3812,3 +3812,57 @@ a.price-link:hover {
   .top-pulls-grid { grid-template-columns: 1fr; }
   .top-pulls-meta { flex-direction: column; align-items: flex-start; }
 }
+
+/* ─────────────────────────────────────────────────────────────────
+ * Phase 2: Stock-Divider zwischen "verfügbar" und "ausverkauft"
+ * Subtile horizontale Linie + kleines Label, mobile-friendly.
+ * ───────────────────────────────────────────────────────────────── */
+.sealed-stock-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 28px 4px 18px;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted, #6b7280);
+}
+.sealed-stock-divider::before,
+.sealed-stock-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgba(120, 120, 130, 0.28) 20%,
+    rgba(120, 120, 130, 0.28) 80%,
+    transparent
+  );
+}
+.sealed-stock-divider-label {
+  white-space: nowrap;
+  padding: 0 4px;
+}
+
+/* Out-of-stock cards: leicht abgedämpft, damit verfügbare Produkte
+   visuell dominieren. Kein vollständiges Grayscale — User will
+   immer noch Trend & Sparkline sehen können. */
+.sealed-section-grid--soldout > .product-card,
+.sealed-section-grid--soldout > [data-sealed-card] {
+  opacity: 0.78;
+  transition: opacity 120ms ease;
+}
+.sealed-section-grid--soldout > .product-card:hover,
+.sealed-section-grid--soldout > [data-sealed-card]:hover {
+  opacity: 1.0;
+}
+
+@media (max-width: 640px) {
+  .sealed-stock-divider {
+    margin: 20px 2px 14px;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+  }
+}

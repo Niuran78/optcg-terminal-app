@@ -24,7 +24,9 @@ const State = {
     products: [],
     total:    0,
     loading:  false,
-    filters:  { set: 'all', type: 'all', lang: 'all' },
+    // Phase 2: User verkauft NUR JP-Boxen → JP als Default-Sprache,
+    // damit Standard-Ansicht für Inhaber sofort relevant ist.
+    filters:  { set: 'all', type: 'all', lang: 'JP' },
     sort:     'cm_live_trend',
     showAll:  false,   // when true (Pro only) -> live_only=false on backend
   },
@@ -1372,27 +1374,73 @@ function renderSealedSections(data) {
     else buckets['other'].push(p);
   });
 
+  // JP zuerst — User verkauft primär japanische Produkte.
   const sectionDefs = [
-    ['box-EN', '🇬🇧 Booster Boxes (EN)', 'Sealed English booster boxes with live Cardmarket data'],
     ['box-JP', '🇯🇵 Booster Boxes (JP)', 'Sealed Japanese booster boxes with live Cardmarket data'],
     ['case-JP', '📦 Cases (JP)', 'Full sealed cases (12 boxes) with live Cardmarket data'],
+    ['box-EN', '🇬🇧 Booster Boxes (EN)', 'Sealed English booster boxes with live Cardmarket data'],
     ['case-EN', '📦 Cases (EN)', 'Full sealed cases (12 boxes) with live Cardmarket data'],
     ['other', '… Other Sealed', 'Reference-only or other sealed products'],
   ];
 
+  // Phase 2: In-Stock-First-Sortierung wie im Holygrade-Shop.
+  // Jeder Bucket wird in zwei Gruppen geteilt:
+  //   1) Im Holygrade-Lager verfügbar (in_stock=true, qty desc)
+  //   2) Nicht verfügbar (Reihenfolge bleibt = Backend-Sort, z.B. Trend)
+  // Zwischen beiden Gruppen rendern wir einen subtilen Divider, damit der
+  // User sofort sieht, wo der "kann ich kaufen"-Bereich endet.
+  const stockMap = (State.sealed && State.sealed.shopStock) || {};
+  const splitByStock = (items) => {
+    const inStock = [];
+    const outOfStock = [];
+    items.forEach(p => {
+      const key = sealedShopKey(p.set_code, p.language, p.product_type);
+      const entry = stockMap[key];
+      if (entry && entry.in_stock && entry.qty > 0) inStock.push({ p, qty: entry.qty });
+      else outOfStock.push(p);
+    });
+    // Innerhalb "verfügbar": höchste qty zuerst, dann Backend-Reihenfolge.
+    inStock.sort((a, b) => (b.qty || 0) - (a.qty || 0));
+    return { inStock: inStock.map(x => x.p), outOfStock };
+  };
+
   const html = sectionDefs.map(([key, title, desc]) => {
     const items = buckets[key];
     if (!items.length) return '';
-    const cards = items.map(renderSealedCard).join('');
+    const { inStock, outOfStock } = splitByStock(items);
+    const inStockCards = inStock.map(renderSealedCard).join('');
+    const outOfStockCards = outOfStock.map(renderSealedCard).join('');
+
+    let gridHtml = '';
+    if (inStock.length && outOfStock.length) {
+      gridHtml =
+        '<div class="product-grid sealed-section-grid">' + inStockCards + '</div>' +
+        '<div class="sealed-stock-divider" role="separator">' +
+          '<span class="sealed-stock-divider-label">Aktuell nicht im Holygrade-Lager</span>' +
+        '</div>' +
+        '<div class="product-grid sealed-section-grid sealed-section-grid--soldout">' + outOfStockCards + '</div>';
+    } else if (inStock.length) {
+      gridHtml = '<div class="product-grid sealed-section-grid">' + inStockCards + '</div>';
+    } else {
+      gridHtml = '<div class="product-grid sealed-section-grid sealed-section-grid--soldout">' + outOfStockCards + '</div>';
+    }
+
+    // Count-Badge zeigt jetzt "verfügbar / gesamt" wenn relevant.
+    const countLabel = inStock.length
+      ? '<span class="sealed-section-count" title="' + inStock.length + ' verfügbar von ' + items.length + ' gesamt">' +
+          inStock.length + ' / ' + items.length +
+        '</span>'
+      : '<span class="sealed-section-count">' + items.length + '</span>';
+
     return `
       <div class="sealed-section">
         <div class="sealed-section-header">
           <h3 class="sealed-section-title">${escHtml(title)}
-            <span class="sealed-section-count">${items.length}</span>
+            ${countLabel}
           </h3>
           <div class="sealed-section-desc">${escHtml(desc)}</div>
         </div>
-        <div class="product-grid sealed-section-grid">${cards}</div>
+        ${gridHtml}
       </div>
     `;
   }).join('');
