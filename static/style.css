@@ -3048,6 +3048,12 @@ a.price-link:hover {
 /* Sections */
 #sealed-sections { display: flex; flex-direction: column; gap: 28px; }
 .sealed-section { display: flex; flex-direction: column; gap: 12px; }
+/* Sections ohne lieferbare Produkte etwas gedimmt rendern — Hierarchie
+   wird sofort sichtbar. Header bleibt klickbar/lesbar, der Grid darunter
+   ist nur leicht abgesetzt. */
+.sealed-section--empty .sealed-section-title,
+.sealed-section--empty .sealed-section-desc { opacity: 0.6; }
+.sealed-section--empty .sealed-section-grid { opacity: 0.7; }
 .sealed-section-header {
   display: flex; align-items: baseline; gap: 12px;
   padding-bottom: 8px;

@@ -1381,6 +1381,8 @@ function renderSealedSections(data) {
 
   // JP zuerst — User verkauft primär japanische Produkte.
   // Special-JP umfasst Anniversary-Sets / Cartons (eigener Produkttyp neben Box/Case).
+  // Reihenfolge hier = TIE-BREAKER bei gleicher in-stock-Anzahl. Ansonsten
+  // werden Sections weiter unten DYNAMISCH nach Lager-Verfügbarkeit sortiert.
   const sectionDefs = [
     ['box-JP', '🇯🇵 Booster Boxes (JP)', 'Sealed Japanese booster boxes with live market data'],
     ['case-JP', '📦 Cases (JP)', 'Full sealed cases (12 boxes) with live market data'],
@@ -1411,12 +1413,38 @@ function renderSealedSections(data) {
     return { inStock: inStock.map(x => x.p), outOfStock };
   };
 
-  const html = sectionDefs.map(([key, title, desc]) => {
-    const items = buckets[key];
-    if (!items.length) return '';
-    const { inStock, outOfStock } = splitByStock(items);
+  // Phase 2.1: DYNAMISCHE Section-Sortierung.
+  // Sections mit den meisten lieferbaren Produkten (= kann der Kunde sofort
+  // kaufen) kommen ganz nach oben. Beispiel: wenn Anniversary-Sets im Lager
+  // sind, aber alle Cases ausverkauft, rutscht "Special Sets" über "Cases".
+  // Tie-Breaker = ursprüngliche Reihenfolge in sectionDefs (JP vor EN etc.).
+  const sectionsWithData = sectionDefs.map(([key, title, desc], idx) => {
+    const items = buckets[key] || [];
+    const split = splitByStock(items);
+    return {
+      key, title, desc, items,
+      inStock: split.inStock,
+      outOfStock: split.outOfStock,
+      origIdx: idx,
+    };
+  }).filter(s => s.items.length > 0);
+
+  sectionsWithData.sort((a, b) => {
+    // 1) Sections mit lieferbaren Produkten zuerst
+    const aHasStock = a.inStock.length > 0 ? 1 : 0;
+    const bHasStock = b.inStock.length > 0 ? 1 : 0;
+    if (aHasStock !== bHasStock) return bHasStock - aHasStock;
+    // 2) Mehr lieferbare Produkte zuerst
+    if (a.inStock.length !== b.inStock.length) return b.inStock.length - a.inStock.length;
+    // 3) Tie-Breaker: ursprüngliche Reihenfolge
+    return a.origIdx - b.origIdx;
+  });
+
+  const html = sectionsWithData.map(({ key, title, desc, items, inStock, outOfStock }) => {
     const inStockCards = inStock.map(renderSealedCard).join('');
     const outOfStockCards = outOfStock.map(renderSealedCard).join('');
+    // Visuell markieren: Sections ohne Lager kollabieren leicht (gedimmt).
+    const sectionClass = inStock.length === 0 ? 'sealed-section sealed-section--empty' : 'sealed-section';
 
     let gridHtml = '';
     if (inStock.length && outOfStock.length) {
@@ -1440,7 +1468,7 @@ function renderSealedSections(data) {
       : '<span class="sealed-section-count">' + items.length + '</span>';
 
     return `
-      <div class="sealed-section">
+      <div class="${sectionClass}">
         <div class="sealed-section-header">
           <h3 class="sealed-section-title">${escHtml(title)}
             ${countLabel}
