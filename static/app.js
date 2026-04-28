@@ -101,8 +101,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Load market summary bar
   loadMarketSummary();
 
-  // Load default tab
-  switchTab('browser');
+  // Load default tab — Sealed is now the primary product (Phase 1 pivot 2026-04-28).
+  // Browser tab still exists but shows the "Top Pulls Coming Soon" page.
+  switchTab('sealed');
 });
 
 /* ═════════════════════════════════════════════════════════════════
@@ -483,7 +484,8 @@ function onRadarRowClick(row) {
     const allPill = document.querySelector('#panel-browser .pill-group .pill[data-rarity="all"]');
     if (allPill) allPill.classList.add('active');
 
-    switchTab('browser');
+    // Browser tab now shows Top-Pulls Coming-Soon. Default Welcome-CTA goes to Sealed instead.
+    switchTab('sealed');
     const search = $('browser-search');
     if (search) {
       search.value = entityId;
@@ -849,9 +851,26 @@ function proxyImg(url) {
 function cardThumb(url, name) {
   if (url) {
     const proxied = proxyImg(url);
+    if (!proxied) {
+      // URL was rejected (Cardmarket legal-block) — fall back to placeholder
+      return `<div class="card-thumb-placeholder">🃏</div>`;
+    }
     return `<img class="card-thumb" src="${escHtml(proxied)}" alt="${escHtml(name || '')}" loading="lazy" onerror="this.outerHTML='<div class=\\'card-thumb-placeholder\\'>🃏</div>'" />`;
   }
   return `<div class="card-thumb-placeholder">🃏</div>`;
+}
+
+/** Sealed-product image renderer with Holygrade-styled placeholder fallback.
+ *  Used in the Sealed and Markets tabs. Always returns a non-empty HTML
+ *  string so callers can drop it directly into a template. The placeholder
+ *  uses the existing .sealed-card-img-placeholder CSS (dark gradient + emoji). */
+function sealedImg(url, name) {
+  const proxied = url ? proxyImg(url) : '';
+  if (!proxied) {
+    // Either no URL provided, or URL was rejected (Cardmarket legal-block).
+    return `<div class="sealed-card-img-placeholder">📦</div>`;
+  }
+  return `<img src="${escHtml(proxied)}" alt="${escHtml(name || '')}" loading="lazy" onerror="this.outerHTML='<div class=&quot;sealed-card-img-placeholder&quot;>📦</div>'" />`;
 }
 
 function escHtml(str) {
@@ -1427,10 +1446,7 @@ function renderSealedCard(p) {
   return `
     <div class="sealed-card" data-sealed-card data-set-code="${escHtml(p.set_code || '')}" data-lang="${escHtml(lang)}" data-type="${escHtml(p.product_type || '')}">
       <div class="sealed-card-img">
-        ${p.image_url
-          ? `<img src="${escHtml(proxyImg(p.image_url))}" alt="${escHtml(p.product_name || '')}" loading="lazy" onerror="this.style.display='none'" />`
-          : `<div class="sealed-card-img-placeholder">📦</div>`
-        }
+        ${sealedImg(p.image_url, p.product_name)}
         <div class="sealed-card-badges-tl">${langBadge}${liveBadge}</div>
         <div class="sealed-card-badges-tr">${spreadBadge}${evBadge}</div>
       </div>

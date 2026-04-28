@@ -27,7 +27,7 @@
 <body>
 
 <!-- Skip link — first focusable element, jumps to main content for keyboard/screenreader users -->
-<a class="skip-link" href="#panel-browser">Skip to main content</a>
+<a class="skip-link" href="#panel-sealed">Skip to main content</a>
 
 <!-- ═══ NAVIGATION ════════════════════════════════════════════════ -->
 <nav class="nav" role="navigation" aria-label="Main navigation">
@@ -46,17 +46,16 @@
 
   <!-- Tabs -->
   <div class="nav-tabs" role="tablist">
-    <button class="nav-tab active" data-tab="browser" role="tab" aria-selected="true" aria-controls="panel-browser">
+    <button class="nav-tab" data-tab="browser" role="tab" aria-selected="false" aria-controls="panel-browser">
       <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-        <rect x="1" y="1" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.3"/>
-        <rect x="8" y="1" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.3"/>
-        <rect x="1" y="8" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.3"/>
-        <rect x="8" y="8" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.3"/>
+        <path d="M2 11 L5 7 L8 9 L12 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="12" cy="3" r="1.4" fill="currentColor"/>
       </svg>
-      <span>Markets</span>
+      <span>Top Pulls</span>
+      <span class="nav-tab-badge" style="background:rgba(245,185,66,0.18);color:#f5b942;border-color:rgba(245,185,66,0.35);">SOON</span>
     </button>
 
-    <button class="nav-tab" data-tab="sealed" role="tab" aria-selected="false" aria-controls="panel-sealed">
+    <button class="nav-tab active" data-tab="sealed" role="tab" aria-selected="true" aria-controls="panel-sealed">
       <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
         <rect x="1" y="3" width="12" height="9" rx="1.5" stroke="currentColor" stroke-width="1.3"/>
         <path d="M1 6h12" stroke="currentColor" stroke-width="1.3"/>
@@ -201,9 +200,56 @@
   </div>
 
   <!-- ─── TAB 1: CARD BROWSER ──────────────────────────────────── -->
-  <section id="panel-browser" class="tab-panel active" role="tabpanel" aria-labelledby="tab-browser">
+  <section id="panel-browser" class="tab-panel" role="tabpanel" aria-labelledby="tab-browser">
 
-    <!-- Filter bar -->
+    <!-- Top Pulls Coming-Soon Hero — replaces the legacy 8400-card browser.
+         The legacy markup below is intentionally hidden via .legacy-browser-hidden;
+         it stays in DOM only as reference and is never rendered.
+         Strategy: Holygrade Terminal focuses on Sealed; Top Pulls (curated
+         investment-grade cards, typographic only) launches in Phase 3. -->
+    <div class="top-pulls-hero">
+      <div class="top-pulls-card">
+        <div class="top-pulls-eyebrow">HOLYGRADE TERMINAL · NEXT FEATURE</div>
+        <h1 class="top-pulls-title">Top Pulls</h1>
+        <p class="top-pulls-tagline">Die Karten, die deine Boxen <em>wertvoll machen</em>.</p>
+
+        <div class="top-pulls-grid">
+          <div class="top-pulls-feature">
+            <div class="top-pulls-feature-num">01</div>
+            <div class="top-pulls-feature-title">Kuratiert, nicht durchsucht</div>
+            <div class="top-pulls-feature-desc">Top 50 Investment-Karten, manuell ausgewählt mit Begründung. Keine 8.400 Long-Tail-Karten — nur die, die wirklich Bewegung in den Boxen-Markt bringen.</div>
+          </div>
+          <div class="top-pulls-feature">
+            <div class="top-pulls-feature-num">02</div>
+            <div class="top-pulls-feature-title">Kontext, nicht nur Preis</div>
+            <div class="top-pulls-feature-desc">Jede Karte verlinkt mit "ihrer" Box. Du siehst sofort: <strong>warum</strong> ist OP-05 gerade gefragt? Welche Chase-Karten treiben den Markt?</div>
+          </div>
+          <div class="top-pulls-feature">
+            <div class="top-pulls-feature-num">03</div>
+            <div class="top-pulls-feature-title">30/90/YTD Performance</div>
+            <div class="top-pulls-feature-desc">Wertentwicklung pro Karte mit Liquiditäts-Indikator. Aggregierte Holygrade-Methodologie — deine Daten, nicht zusammenkopiert.</div>
+          </div>
+        </div>
+
+        <div class="top-pulls-meta">
+          <span class="top-pulls-status">
+            <span class="top-pulls-dot"></span>
+            In Vorbereitung · Q2 2026
+          </span>
+          <span class="top-pulls-dim">Pro & Elite · inklusive bei deinem Abo</span>
+        </div>
+
+        <div class="top-pulls-cta-row">
+          <button class="top-pulls-cta-primary" data-tab="sealed">
+            <span>Jetzt zum Sealed-Tracker</span>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2 6h7m-3-3l3 3-3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Legacy 8400-card browser markup — hidden, kept only as code reference -->
+    <div class="legacy-browser-hidden" hidden aria-hidden="true" style="display:none !important;">
     <div class="filter-bar" role="search" aria-label="Card filters">
 
       <div class="filter-group">
@@ -320,10 +366,12 @@
       <div id="browser-pagination"></div>
     </div>
 
+    </div><!-- /.legacy-browser-hidden -->
+
   </section>
 
   <!-- ─── TAB 2: SEALED ─────────────────────────────────────────── -->
-  <section id="panel-sealed" class="tab-panel" role="tabpanel" aria-labelledby="tab-sealed">
+  <section id="panel-sealed" class="tab-panel active" role="tabpanel" aria-labelledby="tab-sealed">
 
     <!-- Filter bar -->
     <div class="filter-bar" role="search" aria-label="Sealed product filters">
