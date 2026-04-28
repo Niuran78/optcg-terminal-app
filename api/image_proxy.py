@@ -45,6 +45,7 @@ ALLOWED_HOSTS = {
     "images.pricecharting.com",
     # "product-images.s3.cardmarket.com",  ← REMOVED 2026-04-28 (legal-risk)
     # "static.cardmarket.com",            ← REMOVED 2026-04-28 (legal-risk)
+    "cdn.shopify.com",                     # Holygrade-owned product photos (image_rights_status='owned')
 }
 
 # Allow-listed image content-types
