@@ -371,10 +371,13 @@
         .then(function (data) {
           var p = data.price || {};
           var price = p.trend_eur;
-          var lowest = p.lowest_eur;
           var avg7 = p.avg_7d_eur;
           var avg30 = p.avg_30d_eur;
           var listings = p.available_listings || 0;
+          // Note: lowest_eur is intentionally NOT shown — it usually represents
+          // damaged boxes, third-country listings, or sketchy sellers. Showing it
+          // makes Holygrade look overpriced when in fact our prices match the
+          // realistic market trend / 7d average.
           var setName = data.set_name || setCode;
           var langDisplay = (data.language || language) === 'JP' ? 'Japanisch' : 'English';
 
@@ -410,10 +413,9 @@
             +     '<span class="pv-price-label">Cardmarket Trend</span>'
             +   '</div>'
             +   '<div class="pv-stats-grid">'
-            +     (lowest != null ? '<div class="pv-stat"><div class="pv-stat-label">Niedrigster Preis</div><div class="pv-stat-value">' + escHtml(fmtEur(lowest)) + '</div></div>' : '')
             +     (avg7 != null ? '<div class="pv-stat"><div class="pv-stat-label">Ø 7 Tage</div><div class="pv-stat-value">' + escHtml(fmtEur(avg7)) + '</div></div>' : '')
             +     (avg30 != null ? '<div class="pv-stat"><div class="pv-stat-label">Ø 30 Tage</div><div class="pv-stat-value">' + escHtml(fmtEur(avg30)) + '</div></div>' : '')
-            +     '<div class="pv-stat"><div class="pv-stat-label">Angebote</div><div class="pv-stat-value">' + listings + '</div></div>'
+            +     '<div class="pv-stat"><div class="pv-stat-label">Aktive Angebote</div><div class="pv-stat-value">' + listings + '</div></div>'
             +   '</div>'
             +   sparkHtml
             +   '<div class="pv-meta">' + escHtml(fmtRel(data.updated_at)) + ' · Live-Daten von Cardmarket</div>'
