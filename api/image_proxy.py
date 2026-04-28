@@ -21,7 +21,19 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/image", tags=["image-proxy"])
 
-# Only allow images from these hosts \u2014 prevents open-redirect / abuse
+# Only allow images from these hosts — prevents open-redirect / abuse.
+#
+# IMPORTANT: Cardmarket S3 hosts were intentionally REMOVED from this list
+# on 2026-04-28 because:
+#   1) Cardmarket AGB §9 prohibits external display of their data without
+#      written consent.
+#   2) The booster-box images on their CDN are Bandai IP, served without
+#      watermark, hotlinked with a faked Referer header from our backend.
+#   3) This is unambiguous AGB-breach + IP-risk — zero-tolerance for
+#      Holygrade Premium-Brand exposure.
+#
+# Replacement: own product photography from Holygrade-owned inventory.
+# See bilder_strategy_analysis.md · Phase F-Hybrid plan.
 ALLOWED_HOSTS = {
     "en.onepiece-cardgame.com",
     "asia-en.onepiece-cardgame.com",
@@ -31,8 +43,8 @@ ALLOWED_HOSTS = {
     "cdn.tcgpricelookup.com",
     "storage.googleapis.com",  # PriceCharting image CDN
     "images.pricecharting.com",
-    "product-images.s3.cardmarket.com",  # Cardmarket sealed product photos
-    "static.cardmarket.com",
+    # "product-images.s3.cardmarket.com",  ← REMOVED 2026-04-28 (legal-risk)
+    # "static.cardmarket.com",            ← REMOVED 2026-04-28 (legal-risk)
 }
 
 # Allow-listed image content-types
@@ -55,7 +67,8 @@ async def proxy_image(url: str = Query(..., description="Absolute image URL")):
     if parsed.hostname not in ALLOWED_HOSTS:
         raise HTTPException(403, f"host not allowed: {parsed.hostname}")
 
-    # Cardmarket S3 blocks generic UAs — mimic a normal browser.
+    # Standard browser UA — no faked Referer (was used to bypass Cardmarket
+    # hotlink protection, which is explicitly against their AGB §9).
     ua = (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 "
         "(KHTML, like Gecko) Version/17.0 Safari/605.1.15"
@@ -65,7 +78,6 @@ async def proxy_image(url: str = Query(..., description="Absolute image URL")):
             headers={
                 "User-Agent": ua,
                 "Accept": "image/avif,image/webp,image/png,image/jpeg,*/*",
-                "Referer": "https://www.cardmarket.com/",
             },
             timeout=15,
             follow_redirects=True,

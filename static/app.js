@@ -828,8 +828,19 @@ function computeSpread(enUsd, euEur) {
 // External card-image CDNs (Bandai, TCGGO, TCGPriceLookup) send
 // `Cross-Origin-Resource-Policy: same-site` which blocks cross-origin <img>
 // loading in Chrome/Safari. We proxy them through our own origin instead.
+//
+// IMPORTANT: Cardmarket S3 URLs are intentionally rejected client-side as of
+// 2026-04-28 — Cardmarket AGB prohibit external display of their images, and
+// the booster-box photos are Bandai IP we don't have license for. Until we
+// replace these with our own studio photography, return empty string so
+// callers fall back to their placeholder.
+function isCardmarketImage(url) {
+  if (!url) return false;
+  return /(?:^|\/\/)([a-z0-9-]+\.)?(?:s3\.)?cardmarket\.com\//i.test(url);
+}
 function proxyImg(url) {
   if (!url) return '';
+  if (isCardmarketImage(url)) return '';   // legal-risk — see comment above
   // Only proxy external HTTP(S) URLs; leave data URIs and our own paths alone.
   if (!/^https?:\/\//i.test(url)) return url;
   return '/api/image/proxy?url=' + encodeURIComponent(url);
@@ -1603,10 +1614,13 @@ function renderSealedGrid(data) {
     return `
     <div class="product-card">
       <div class="product-img-wrap">
-        ${p.image_url
-          ? `<img src="${escHtml(proxyImg(p.image_url))}" alt="${escHtml(p.product_name || '')}" loading="lazy" onerror="this.style.display='none'" />`
-          : `<div class="product-img-placeholder">${getTypeEmoji(p.product_type)}</div>`
-        }
+        ${(() => {
+          const proxied = p.image_url ? proxyImg(p.image_url) : '';
+          if (!proxied) {
+            return `<div class="product-img-placeholder">${getTypeEmoji(p.product_type)}</div>`;
+          }
+          return `<img src="${escHtml(proxied)}" alt="${escHtml(p.product_name || '')}" loading="lazy" onerror="this.outerHTML='<div class=&quot;product-img-placeholder&quot;>${getTypeEmoji(p.product_type)}</div>'" />`;
+        })()}
         <div class="product-type-tag">${escHtml(p.product_type || 'product')}</div>
         <div style="position:absolute;top:8px;left:8px;display:flex;gap:4px;">${langBadge}${liveBadge}</div>
       </div>
