@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Holygrade Terminal — Marktdaten</title>
+  <meta name="description" content="Live-Marktdaten zum Holygrade Sealed-Produkt — Preisverlauf, Trend und Handelsaktivität." />
+  <meta name="robots" content="index, follow" />
+  <link rel="stylesheet" href="/static/style.css" />
+  <style>
+    :root {
+      --bg: #0f1413;
+      --bg-card: #161e1c;
+      --border: #1e2a28;
+      --text: #e8e6e0;
+      --muted: #8a8780;
+      --accent: #00e5c0;
+      --accent-soft: rgba(0, 229, 192, 0.12);
+      --warn: #f5b942;
+    }
+    * { box-sizing: border-box; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      margin: 0; padding: 0;
+      min-height: 100vh;
+    }
+    .pv-container {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 32px 20px 48px 20px;
+    }
+    .pv-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      text-decoration: none;
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+    .pv-back:hover { color: var(--accent); }
+    .pv-brand {
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 11px; font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+    .pv-hero h1 {
+      font-size: 26px; font-weight: 700;
+      margin: 0 0 8px 0;
+      line-height: 1.25;
+    }
+    .pv-hero .pv-subtitle {
+      color: var(--muted);
+      font-size: 14px;
+      margin: 0 0 24px 0;
+    }
+    .pv-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    .pv-set-info {
+      display: flex; gap: 14px; align-items: center;
+      margin-bottom: 18px;
+    }
+    .pv-lang-badge {
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 11px; font-weight: 700;
+      padding: 3px 8px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      border-radius: 4px;
+      letter-spacing: 0.08em;
+    }
+    .pv-set-name {
+      font-weight: 600;
+      font-size: 16px;
+      flex: 1;
+    }
+    .pv-price-row {
+      display: flex; align-items: baseline; gap: 14px;
+      margin: 12px 0;
+    }
+    .pv-price-big {
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 36px;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1;
+    }
+    .pv-price-label {
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 11px; font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .pv-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 14px;
+      margin: 18px 0 12px 0;
+    }
+    .pv-stat {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+    }
+    .pv-stat-label {
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 10px; font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 4px;
+    }
+    .pv-stat-value {
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .pv-spark-wrap {
+      margin: 18px 0;
+    }
+    .pv-spark-label {
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .pv-spark-svg {
+      width: 100%;
+      height: 80px;
+      display: block;
+    }
+    .pv-spark-empty {
+      padding: 14px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+      background: var(--bg);
+      border: 1px dashed var(--border);
+      border-radius: 8px;
+    }
+    .pv-meta {
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.04em;
+      text-align: center;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+      margin-top: 14px;
+    }
+
+    .pv-cta-card {
+      background: linear-gradient(135deg, var(--bg-card) 0%, #182523 100%);
+      border: 1px solid var(--accent-soft);
+      border-radius: 14px;
+      padding: 28px;
+      text-align: center;
+    }
+    .pv-cta-title {
+      font-size: 22px; font-weight: 700;
+      margin: 0 0 8px 0;
+    }
+    .pv-cta-sub {
+      color: var(--muted);
+      margin: 0 0 22px 0;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .pv-cta-features {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px 18px;
+      max-width: 480px;
+      margin: 0 auto 24px auto;
+      text-align: left;
+    }
+    .pv-cta-feature {
+      display: flex; align-items: flex-start; gap: 10px;
+      font-size: 13px;
+      color: var(--text);
+      line-height: 1.4;
+    }
+    .pv-cta-feature::before {
+      content: "✓";
+      color: var(--accent);
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .pv-btn-row {
+      display: flex; gap: 12px; justify-content: center;
+      flex-wrap: wrap;
+    }
+    .pv-btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 12px; font-weight: 700;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      padding: 12px 20px;
+      border-radius: 8px;
+      text-decoration: none;
+      transition: all 120ms ease;
+      cursor: pointer;
+    }
+    .pv-btn-primary {
+      background: var(--accent);
+      color: #0a0a0b;
+      border: 1px solid var(--accent);
+    }
+    .pv-btn-primary:hover {
+      background: #00b89a;
+      transform: translateY(-1px);
+    }
+    .pv-btn-ghost {
+      background: transparent;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+    }
+    .pv-btn-ghost:hover {
+      background: var(--accent);
+      color: #0a0a0b;
+    }
+    .pv-loading {
+      text-align: center;
+      padding: 40px;
+      color: var(--muted);
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .pv-error {
+      background: rgba(245, 185, 66, 0.1);
+      border: 1px solid var(--warn);
+      color: var(--warn);
+      border-radius: 10px;
+      padding: 16px;
+      font-size: 13px;
+      text-align: center;
+    }
+    @media (max-width: 480px) {
+      .pv-container { padding: 20px 14px 36px 14px; }
+      .pv-card { padding: 18px; }
+      .pv-cta-features { grid-template-columns: 1fr; }
+      .pv-price-big { font-size: 28px; }
+      .pv-hero h1 { font-size: 22px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="pv-container">
+    <a class="pv-back" href="https://holygrade.com/" rel="noopener">← Zurück zu holygrade.com</a>
+    <div class="pv-brand">Holygrade Terminal · Live Marktdaten</div>
+
+    <div class="pv-hero">
+      <h1 id="pv-hero-title">Lade Marktdaten…</h1>
+      <p class="pv-subtitle" id="pv-hero-sub">Live-Daten von Cardmarket · Verifiziert vor Veröffentlichung</p>
+    </div>
+
+    <div id="pv-content">
+      <div class="pv-loading">Lade Live-Daten…</div>
+    </div>
+
+    <div class="pv-cta-card">
+      <h2 class="pv-cta-title">Verfolge alle Sets · alle Karten · alle Tage</h2>
+      <p class="pv-cta-sub">
+        Diese Seite zeigt nur ein Set. Im vollen Holygrade Terminal siehst du:
+      </p>
+      <div class="pv-cta-features">
+        <div class="pv-cta-feature">Live-Preise für 8.400+ Karten (JP & EN)</div>
+        <div class="pv-cta-feature">Sealed-Tracker für 21+ Sets mit Sparkline</div>
+        <div class="pv-cta-feature">Holdings & Portfolio-Analyse mit P&amp;L</div>
+        <div class="pv-cta-feature">Arbitrage-Tipps zwischen Marktplätzen</div>
+        <div class="pv-cta-feature">Preis-Alerts und Benachrichtigungen</div>
+        <div class="pv-cta-feature">Marktradar mit Trend-Signalen</div>
+      </div>
+      <div class="pv-btn-row">
+        <a class="pv-btn pv-btn-primary" href="/login.html?signup=1&utm_source=preview" rel="noopener">
+          Kostenlos registrieren
+        </a>
+        <a class="pv-btn pv-btn-ghost" href="/login.html?utm_source=preview" rel="noopener">
+          Bestehender Account · Login
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      // Parse set_code from URL pattern /preview/sealed/OP15?language=JP&type=booster_box
+      var path = window.location.pathname.split('/');
+      var setCode = (path[path.length - 1] || '').toUpperCase();
+      var qs = new URLSearchParams(window.location.search);
+      var language = (qs.get('language') || qs.get('lang') || 'JP').toUpperCase();
+      var productType = qs.get('type') || qs.get('product_type') || 'booster_box';
+
+      var contentEl = document.getElementById('pv-content');
+      var titleEl = document.getElementById('pv-hero-title');
+      var subEl = document.getElementById('pv-hero-sub');
+
+      function fmtEur(v) {
+        if (v === null || v === undefined) return '—';
+        return new Intl.NumberFormat('de-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v) + ' €';
+      }
+      function escHtml(s) {
+        return String(s == null ? '' : s).replace(/[<>&"']/g, function (c) {
+          return { '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+      }
+      function fmtRel(iso) {
+        if (!iso) return '';
+        var d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        var now = Date.now();
+        var diffMs = now - d.getTime();
+        var hr = Math.floor(diffMs / 3600000);
+        if (hr < 1) return 'gerade aktualisiert';
+        if (hr < 24) return 'aktualisiert vor ' + hr + ' Std.';
+        var days = Math.floor(hr / 24);
+        return 'aktualisiert vor ' + days + ' Tagen';
+      }
+      function renderSparkline(points) {
+        if (!points || points.length < 2) return '';
+        var W = 700, H = 80, P = 4;
+        var values = points.map(function (p) { return p.trend || p.price || 0; }).filter(function (v) { return v > 0; });
+        if (values.length < 2) return '';
+        var min = Math.min.apply(null, values);
+        var max = Math.max.apply(null, values);
+        if (min === max) { min = min * 0.95; max = max * 1.05; }
+        var range = max - min;
+        var pts = points.map(function (p, i) {
+          var v = p.trend || p.price || 0;
+          var x = P + (W - 2 * P) * (i / (points.length - 1));
+          var y = H - P - (H - 2 * P) * ((v - min) / range);
+          return x.toFixed(1) + ',' + y.toFixed(1);
+        }).join(' ');
+        return ''
+          + '<svg class="pv-spark-svg" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" aria-hidden="true">'
+          +   '<polyline points="' + pts + '" fill="none" stroke="#00e5c0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />'
+          + '</svg>';
+      }
+
+      var url = '/api/widget/sealed/' + encodeURIComponent(setCode)
+        + '?language=' + encodeURIComponent(language)
+        + '&product_type=' + encodeURIComponent(productType)
+        + '&include_history=30';
+
+      fetch(url, { method: 'GET', credentials: 'omit' })
+        .then(function (r) {
+          if (r.status === 404) throw new Error('NO_DATA');
+          if (!r.ok) throw new Error('HTTP_' + r.status);
+          return r.json();
+        })
+        .then(function (data) {
+          var p = data.price || {};
+          var price = p.trend_eur;
+          var lowest = p.lowest_eur;
+          var avg7 = p.avg_7d_eur;
+          var avg30 = p.avg_30d_eur;
+          var listings = p.available_listings || 0;
+          var setName = data.set_name || setCode;
+          var langDisplay = (data.language || language) === 'JP' ? 'Japanisch' : 'English';
+
+          // Hero
+          titleEl.textContent = setName + ' · ' + langDisplay;
+          subEl.textContent = (data.product_type === 'case' ? 'Booster Case · ' : 'Booster Display · ') + 'Live-Daten von Cardmarket';
+
+          // Sparkline
+          var sparkHtml = '';
+          var historyPoints = (data.history && Array.isArray(data.history.points)) ? data.history.points : [];
+          if (historyPoints.length >= 2) {
+            sparkHtml = ''
+              + '<div class="pv-spark-wrap">'
+              +   '<div class="pv-spark-label">Marktentwicklung · letzte ' + historyPoints.length + ' Tage</div>'
+              +   renderSparkline(historyPoints)
+              + '</div>';
+          } else {
+            sparkHtml = ''
+              + '<div class="pv-spark-wrap">'
+              +   '<div class="pv-spark-label">Marktentwicklung</div>'
+              +   '<div class="pv-spark-empty">Preisverlauf wird aufgebaut · noch nicht genug Datentage</div>'
+              + '</div>';
+          }
+
+          var html = ''
+            + '<div class="pv-card">'
+            +   '<div class="pv-set-info">'
+            +     '<span class="pv-lang-badge">' + escHtml(data.language || language) + '</span>'
+            +     '<span class="pv-set-name">' + escHtml(setName) + '</span>'
+            +   '</div>'
+            +   '<div class="pv-price-row">'
+            +     '<span class="pv-price-big">' + escHtml(fmtEur(price)) + '</span>'
+            +     '<span class="pv-price-label">Cardmarket Trend</span>'
+            +   '</div>'
+            +   '<div class="pv-stats-grid">'
+            +     (lowest != null ? '<div class="pv-stat"><div class="pv-stat-label">Niedrigster Preis</div><div class="pv-stat-value">' + escHtml(fmtEur(lowest)) + '</div></div>' : '')
+            +     (avg7 != null ? '<div class="pv-stat"><div class="pv-stat-label">Ø 7 Tage</div><div class="pv-stat-value">' + escHtml(fmtEur(avg7)) + '</div></div>' : '')
+            +     (avg30 != null ? '<div class="pv-stat"><div class="pv-stat-label">Ø 30 Tage</div><div class="pv-stat-value">' + escHtml(fmtEur(avg30)) + '</div></div>' : '')
+            +     '<div class="pv-stat"><div class="pv-stat-label">Angebote</div><div class="pv-stat-value">' + listings + '</div></div>'
+            +   '</div>'
+            +   sparkHtml
+            +   '<div class="pv-meta">' + escHtml(fmtRel(data.updated_at)) + ' · Live-Daten von Cardmarket</div>'
+            + '</div>';
+
+          contentEl.innerHTML = html;
+        })
+        .catch(function (e) {
+          titleEl.textContent = 'Marktdaten zurzeit nicht verfügbar';
+          subEl.textContent = 'Wir sammeln gerade Daten für dieses Set';
+          contentEl.innerHTML = ''
+            + '<div class="pv-card">'
+            +   '<div class="pv-error">'
+            +     'Aktuell liegen keine Live-Daten für ' + escHtml(setCode) + ' vor. '
+            +     'Wir arbeiten daran. Im vollen Terminal findest du hunderte andere Sets und Karten mit Live-Marktdaten.'
+            +   '</div>'
+            + '</div>';
+        });
+    })();
+  </script>
+</body>
+</html>

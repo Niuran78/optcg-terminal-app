@@ -401,6 +401,19 @@ if os.path.exists(static_dir):
         Usage: /widget?set=OP13 or /widget?sku=OP13-BOX-JP"""
         return FileResponse(os.path.join(static_dir, "product-widget.html"))
 
+    @app.get("/preview/sealed/{set_code}", include_in_schema=False)
+    async def serve_preview_sealed(set_code: str):
+        """Public preview page for a single sealed set — no auth required.
+
+        Linked from the holygrade.com Shopify widget. Shows live market data
+        for the specific set the customer just bought, then funnels them into
+        signup/login for full terminal access.
+
+        Data comes from /api/widget/sealed/{set_code} which is already public.
+        Path param consumed by client-side JS.
+        """
+        return FileResponse(os.path.join(static_dir, "preview-sealed.html"))
+
     @app.get("/teaser", include_in_schema=False)
     async def serve_teaser():
         return FileResponse(os.path.join(static_dir, "teaser.html"))
