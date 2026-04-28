@@ -3400,6 +3400,164 @@ a.price-link:hover {
   .sealed-section-grid { grid-template-columns: 1fr; }
 }
 
+/* ===== Phase 2: Sealed-Card Bloomberg/Holygrade Re-Brand ===== */
+
+/* Performance row (▲ +1,7% · 30 TAGE) */
+.sealed-perf-row {
+  display: flex; align-items: baseline; gap: 8px;
+  margin-top: 4px;
+  min-height: 22px;
+}
+.sealed-perf-value {
+  font-family: var(--font-mono);
+  font-size: 18px; font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  display: inline-flex; align-items: baseline; gap: 4px;
+}
+.sealed-perf-value.is-up   { color: var(--accent); }
+.sealed-perf-value.is-down { color: #ff6b6b; }
+.sealed-perf-value.is-flat { color: var(--text-2); }
+.sealed-perf-label {
+  font-family: var(--font-mono);
+  font-size: 9px; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.08em;
+}
+
+/* Sparkline mini-chart — always-visible 50px-tall canvas */
+.sealed-spark {
+  position: relative;
+  width: 100%;
+  height: 50px;
+  margin-top: 4px;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+.sealed-spark-svg {
+  width: 100%; height: 100%;
+  display: block;
+}
+.sealed-spark-loading {
+  font-family: var(--font-mono);
+  font-size: 10px; color: var(--muted);
+  letter-spacing: 0.12em;
+}
+.sealed-spark-empty {
+  font-family: var(--font-mono);
+  font-size: 10px; color: var(--muted);
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+/* Liquidity caption ("316 Angebote · Markt-Liquidität") */
+.sealed-liquidity {
+  font-family: var(--font-mono);
+  font-size: 10px; color: var(--text-2);
+  letter-spacing: 0.04em;
+  margin-top: 2px;
+}
+.sealed-liquidity-sep { color: var(--muted); margin: 0 4px; }
+
+/* Divider between data and CTA */
+.sealed-card-divider {
+  height: 1px;
+  margin: 8px 0 6px;
+  background: linear-gradient(to right, transparent, var(--border-2), transparent);
+}
+
+/* Primary CTA pill (replaces old sealed-card-cta) */
+.sealed-card-cta-pill {
+  flex: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  text-decoration: none;
+  transition: background var(--t-fast), border-color var(--t-fast), transform var(--t-fast);
+  text-align: center;
+  line-height: 1.2;
+}
+.sealed-card-cta-buy {
+  background: var(--accent);
+  color: #0a0a0b;
+  border: 1px solid var(--accent);
+}
+.sealed-card-cta-buy:hover {
+  background: var(--accent-dim);
+  border-color: var(--accent-dim);
+  transform: translateY(-1px);
+}
+.sealed-card-cta-buy .sealed-cta-action { font-weight: 800; }
+.sealed-card-cta-buy .sealed-cta-price  { font-weight: 700; }
+.sealed-card-cta-buy .sealed-cta-qty    { font-weight: 600; opacity: 0.85; }
+.sealed-card-cta-buy .sealed-cta-sep    { opacity: 0.55; }
+
+.sealed-card-cta-soldout {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--accent-dim);
+}
+.sealed-card-cta-soldout:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: translateY(-1px);
+}
+.sealed-card-cta-soldout .sealed-cta-arrow { color: var(--accent); }
+
+.sealed-card-cta-empty {
+  background: var(--surface-2);
+  color: var(--muted);
+  border: 1px dashed var(--border-2);
+  cursor: default;
+}
+
+/* Markt-Referenz footer (Cardmarket attribution — NEVER as primary CTA) */
+.sealed-card-footer {
+  margin-top: 6px;
+  padding-top: 4px;
+  text-align: center;
+}
+.sealed-card-ref {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: none;
+  border-bottom: 1px dashed transparent;
+  transition: color var(--t-fast), border-color var(--t-fast);
+}
+.sealed-card-ref:hover {
+  color: var(--text-2);
+  border-bottom-color: var(--border-2);
+}
+.sealed-card-ref-muted {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: default;
+}
+
+/* Mobile tweaks (≤640px) */
+@media (max-width: 640px) {
+  .sealed-perf-value { font-size: 16px; }
+  .sealed-spark { height: 42px; }
+  .sealed-card-cta-pill {
+    font-size: 9px;
+    padding: 9px 10px;
+    gap: 4px;
+    letter-spacing: 0.04em;
+  }
+  .sealed-card-cta-buy .sealed-cta-qty { display: none; }
+}
+
 /* ─── Briefing Top (Daily Briefing component above Overview) ─────── */
 .briefing-top {
   margin-bottom: 24px;

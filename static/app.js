@@ -1306,11 +1306,20 @@ async function loadSealedData() {
   params.set('live_only', showAll ? 'false' : 'true');
 
   try {
-    const data = await apiFetch(`/api/cards/sealed?${params}`);
+    // Phase 2: parallel-load sealed list + Holygrade-Shop inventory map.
+    // shop-stock is a public endpoint (no auth), so we don't fail the page
+    // if it errors — we just render without buy-CTAs.
+    const [data, shopStock] = await Promise.all([
+      apiFetch(`/api/cards/sealed?${params}`),
+      fetch('/api/sealed/shop-stock').then(r => r.ok ? r.json() : { items: {} }).catch(() => ({ items: {} })),
+    ]);
     State.sealed.products = data.products || [];
     State.sealed.total    = data.total || 0;
     State.sealed.lastData = data;
+    State.sealed.shopStock = (shopStock && shopStock.items) || {};
     renderSealedSections(data);
+    // Hydrate cards async with 30d history → sparkline + performance %.
+    hydrateSealedCardsWithHistory();
     try {
       trackEvent('sealed_view_load', {
         total: data.total, tier: data.tier, live_only: data.live_only,
@@ -1411,6 +1420,145 @@ function renderSealedSections(data) {
   });
 }
 
+/* ──────────────────────────────────────────────────────────────────────
+ * Phase 2: Sealed-Card render — Bloomberg/Holygrade-Style.
+ *   • "Holygrade Trend" statt "Cardmarket Trend"
+ *   • Performance-Indikator (▲ +1,7% · 30 Tage) statt €-Werte
+ *   • Mini-Sparkline (SVG) statt Lowest/7d Ø/Listings-Reihe
+ *   • "In Warenkorb · CHF X · Y auf Lager" als primärer CTA
+ *     → fällt zurück auf "Bei Holygrade kaufen" / "Nicht im Holygrade-Shop"
+ *   • Cardmarket nur noch klein als "Markt-Referenz"-Footer
+ * ────────────────────────────────────────────────────────────────────── */
+
+/* Schweizer Zahlenformat: Komma als Dezimaltrenner. */
+function swissPct(v, withSign) {
+  if (v == null || isNaN(v)) return '–';
+  const sign = withSign && v > 0 ? '+' : (v < 0 ? '–' : '');
+  return sign + Math.abs(v).toFixed(1).replace('.', ',') + '%';
+}
+function swissChf(v) {
+  if (v == null || isNaN(v)) return '–';
+  const n = Number(v);
+  return 'CHF ' + n.toFixed(2).replace('.', ',');
+}
+function swissArrow(v) {
+  if (v == null || isNaN(v) || Math.abs(v) < 0.05) return '●';
+  return v > 0 ? '▲' : '▼';
+}
+
+/* From `[{date, trend_eur}, …]` produce `[{date, value%}, …]` indexed at 0%. */
+function computeIndexSeries(points) {
+  if (!Array.isArray(points) || points.length === 0) return [];
+  const clean = points
+    .map(p => ({ date: p.date, trend: (p.trend_eur != null ? p.trend_eur : p.trend) }))
+    .filter(p => p.trend != null && p.trend > 0);
+  if (clean.length === 0) return [];
+  const base = clean[0].trend;
+  return clean.map(p => ({
+    date: p.date,
+    value: ((p.trend - base) / base) * 100,
+  }));
+}
+
+/* Compact SVG sparkline for in-card use. ~60×42 viewBox, no axes/labels. */
+function renderSparklineSvg(series) {
+  if (!series || series.length < 2) {
+    return '<div class="sealed-spark-empty">Daten werden gesammelt</div>';
+  }
+  const W = 220, H = 50, padX = 2, padY = 4;
+  const cw = W - padX * 2;
+  const ch = H - padY * 2;
+  const values = series.map(s => s.value);
+  let minV = Math.min.apply(null, values);
+  let maxV = Math.max.apply(null, values);
+  if (minV > 0) minV = 0;
+  if (maxV < 0) maxV = 0;
+  const headroom = (maxV - minV) * 0.18 || 1;
+  minV -= headroom * 0.3;
+  maxV += headroom * 0.3;
+  if (minV === maxV) { minV -= 1; maxV += 1; }
+  const xAt = i => padX + cw * (i / (series.length - 1));
+  const yAt = v => padY + ch * (1 - (v - minV) / (maxV - minV));
+  const coords = series.map((s, i) => [xAt(i), yAt(s.value)]);
+  const pathD = coords.map((c, i) => (i === 0 ? 'M' : 'L') + c[0].toFixed(1) + ',' + c[1].toFixed(1)).join(' ');
+  const areaD = pathD
+    + ' L' + coords[coords.length - 1][0].toFixed(1) + ',' + (padY + ch).toFixed(1)
+    + ' L' + coords[0][0].toFixed(1) + ',' + (padY + ch).toFixed(1) + ' Z';
+  const last = series[series.length - 1].value;
+  const isDown = last < -0.05;
+  const lineColor = isDown ? '#ff6b6b' : '#00e5c0';
+  const fillId = 'spk-' + Math.random().toString(36).slice(2, 9);
+  const yZero = yAt(0);
+  return ''
+    + '<svg class="sealed-spark-svg" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img" aria-label="30-Tage-Wertentwicklung">'
+    +   '<defs>'
+    +     '<linearGradient id="' + fillId + '" x1="0" y1="0" x2="0" y2="1">'
+    +       '<stop offset="0%" stop-color="' + lineColor + '" stop-opacity="0.32"/>'
+    +       '<stop offset="100%" stop-color="' + lineColor + '" stop-opacity="0"/>'
+    +     '</linearGradient>'
+    +   '</defs>'
+    +   '<line class="sealed-spark-zero" x1="' + padX + '" y1="' + yZero.toFixed(1) + '" x2="' + (W - padX) + '" y2="' + yZero.toFixed(1) + '" stroke="rgba(255,255,255,0.08)" stroke-dasharray="2,3"/>'
+    +   '<path d="' + areaD + '" fill="url(#' + fillId + ')"/>'
+    +   '<path d="' + pathD + '" fill="none" stroke="' + lineColor + '" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>'
+    + '</svg>';
+}
+
+/* Map terminal product_type → widget endpoint type-param. */
+function productTypeToWidget(pt) {
+  const t = (pt || 'booster box').toLowerCase();
+  if (t === 'booster box') return 'booster_box';
+  if (t === 'case') return 'case';
+  if (t === 'booster') return 'booster';
+  return t.replace(' ', '_');
+}
+
+/* Build the shop-stock lookup key matching the backend `_make_key`. */
+function sealedShopKey(setCode, lang, ptype) {
+  return (setCode || '').toUpperCase() + ':'
+    + (lang || 'JP').toUpperCase() + ':'
+    + (ptype || 'booster box').toLowerCase();
+}
+
+/* Render the primary CTA based on shop-stock match. */
+function renderSealedCardCta(p, lang) {
+  const stock = (State.sealed && State.sealed.shopStock) || {};
+  const key = sealedShopKey(p.set_code, lang, p.product_type);
+  const entry = stock[key];
+  if (!entry) {
+    return '<div class="sealed-card-cta-pill sealed-card-cta-empty" title="Dieses Produkt ist aktuell nicht im Holygrade-Shop gelistet.">Nicht im Holygrade-Shop</div>';
+  }
+  if (entry.in_stock && entry.cart_url) {
+    const qtyLabel = entry.qty > 0 ? entry.qty + ' auf Lager' : 'auf Lager';
+    return ''
+      + '<a class="sealed-card-cta-pill sealed-card-cta-buy" '
+      +   'href="' + escHtml(entry.cart_url) + '" '
+      +   'data-sealed-buy '
+      +   'data-set-code="' + escHtml(p.set_code || '') + '" '
+      +   'data-lang="' + escHtml(lang) + '" '
+      +   'data-type="' + escHtml(p.product_type || '') + '" '
+      +   'rel="noopener">'
+      +   '<span class="sealed-cta-action">In Warenkorb</span>'
+      +   '<span class="sealed-cta-sep">·</span>'
+      +   '<span class="sealed-cta-price">' + escHtml(swissChf(entry.price_chf)) + '</span>'
+      +   '<span class="sealed-cta-sep">·</span>'
+      +   '<span class="sealed-cta-qty">' + escHtml(qtyLabel) + '</span>'
+      + '</a>';
+  }
+  // out of stock but listed → product link
+  const productUrl = entry.product_url || ('https://holygrade.com/products/' + (entry.handle || ''));
+  return ''
+    + '<a class="sealed-card-cta-pill sealed-card-cta-soldout" '
+    +   'href="' + escHtml(productUrl) + '" '
+    +   'data-sealed-buy data-soldout="true" '
+    +   'data-set-code="' + escHtml(p.set_code || '') + '" '
+    +   'data-lang="' + escHtml(lang) + '" '
+    +   'data-type="' + escHtml(p.product_type || '') + '" '
+    +   'target="_blank" rel="noopener">'
+    +   '<span class="sealed-cta-action">Bei Holygrade kaufen</span>'
+    +   '<span class="sealed-cta-arrow">↗</span>'
+    + '</a>';
+}
+
 /* Render a single sealed-card tile. */
 function renderSealedCard(p) {
   const lang = (p.language || 'JP').toUpperCase();
@@ -1432,48 +1580,125 @@ function renderSealedCard(p) {
     const pos = p.ev_pct >= 0;
     const sign = pos ? '+' : '';
     const cls = pos ? 'ev-positive' : 'ev-negative';
-    const tip = `Estimated value if opened: €${(p.ev_eur || 0).toFixed(2)} vs box price €${(p.cm_live_trend || 0).toFixed(2)} (estimate)`;
+    const tip = `Geschätzter Wert beim Öffnen: €${(p.ev_eur || 0).toFixed(2)} vs Box-Preis €${(p.cm_live_trend || 0).toFixed(2)} (Schätzung)`;
     evBadge = `<button class="sealed-ev-badge ${cls}" data-sealed-ev data-set-code="${escHtml(p.set_code)}" data-lang="${escHtml(lang)}" data-type="${escHtml(p.product_type || 'booster box')}" title="${escHtml(tip)}">EV ${sign}${p.ev_pct.toFixed(0)}%</button>`;
   }
 
-  const cmLink = p.cm_live_url || p.links?.cardmarket || '';
-  const updated = p.cm_live_updated_at ? formatRelativeTime(p.cm_live_updated_at) : '';
-  const listings = p.cm_live_available != null ? `${p.cm_live_available} listings` : '';
-  const lowest = p.cm_live_lowest != null ? `Lowest ${fmt.eur(p.cm_live_lowest)}` : '';
-  const avg7d = p.cm_live_7d_avg != null ? `7d Ø ${fmt.eur(p.cm_live_7d_avg)}` : '';
-  const trendPrice = p.eu_price != null ? fmt.eur(p.eu_price) : '—';
+  const cmLink = p.cm_live_url || (p.links && p.links.cardmarket) || '';
+  const listings = p.cm_live_available != null ? p.cm_live_available + ' Angebote' : '';
 
-  return `
-    <div class="sealed-card" data-sealed-card data-set-code="${escHtml(p.set_code || '')}" data-lang="${escHtml(lang)}" data-type="${escHtml(p.product_type || '')}">
-      <div class="sealed-card-img">
-        ${sealedImg(p.image_url, p.product_name)}
-        <div class="sealed-card-badges-tl">${langBadge}${liveBadge}</div>
-        <div class="sealed-card-badges-tr">${spreadBadge}${evBadge}</div>
-      </div>
-      <div class="sealed-card-body">
-        <div class="sealed-card-title">${escHtml(p.product_name || 'Sealed Product')}</div>
-        <div class="sealed-card-set">
-          <span class="set-pill">${escHtml(p.set_code || '')}</span>
-          <span class="sealed-card-setname">${escHtml(p.set_name || '')}</span>
-        </div>
-        <div class="sealed-card-price-row">
-          <div class="sealed-card-price-main">${trendPrice}</div>
-          <div class="sealed-card-price-label">Cardmarket trend</div>
-        </div>
-        <div class="sealed-card-stats">
-          ${lowest ? `<span>${lowest}</span>` : ''}
-          ${avg7d ? `<span>${avg7d}</span>` : ''}
-          ${listings ? `<span>${listings}</span>` : ''}
-        </div>
-        ${updated ? `<div class="sealed-card-updated">Updated ${escHtml(updated)}</div>` : ''}
-        <div class="sealed-card-actions">
-          ${cmLink
-            ? `<a class="sealed-card-cta" href="${escHtml(cmLink)}" target="_blank" rel="noopener nofollow">View on Cardmarket ↗</a>`
-            : `<span class="sealed-card-cta sealed-card-cta-disabled">No Cardmarket link</span>`}
-        </div>
-      </div>
-    </div>
-  `;
+  // CTA derived from shop-stock map (already loaded at page level)
+  const ctaHtml = renderSealedCardCta(p, lang);
+
+  // Performance + sparkline are placeholders — hydrated async via
+  // hydrateSealedCardsWithHistory().
+  const placeholderIndex = ''
+    + '<div class="sealed-perf-row" data-sealed-perf>'
+    +   '<div class="sealed-perf-value mono is-flat">●  –</div>'
+    +   '<div class="sealed-perf-label mono">30 TAGE</div>'
+    + '</div>';
+  const placeholderSpark = ''
+    + '<div class="sealed-spark" data-sealed-spark>'
+    +   '<div class="sealed-spark-loading">…</div>'
+    + '</div>';
+  const liquidity = listings
+    ? '<div class="sealed-liquidity mono">' + escHtml(listings) + ' <span class="sealed-liquidity-sep">·</span> Markt-Liquidität</div>'
+    : '<div class="sealed-liquidity mono">Markt-Daten</div>';
+
+  // Footer "Markt-Referenz" (legal — Cardmarket attribution required by
+  // their ToS) — small, grey, NEVER as a primary CTA.
+  const refFooter = cmLink
+    ? '<a class="sealed-card-ref" href="' + escHtml(cmLink) + '" target="_blank" rel="noopener nofollow" title="Quelle der Preisdaten (extern)">Markt-Referenz: Cardmarket ↗</a>'
+    : '<span class="sealed-card-ref sealed-card-ref-muted">Markt-Referenz: Cardmarket</span>';
+
+  return ''
+    + '<div class="sealed-card" data-sealed-card '
+    +   'data-set-code="' + escHtml(p.set_code || '') + '" '
+    +   'data-lang="' + escHtml(lang) + '" '
+    +   'data-type="' + escHtml(p.product_type || '') + '">'
+    +   '<div class="sealed-card-img">'
+    +     sealedImg(p.image_url, p.product_name)
+    +     '<div class="sealed-card-badges-tl">' + langBadge + liveBadge + '</div>'
+    +     '<div class="sealed-card-badges-tr">' + spreadBadge + evBadge + '</div>'
+    +   '</div>'
+    +   '<div class="sealed-card-body">'
+    +     '<div class="sealed-card-title">' + escHtml(p.product_name || 'Sealed Product') + '</div>'
+    +     '<div class="sealed-card-set">'
+    +       '<span class="set-pill">' + escHtml(p.set_code || '') + '</span>'
+    +       '<span class="sealed-card-setname">' + escHtml(p.set_name || '') + '</span>'
+    +     '</div>'
+    +     placeholderIndex
+    +     placeholderSpark
+    +     liquidity
+    +     '<div class="sealed-card-divider"></div>'
+    +     '<div class="sealed-card-actions">' + ctaHtml + '</div>'
+    +     '<div class="sealed-card-footer">' + refFooter + '</div>'
+    +   '</div>'
+    + '</div>';
+}
+
+/* After initial render, fetch 30d history per card in parallel and patch the
+ * placeholder Performance + Sparkline into the existing DOM. Uses
+ * Promise.allSettled so one failed fetch doesn't block the rest. */
+async function hydrateSealedCardsWithHistory() {
+  const cards = Array.from(document.querySelectorAll('#sealed-sections [data-sealed-card]'));
+  if (cards.length === 0) return;
+
+  // De-duplicate by (set, lang, type) since some sets may render multiple
+  // identical entries — same widget call serves both.
+  const seen = new Map();
+  cards.forEach(card => {
+    const sc = card.dataset.setCode;
+    const lg = card.dataset.lang;
+    const tp = card.dataset.type;
+    if (!sc || !lg || !tp) return;
+    const k = sc + '|' + lg + '|' + tp;
+    if (!seen.has(k)) seen.set(k, []);
+    seen.get(k).push(card);
+  });
+
+  const tasks = Array.from(seen.entries()).map(([key, cardEls]) => {
+    const [sc, lg, tp] = key.split('|');
+    const url = '/api/widget/sealed/' + encodeURIComponent(sc)
+      + '?language=' + encodeURIComponent(lg)
+      + '&type=' + encodeURIComponent(productTypeToWidget(tp))
+      + '&include_history=30';
+    return fetch(url, { headers: { 'Accept': 'application/json' } })
+      .then(r => (r.ok ? r.json() : null))
+      .then(body => {
+        const points = (body && body.history && body.history.points) || [];
+        const series = computeIndexSeries(points);
+        cardEls.forEach(card => applyHistoryToCard(card, series));
+      })
+      .catch(() => {
+        // silent — the card already has placeholder text
+      });
+  });
+
+  await Promise.allSettled(tasks);
+}
+
+function applyHistoryToCard(card, series) {
+  const perfEl = card.querySelector('[data-sealed-perf]');
+  const sparkEl = card.querySelector('[data-sealed-spark]');
+  if (!perfEl || !sparkEl) return;
+
+  if (!series || series.length < 2) {
+    perfEl.innerHTML = '<div class="sealed-perf-value mono is-flat">●  Noch keine Daten</div>'
+      + '<div class="sealed-perf-label mono">30 TAGE</div>';
+    sparkEl.innerHTML = '<div class="sealed-spark-empty">Daten werden gesammelt</div>';
+    return;
+  }
+  const last = series[series.length - 1].value;
+  const arrow = swissArrow(last);
+  let cls = 'sealed-perf-value mono';
+  if (last > 0.05) cls += ' is-up';
+  else if (last < -0.05) cls += ' is-down';
+  else cls += ' is-flat';
+  perfEl.innerHTML = ''
+    + '<div class="' + cls + '">' + arrow + '  ' + escHtml(swissPct(last, true)) + '</div>'
+    + '<div class="sealed-perf-label mono">30 TAGE · ' + series.length + ' DATENTAGE</div>';
+  sparkEl.innerHTML = renderSparklineSvg(series);
 }
 
 function formatRelativeTime(iso) {

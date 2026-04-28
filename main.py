@@ -34,6 +34,7 @@ from api.widget_public import router as widget_router
 from api.admin import router as admin_router
 from api.admin_pricing import router as admin_pricing_router
 from api.shopify_hooks import router as shopify_router
+from api.sealed_shop import router as sealed_shop_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -293,6 +294,7 @@ app.include_router(alerts_router)
 app.include_router(admin_router)
 app.include_router(admin_pricing_router)
 app.include_router(shopify_router)  # Phase C — purchase webhook + claim flow
+app.include_router(sealed_shop_router)  # Phase 2 — public Shopify inventory map for sealed cards
 
 
 # Health check
