@@ -1143,7 +1143,7 @@ function renderBrowserTable(data) {
     summaryEl.innerHTML = `
       <span><strong>${fmt.int(total)}</strong> tradable cards</span>
       <span>Page <strong>${Math.floor(State.browser.offset / 50) + 1}</strong></span>
-      <span style="margin-left:auto;">All entries have verified Cardmarket data</span>
+      <span style="margin-left:auto;">Alle Einträge mit verifizierten Live-Marktdaten</span>
     `;
   }
 
@@ -1206,7 +1206,7 @@ function renderBrowserTable(data) {
         <td data-label="Set"><span class="set-pill">${escHtml(c.set_code || '')}</span></td>
         <td data-label="Rarity">${escHtml(c.rarity || '')}</td>
         <td data-label="Liquidity">${liq}</td>
-        <td data-label="Cardmarket">${priceCell}</td>
+        <td data-label="Marktpreis">${priceCell}</td>
         <td data-label="7d Δ">${deltaCell}</td>
       </tr>`;
   });
@@ -2011,8 +2011,8 @@ function renderSealedGrid(data) {
       : `<span style="background:rgba(201,168,76,0.15);color:#c9a84c;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:0.05em;">🇯🇵 JP</span>`;
     // LIVE badge: prominently show when we have a real Cardmarket trend
     const liveBadge = p.has_live
-      ? `<span title="Live Cardmarket price (scraped within 24h)" style="background:rgba(0,229,192,0.18);color:#00e5c0;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:800;letter-spacing:0.08em;border:1px solid rgba(0,229,192,0.35);">🎯 LIVE</span>`
-      : `<span title="Reference price only — no live Cardmarket data yet" style="background:rgba(255,255,255,0.05);color:#9aa0a6;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:0.08em;border:1px solid rgba(255,255,255,0.08);">ref</span>`;
+      ? `<span title="Live-Marktpreis (aktualisiert innerhalb 24h)" style="background:rgba(0,229,192,0.18);color:#00e5c0;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:800;letter-spacing:0.08em;border:1px solid rgba(0,229,192,0.35);">🎯 LIVE</span>`
+      : `<span title="Referenzpreis — noch keine Live-Daten" style="background:rgba(255,255,255,0.05);color:#9aa0a6;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:0.08em;border:1px solid rgba(255,255,255,0.08);">ref</span>`;
     // Prefer the direct scraped Cardmarket URL when we have one
     const cmLink = p.cm_live_url || p.links?.cardmarket;
     return `
@@ -2041,7 +2041,7 @@ function renderSealedGrid(data) {
           <div class="product-price-main">${fmt.eurAuto(p.eu_price)}</div>
           <div class="product-price-stats">
             ${p.cm_live_lowest != null ? `<span title="Lowest current listing">From ${fmt.eurAuto(p.cm_live_lowest)}</span>` : ''}
-            ${p.cm_live_available != null ? `<span title="Items available on Cardmarket">${p.cm_live_available} offers</span>` : ''}
+            ${p.cm_live_available != null ? `<span title="Aktive Angebote">${p.cm_live_available} Angebote</span>` : ''}
             ${p.eu_7d_avg != null && p.eu_7d_avg !== p.eu_price ? `<span>7d ${fmt.eurAuto(p.eu_7d_avg)}</span>` : ''}
             ${!p.has_live && p.en_price_usd != null ? `<span>USD ${fmt.usd(p.en_price_usd)}</span>` : ''}
             ${p.eu_trend ? trendIcon(p.eu_trend) : ''}
@@ -2049,7 +2049,7 @@ function renderSealedGrid(data) {
           ${p.eu_source ? `<div style="font-family:var(--font-mono);font-size:9px;color:${p.has_live ? 'var(--accent,#00e5c0)' : 'var(--muted)'};margin-top:4px;">${escHtml(p.eu_source)}</div>` : ''}
         </div>
         ${cmLink
-          ? `<a class="product-link" href="${cmLink}" target="_blank" rel="noopener nofollow" title="Buy on Cardmarket"><span>↗</span> Buy on Cardmarket</a>`
+          ? `<a class="product-link" href="${cmLink}" target="_blank" rel="noopener nofollow" title="Zum Marktplatz"><span>↗</span> Zum Marktplatz</a>`
           : p.links?.pricecharting
             ? `<a class="product-link" href="${p.links.pricecharting}" target="_blank" rel="noopener nofollow" title="View on PriceCharting"><span>↗</span> View on PriceCharting</a>`
             : `<span class="product-link" style="opacity:0.4;cursor:default;">No listing available</span>`}
@@ -2233,7 +2233,7 @@ function renderArbitrageTable(opps) {
         <td class="col-en">
           <div class="price-cell">
             ${o.links?.cardmarket_jp
-              ? `<a class="price-val price-link" href="${o.links.cardmarket_jp}" target="_blank" rel="noopener nofollow" title="Buy JP on Cardmarket">${fmt.eurAuto(o.jp_price_eur)} ↗</a>`
+              ? `<a class="price-val price-link" href="${o.links.cardmarket_jp}" target="_blank" rel="noopener nofollow" title="JP kaufen">${fmt.eurAuto(o.jp_price_eur)} ↗</a>`
               : `<div class="price-val">${fmt.eurAuto(o.jp_price_eur)}</div>`}
             <div class="price-sub">${o.jp_source === 'live' ? '<span class="live-badge">🎯 LIVE</span>' : '🇯🇵 Reference'}</div>
           </div>
@@ -2241,7 +2241,7 @@ function renderArbitrageTable(opps) {
         <td class="col-eu">
           <div class="price-cell">
             ${o.links?.cardmarket_en
-              ? `<a class="price-val price-link" href="${o.links.cardmarket_en}" target="_blank" rel="noopener nofollow" title="Sell on Cardmarket EN">${fmt.eurAuto(o.en_price_eur)} ↗</a>`
+              ? `<a class="price-val price-link" href="${o.links.cardmarket_en}" target="_blank" rel="noopener nofollow" title="EN verkaufen">${fmt.eurAuto(o.en_price_eur)} ↗</a>`
               : `<div class="price-val">${fmt.eurAuto(o.en_price_eur)}</div>`}
             <div class="price-sub">${o.en_source === 'live' ? '<span class="live-badge">🎯 LIVE</span>' : '🇬🇧 Reference'}</div>
           </div>
@@ -2258,8 +2258,8 @@ function renderArbitrageTable(opps) {
         <td>
           <div style="display:flex;flex-direction:column;gap:2px;">
             ${o.links?.tcgplayer ? `<a class="action-btn action-btn-tcg" href="${o.links.tcgplayer}" target="_blank" rel="noopener nofollow" title="Buy on TCGPlayer (EN)">TCGPlayer ↗</a>` : ''}
-            ${o.links?.cardmarket_en ? `<a class="action-btn action-btn-cm-en" href="${o.links.cardmarket_en}" target="_blank" rel="noopener nofollow" title="Buy on Cardmarket (EN)">CM EN ↗</a>` : ''}
-            ${o.links?.cardmarket_jp ? `<a class="action-btn action-btn-cm-jp" href="${o.links.cardmarket_jp}" target="_blank" rel="noopener nofollow" title="Buy on Cardmarket (JP)">CM JP ↗</a>` : ''}
+            ${o.links?.cardmarket_en ? `<a class="action-btn action-btn-cm-en" href="${o.links.cardmarket_en}" target="_blank" rel="noopener nofollow" title="EN kaufen">CM EN ↗</a>` : ''}
+            ${o.links?.cardmarket_jp ? `<a class="action-btn action-btn-cm-jp" href="${o.links.cardmarket_jp}" target="_blank" rel="noopener nofollow" title="JP kaufen">CM JP ↗</a>` : ''}
           </div>
         </td>
       </tr>
@@ -2620,7 +2620,7 @@ async function loadPriceHistory(card, days) {
     const datasets = [];
     if (euPrices.some(v => v != null)) {
       datasets.push({
-        label: 'EU Cardmarket 7d Avg',
+        label: 'EU Markt 7d Avg',
         data: euPrices,
         borderColor: '#3b82f6',
         backgroundColor: 'rgba(59,130,246,0.1)',
@@ -2969,7 +2969,7 @@ function renderAutocomplete(results) {
       ? r.cm_live_trend
       : (r.eu_cardmarket_7d_avg != null ? r.eu_cardmarket_7d_avg : null);
     const priceLabel = r.has_live
-      ? `<span class="ac-live-badge" title="Live Cardmarket price">LIVE</span>`
+      ? `<span class="ac-live-badge" title="Live-Marktpreis">LIVE</span>`
       : `<span class="ac-ref-badge" title="Reference price (no live data yet)">ref</span>`;
     const langBadge = r.language ? `<span class="ac-lang">${escHtml(r.language)}</span>` : '';
     const metaParts = [r.card_id, r.set_code, r.rarity, r.variant].filter(Boolean).map(escHtml).join(' &middot; ');
@@ -3401,7 +3401,7 @@ window.ChartModal = (function() {
 
     const datasets = [
       {
-        label: 'EU · Cardmarket 7d',
+        label: 'EU · Markt 7d',
         data: euPrices,
         borderColor: '#c9a84c',
         backgroundColor: 'rgba(201,168,76,0.08)',

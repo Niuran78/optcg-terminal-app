@@ -479,7 +479,7 @@
       btns.push('<a href="' + links.pricecharting + '" target="_blank" rel="noopener nofollow" class="ptw-buy-btn" title="View on PriceCharting">PriceCharting ↗</a>');
     }
     if (links.cardmarket) {
-      btns.push('<a href="' + links.cardmarket + '" target="_blank" rel="noopener nofollow" class="ptw-buy-btn primary" title="Buy on Cardmarket">Buy on Cardmarket ↗</a>');
+      btns.push('<a href="' + links.cardmarket + '" target="_blank" rel="noopener nofollow" class="ptw-buy-btn primary" title="Zum Marktplatz">Zum Marktplatz ↗</a>');
     }
     if (links.tcgplayer) {
       btns.push('<a href="' + links.tcgplayer + '" target="_blank" rel="noopener nofollow" class="ptw-buy-btn primary" title="Buy on TCGPlayer">Buy on TCGPlayer ↗</a>');
@@ -558,7 +558,7 @@
       // Wrap price in a link if Cardmarket ID available; otherwise TCGPlayer; otherwise plain
       var priceHtml;
       if (c.links && c.links.cardmarket) {
-        priceHtml = '<a href="' + c.links.cardmarket + '" target="_blank" rel="noopener nofollow" class="ptw-card-price-link" title="Buy on Cardmarket">' + price + ' ↗</a>';
+        priceHtml = '<a href="' + c.links.cardmarket + '" target="_blank" rel="noopener nofollow" class="ptw-card-price-link" title="Zum Marktplatz">' + price + ' ↗</a>';
       } else if (c.links && c.links.tcgplayer) {
         priceHtml = '<a href="' + c.links.tcgplayer + '" target="_blank" rel="noopener nofollow" class="ptw-card-price-link" title="Buy on TCGPlayer">' + price + ' ↗</a>';
       } else {
