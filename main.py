@@ -316,15 +316,16 @@ async def market_overview(user=Depends(require_auth)):
     """
     pool = await get_pool()
     async with pool.acquire() as conn:
-        # Big picture stats
+        # Big picture stats (singles + sealed)
         stats = await conn.fetchrow("""
             SELECT
                 (SELECT COUNT(DISTINCT set_code) FROM cards_unified) AS total_sets,
                 (SELECT COUNT(*) FROM cards_unified) AS total_cards,
-                (SELECT COUNT(*) FROM cards_unified WHERE cm_live_trend IS NOT NULL) AS cards_with_live,
-                (SELECT MAX(cm_live_updated_at) FROM cards_unified) AS last_scrape,
-                (SELECT COUNT(*) FROM cards_unified WHERE cm_live_status='ok'
-                                                        AND cm_live_updated_at > NOW() - INTERVAL '48 hours') AS fresh_prices
+                (SELECT COUNT(*) FROM sealed_unified
+                    WHERE language='JP' AND cm_live_updated_at IS NOT NULL
+                    AND cm_live_updated_at > NOW() - INTERVAL '24 hours') AS sealed_live,
+                (SELECT COUNT(*) FROM sealed_unified
+                    WHERE cm_live_available > 0 AND language='JP') AS jp_in_stock
         """)
 
         # TOP 5 MOST VALUABLE LIVE-PRICED ALT-ARTS
@@ -378,9 +379,8 @@ async def market_overview(user=Depends(require_auth)):
         "stats": {
             "total_sets":       stats["total_sets"],
             "total_cards":      stats["total_cards"],
-            "cards_with_live":  stats["cards_with_live"],
-            "fresh_prices":     stats["fresh_prices"],
-            "last_scrape":      stats["last_scrape"].isoformat() if stats["last_scrape"] else None,
+            "sealed_live":      stats["sealed_live"],
+            "jp_in_stock":      stats["jp_in_stock"],
         },
         "top_valuable": [dict(r) for r in top_valuable],
         "arbitrage":    [dict(r) for r in arbitrage],

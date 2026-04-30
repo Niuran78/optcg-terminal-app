@@ -2285,7 +2285,6 @@ async function loadOverviewData() {
 
     const data = {
       stats:         overview?.stats || summary || {},
-      top_valuable:  overview?.top_valuable || [],
       arbitrage:     overview?.arbitrage  || [],
       recent_sets:   overview?.recent_sets || [],
       radar:         radar || null,
@@ -2397,65 +2396,31 @@ window.renderBriefingTop = renderBriefingTop;
 function renderOverview(data) {
   const stats = data.stats || {};
 
-  // ─── Hero bar: market-wide stats based on LIVE data ──────────────────
+  // ─── Hero bar: market-wide stats ──────────────────────────────────
   const heroEl = $('overview-hero');
   if (heroEl) {
     const setsTracked = Number(stats.total_sets) || 0;
     const cardsIndexed = Number(stats.total_cards) || 0;
-    const cardsLive = Number(stats.cards_with_live) || 0;
-    const fresh = Number(stats.fresh_prices) || 0;
-    const coverage = cardsIndexed > 0 ? Math.round((cardsLive / cardsIndexed) * 100) : 0;
-    const lastScrape = stats.last_scrape;
+    const sealedLive = Number(stats.sealed_live) || 0;
+    const jpInStock = Number(stats.jp_in_stock) || 0;
 
     heroEl.innerHTML = `
       <div class="overview-hero-card accent-border">
-        <div class="stat-label">Live Prices</div>
-        <div class="stat-value accent">${fmt.int(cardsLive)}</div>
-        <div class="stat-sub">Karten mit Live-Marktdaten</div>
+        <div class="stat-label">Sealed Live</div>
+        <div class="stat-value accent">${fmt.int(sealedLive)}</div>
+        <div class="stat-sub">JP-Preise &lt; 24h aktuell</div>
       </div>
       <div class="overview-hero-card">
-        <div class="stat-label">Fresh (&lt; 48h)</div>
-        <div class="stat-value positive">${fmt.int(fresh)}</div>
-        <div class="stat-sub">scraped in last 2 days</div>
+        <div class="stat-label">JP im Lager</div>
+        <div class="stat-value positive">${fmt.int(jpInStock)}</div>
+        <div class="stat-sub">Sealed-Produkte verfügbar</div>
       </div>
       <div class="overview-hero-card">
         <div class="stat-label">Sets Covered</div>
         <div class="stat-value">${fmt.int(setsTracked)}</div>
         <div class="stat-sub">${fmt.int(cardsIndexed)} cards total</div>
       </div>
-      <div class="overview-hero-card">
-        <div class="stat-label">Last Scrape</div>
-        <div class="stat-value" style="font-size:14px;">${lastScrape ? _relativeTime(lastScrape) : '—'}</div>
-        <div class="stat-sub">${lastScrape ? new Date(lastScrape).toLocaleString() : 'Never'}</div>
-      </div>
     `;
-  }
-
-  // ─── Top valuable live Alt-Arts ──────────────────────────────────────
-  const valEl = $('overview-valuable');
-  if (valEl) {
-    if (data.top_valuable && data.top_valuable.length) {
-      valEl.innerHTML = data.top_valuable.map((c, i) => {
-        const imgProxied = c.image_url ? proxyImg(c.image_url) : '';
-        const thumb = imgProxied
-          ? `<img class="ov-card-thumb" src="${escHtml(imgProxied)}" alt="${escHtml(c.name)}" loading="lazy" onerror="this.style.display='none'"/>`
-          : `<div class="ov-card-thumb ov-card-thumb-placeholder">🃏</div>`;
-        return `
-        <div class="ov-row">
-          <div class="ov-rank">#${i+1}</div>
-          ${thumb}
-          <div class="ov-info">
-            <div class="ov-name">${escHtml(c.name || 'Unknown')} <span class="ov-variant">${escHtml(c.variant || '')}</span></div>
-            <div class="ov-meta">${escHtml(c.set_code || '')} · ${escHtml(c.language || 'EN')} · ${fmt.int(c.cm_live_available || 0)} Angebote</div>
-          </div>
-          <div class="ov-price">${fmt.eurAuto(c.cm_live_trend)}</div>
-        </div>`;
-      }).join('');
-    } else {
-      valEl.innerHTML = `<div class="empty-state" style="padding:24px 0;">
-        <div style="color:var(--muted);font-size:13px;">Noch keine Live-Daten für Alt-Arts verfügbar.</div>
-      </div>`;
-    }
   }
 
   // ─── C2: Box des Tages — strongest 7d JP sealed trend ──────────────
@@ -3169,7 +3134,7 @@ async function loadAlertsList() {
     const data = await apiFetch('/api/alerts');
     const alerts = data.alerts || [];
     if (!alerts.length) {
-      container.innerHTML = '<div style="color:var(--muted);font-size:13px;">No alerts set. Use the bell icon in the Card Browser to create one.</div>';
+      container.innerHTML = '<div style="color:var(--muted);font-size:13px;">Keine Alerts gesetzt. Aktiviere Glocken-Symbole im Sealed-Tracker, um Benachrichtigungen einzurichten.</div>';
       return;
     }
 
