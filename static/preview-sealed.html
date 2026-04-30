@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="cache-control" content="public, max-age=300" />
   <title>Holygrade Terminal — Wertentwicklung</title>
-  <meta name="description" content="Wertentwicklung & Marktindex für Holygrade Sealed-Produkte. Bloomberg-Style Performance-Tracking auf Cardmarket-Basis." />
+  <meta name="description" content="Wertentwicklung & Marktindex für Holygrade Sealed-Produkte. Bloomberg-Style Performance-Tracking für JP & EN Sealed." />
   <meta name="robots" content="index, follow" />
   <meta property="og:title" content="Holygrade Terminal · Wertentwicklung" />
   <meta property="og:description" content="Marktindex & Performance-Chart für One Piece TCG Sealed-Produkte." />
@@ -541,7 +541,7 @@
 
     <div class="pv-hero">
       <h1 id="pv-hero-title">Lade Marktdaten…</h1>
-      <p class="pv-subtitle" id="pv-hero-sub">Index basiert auf Cardmarket-Trend · Live-Tracking</p>
+      <p class="pv-subtitle" id="pv-hero-sub">Markt-Index · Live-Tracking</p>
     </div>
 
     <div id="pv-content">
@@ -964,7 +964,7 @@
 
         // Hero
         titleEl.textContent = setName + ' · ' + langDisplay;
-        subEl.textContent = typeDisplay + ' · Index basiert auf Cardmarket-Trend';
+        subEl.textContent = typeDisplay + ' · Markt-Index · Live-Tracking';
 
         // Stats
         var listings = (data.price && data.price.available_listings) || 0;
@@ -973,7 +973,7 @@
           : (listings >= 10
             ? { dot: 'is-amber', label: 'Mittel' }
             : { dot: 'is-amber', label: 'Selten' });
-        var freshness = data.data_freshness === 'fresh' ? 'Cardmarket Live' : (fmtRel(data.updated_at) || 'Cardmarket');
+        var freshness = data.data_freshness === 'fresh' ? 'Live-Marktdaten' : (fmtRel(data.updated_at) || 'Marktdaten');
 
         // Initial period: prefer 30 if we have ≥7 points, else 7
         var initialPeriod = totalPoints >= 30 ? 30 : (totalPoints >= 7 ? 30 : 7);

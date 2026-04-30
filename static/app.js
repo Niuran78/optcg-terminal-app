@@ -675,13 +675,13 @@ function switchTab(tab) {
     panel.setAttribute('aria-hidden', isActive ? 'false' : 'true');
   });
 
-  // Load data
+  // Load data — arbitrage & radar are SOON pages, no data loading needed.
   if (tab === 'browser')   loadBrowserData();
   if (tab === 'sealed')    loadSealedData();
-  if (tab === 'arbitrage') loadArbitrageData();
+  // if (tab === 'arbitrage') — SOON page, no load
   if (tab === 'overview')  loadOverviewData();
   if (tab === 'portfolio') loadPortfolioData();
-  if (tab === 'radar')     loadRadarData();
+  // if (tab === 'radar') — SOON page, no load
 }
 
 function renderNavUser() {
@@ -842,9 +842,14 @@ function isCardmarketImage(url) {
   if (!url) return false;
   return /(?:^|\/\/)([a-z0-9-]+\.)?(?:s3\.)?cardmarket\.com\//i.test(url);
 }
+function isSampleImage(url) {
+  if (!url) return false;
+  return /[/=]sample[_\-./]/i.test(url) || /[\?&]sample/i.test(url);
+}
 function proxyImg(url) {
   if (!url) return '';
   if (isCardmarketImage(url)) return '';   // legal-risk — see comment above
+  if (isSampleImage(url)) return '';       // SAMPLE-watermarked images blocked
   // Only proxy external HTTP(S) URLs; leave data URIs and our own paths alone.
   if (!/^https?:\/\//i.test(url)) return url;
   return '/api/image/proxy?url=' + encodeURIComponent(url);
@@ -1649,8 +1654,8 @@ function renderSealedCard(p) {
     ? `<span class="sealed-badge sealed-badge-en">🇬🇧 EN</span>`
     : `<span class="sealed-badge sealed-badge-jp">🇯🇵 JP</span>`;
   const liveBadge = p.has_live
-    ? `<span class="sealed-badge sealed-badge-live" title="Live Cardmarket data">🎯 LIVE</span>`
-    : `<span class="sealed-badge sealed-badge-ref" title="Reference price only — no live Cardmarket data">REF</span>`;
+    ? `<span class="sealed-badge sealed-badge-live" title="Live-Marktdaten">🎯 LIVE</span>`
+    : `<span class="sealed-badge sealed-badge-ref" title="Nur Referenzpreis — noch keine Live-Daten">REF</span>`;
 
   // Spread badge: only when >= 10%
   const spreadBadge = (p.spread_pct != null && p.spread_pct >= 10)
@@ -1688,11 +1693,8 @@ function renderSealedCard(p) {
     ? '<div class="sealed-liquidity mono">' + escHtml(listings) + ' <span class="sealed-liquidity-sep">·</span> Markt-Liquidität</div>'
     : '<div class="sealed-liquidity mono">Markt-Daten</div>';
 
-  // Footer "Markt-Referenz" (legal — Cardmarket attribution required by
-  // their ToS) — small, grey, NEVER as a primary CTA.
-  const refFooter = cmLink
-    ? '<a class="sealed-card-ref" href="' + escHtml(cmLink) + '" target="_blank" rel="noopener nofollow" title="Quelle der Preisdaten (extern)">Markt-Referenz: Cardmarket ↗</a>'
-    : '<span class="sealed-card-ref sealed-card-ref-muted">Markt-Referenz: Cardmarket</span>';
+  // Footer removed — no external marketplace branding.
+  const refFooter = '';
 
   return ''
     + '<div class="sealed-card" data-sealed-card '
@@ -1854,7 +1856,7 @@ function renderSealedEvModal(modal, data) {
         <div class="sealed-ev-stat-value">${fmt.eur(evBox)}</div>
       </div>
       <div class="sealed-ev-stat">
-        <div class="sealed-ev-stat-label">Box price (Cardmarket trend)</div>
+        <div class="sealed-ev-stat-label">Box-Preis (Markt-Trend)</div>
         <div class="sealed-ev-stat-value">${boxPrice != null ? fmt.eur(boxPrice) : '—'}</div>
       </div>
       <div class="sealed-ev-stat">
@@ -1895,10 +1897,7 @@ function renderSealedEvModal(modal, data) {
       <tbody>${breakdown}</tbody>
     </table>
     <div class="sealed-ev-disclaimer">
-      ⚠ Estimate. Pull rates are community-derived (~50 box openings sample); Bandai does not
-      publish official rates for OPTCG. Median trend is computed across
-      <strong>cards_investable</strong> live Cardmarket data. Real-world realisation will be lower
-      — you can't always sell every card at trend.
+      ⚠ Schätzung. Pull-Rates basieren auf Community-Daten (~50 Box-Openings); Bandai veröffentlicht keine offiziellen Raten für OPTCG. Median-Trend wird aus Live-Marktdaten berechnet. Reale Erlöse werden niedriger sein — nicht jede Karte lässt sich zum Trend-Preis verkaufen.
     </div>
   `;
 }
@@ -2092,10 +2091,10 @@ function renderArbitrageView(data) {
   if (noteEl) {
     const isLive = State.arbitrage.filters.source === 'live';
     if (isLive) {
-      noteEl.innerHTML = `<strong>Verified live arbitrage only.</strong> ${data.total || 0} pairs where BOTH JP and EN sides have current Cardmarket listings. Switch to <a href="#" data-arb-source="all" style="color:var(--accent);">all sources</a> for a wider view (mix of live + reference).`;
+      noteEl.innerHTML = `<strong>Verifizierte Live-Arbitrage.</strong> ${data.total || 0} Paare mit aktuellen Live-Preisen auf beiden Seiten. <a href="#" data-arb-source="all" style="color:var(--accent);">Alle Quellen anzeigen</a> für eine breitere Ansicht.`;
       noteEl.style.display = 'block';
     } else {
-      noteEl.innerHTML = `<strong>Showing all sources.</strong> ${data.total || 0} pairs incl. reference data (PriceCharting USD→EUR). Switch to <a href="#" data-arb-source="live" style="color:var(--accent);">live only</a> for fully verified opportunities.`;
+      noteEl.innerHTML = `<strong>Alle Quellen.</strong> ${data.total || 0} Paare inkl. Referenzdaten. <a href="#" data-arb-source="live" style="color:var(--accent);">Nur Live-Daten</a> für vollständig verifizierte Gelegenheiten.`;
       noteEl.style.display = 'block';
     }
     // Wire toggle links
@@ -2320,7 +2319,7 @@ function renderOverview(data) {
       <div class="overview-hero-card accent-border">
         <div class="stat-label">Live Prices</div>
         <div class="stat-value accent">${fmt.int(cardsLive)}</div>
-        <div class="stat-sub">cards with live Cardmarket data</div>
+        <div class="stat-sub">Karten mit Live-Marktdaten</div>
       </div>
       <div class="overview-hero-card">
         <div class="stat-label">Fresh (&lt; 48h)</div>

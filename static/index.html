@@ -70,6 +70,7 @@
         <path d="M10 3h2v2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
       <span>Arbitrage</span>
+      <span class="nav-tab-badge" style="background:rgba(245,185,66,0.18);color:#f5b942;border-color:rgba(245,185,66,0.35);">SOON</span>
     </button>
 
     <button class="nav-tab" data-tab="portfolio" role="tab" aria-selected="false" aria-controls="panel-portfolio">
@@ -89,7 +90,7 @@
         <path d="M7 1.5v2M7 10.5v2M1.5 7h2M10.5 7h2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
       </svg>
       <span>Radar</span>
-      <span class="nav-tab-badge" id="radar-badge" style="display:none;"></span>
+      <span class="nav-tab-badge" style="background:rgba(245,185,66,0.18);color:#f5b942;border-color:rgba(245,185,66,0.35);">SOON</span>
     </button>
 
     <button class="nav-tab" data-tab="overview" role="tab" aria-selected="false" aria-controls="panel-overview">
@@ -171,7 +172,7 @@
         <span class="welcome-step-num">1</span>
         <div class="welcome-step-body">
           <div class="welcome-step-title">Browse Markets</div>
-          <div class="welcome-step-desc">~760 cards with verified live Cardmarket data — filtered by liquidity.</div>
+          <div class="welcome-step-desc">~760 Karten mit verifizierten Live-Marktdaten — gefiltert nach Liquidität.</div>
           <button class="welcome-step-cta" data-tab="browser">Open Markets</button>
         </div>
       </li>
@@ -417,10 +418,10 @@
     <div class="sealed-banner">
       <div class="sealed-banner-icon">🎯</div>
       <div class="sealed-banner-body">
-        <div class="sealed-banner-title">Live Cardmarket data only</div>
+        <div class="sealed-banner-title">Live Marktdaten · EU</div>
         <div class="sealed-banner-desc">
-          Showing only sealed products with verified live trend prices from Cardmarket EU.
-          Reference-only sealed (booster packs, tins, displays) are hidden from the default view.
+          Nur Sealed-Produkte mit verifizierten Live-Marktpreisen (EU).
+          Referenz-Produkte (Booster-Packs, Tins, Displays) sind in der Standard-Ansicht ausgeblendet.
           <a href="#" id="sealed-show-all-toggle" class="sealed-banner-link" data-pro-only="1">Show all (Pro)</a>
         </div>
       </div>
@@ -444,116 +445,48 @@
 
   </section>
 
-  <!-- ─── TAB 3: ARBITRAGE SCANNER ─────────────────────────────── -->
+  <!-- ─── TAB 3: ARBITRAGE — SOON ──────────────────────────────── -->
   <section id="panel-arbitrage" class="tab-panel" role="tabpanel" aria-labelledby="tab-arbitrage">
+    <div class="top-pulls-hero">
+      <div class="top-pulls-card">
+        <div class="top-pulls-eyebrow">HOLYGRADE TERMINAL · NEXT FEATURE</div>
+        <h1 class="top-pulls-title">Arbitrage</h1>
+        <p class="top-pulls-tagline">Sealed-Arbitrage zwischen <em>JP, EU und CH</em> — verifiziert und direkt kaufbar.</p>
 
-    <!-- Stat cards -->
-    <div class="stat-grid" id="arb-stats" aria-live="polite" aria-label="Arbitrage statistics">
-      <!-- Populated by app.js -->
-      <div class="stat-card"><div class="stat-label">Loading…</div><div class="stat-value">—</div></div>
-      <div class="stat-card"><div class="stat-label">Loading…</div><div class="stat-value">—</div></div>
-      <div class="stat-card"><div class="stat-label">Loading…</div><div class="stat-value">—</div></div>
-      <div class="stat-card"><div class="stat-label">Loading…</div><div class="stat-value">—</div></div>
-      <div class="stat-card"><div class="stat-label">Loading…</div><div class="stat-value">—</div></div>
-    </div>
+        <div class="top-pulls-grid">
+          <div class="top-pulls-feature">
+            <div class="top-pulls-feature-num">01</div>
+            <div class="top-pulls-feature-title">Sealed-Arbitrage JP↔EU↔CH</div>
+            <div class="top-pulls-feature-desc">Preisvergleich für Booster Boxes und Cases zwischen japanischem, europäischem und Schweizer Markt — mit echten Margen nach Versand und Gebühren.</div>
+          </div>
+          <div class="top-pulls-feature">
+            <div class="top-pulls-feature-num">02</div>
+            <div class="top-pulls-feature-title">Verifizierte Margen</div>
+            <div class="top-pulls-feature-desc">Nur Produkte mit aktuellen Live-Preisen auf beiden Seiten. Keine theoretischen Spreads auf illiquiden Karten.</div>
+          </div>
+          <div class="top-pulls-feature">
+            <div class="top-pulls-feature-num">03</div>
+            <div class="top-pulls-feature-title">Direkter Holygrade-Bezug</div>
+            <div class="top-pulls-feature-desc">Jede Arbitrage-Gelegenheit mit direktem Link zum Holygrade-Shop — ein Klick vom Spread zum Warenkorb.</div>
+          </div>
+        </div>
 
-    <!-- Filter bar -->
-    <div class="filter-bar" role="search" aria-label="Arbitrage filters">
+        <div class="top-pulls-meta">
+          <span class="top-pulls-status">
+            <span class="top-pulls-dot"></span>
+            In Vorbereitung · Q3 2026
+          </span>
+          <span class="top-pulls-dim">Pro & Elite · inklusive bei deinem Abo</span>
+        </div>
 
-      <div class="filter-group">
-        <span class="filter-label" id="signal-label">Signal</span>
-        <div class="pill-group" role="group" aria-labelledby="signal-label">
-          <button class="pill active" data-signal="all">All</button>
-          <button class="pill" data-signal="BUY_EU">BUY EU</button>
-          <button class="pill" data-signal="BUY_EN">BUY EN</button>
-          <button class="pill" data-signal="WATCH">WATCH</button>
+        <div class="top-pulls-cta-row">
+          <button class="top-pulls-cta-primary" data-tab="sealed">
+            <span>Jetzt zum Sealed-Tracker</span>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2 6h7m-3-3l3 3-3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
         </div>
       </div>
-
-      <div class="filter-group">
-        <label class="filter-label" for="arb-min-spread">Min Spread</label>
-        <select class="filter-select" id="arb-min-spread" aria-label="Minimum spread filter" style="min-width:80px;">
-          <option value="0">0%</option>
-          <option value="5" selected>5%</option>
-          <option value="10">10%</option>
-          <option value="15">15%</option>
-          <option value="20">20%</option>
-          <option value="30">30%</option>
-        </select>
-      </div>
-
-      <div class="filter-group">
-        <label class="filter-label" for="arb-set">Set</label>
-        <select class="filter-select" id="arb-set" data-set-select aria-label="Filter by set">
-          <option value="all">All Sets</option>
-        </select>
-      </div>
-
     </div>
-
-    <!-- Section header -->
-    <div class="section-header">
-      <div>
-        <h2 class="section-title">Arbitrage Scanner</h2>
-        <div class="section-meta">Cross-market price discrepancies — Japanese Cardmarket vs English Cardmarket · <span class="live-badge">🎯 LIVE only</span></div>
-      </div>
-    </div>
-
-    <div id="arb-note" class="data-source-note" style="display:none;"></div>
-
-    <!-- Arbitrage table -->
-    <div class="table-wrap">
-      <div class="table-responsive">
-        <table class="data-table" role="grid" aria-label="Arbitrage opportunities">
-          <thead>
-            <tr>
-              <th scope="col" style="min-width:200px;">
-                <div class="th-content"><span class="th-main">Card</span></div>
-              </th>
-              <th scope="col">
-                <div class="th-content"><span class="th-main">Set</span></div>
-              </th>
-              <th scope="col" class="col-en">
-                <div class="th-content">
-                  <span class="th-main">🇯🇵 JP Price</span>
-                  <span class="th-sub">Cardmarket JP</span>
-                </div>
-              </th>
-              <th scope="col" class="col-eu">
-                <div class="th-content">
-                  <span class="th-main">🇬🇧 EN Price</span>
-                  <span class="th-sub">Sell market</span>
-                </div>
-              </th>
-              <th scope="col">
-                <div class="th-content">
-                  <span class="th-main">Spread</span>
-                  <span class="th-sub">EN ÷ JP</span>
-                </div>
-              </th>
-              <th scope="col">
-                <div class="th-content">
-                  <span class="th-main">Profit</span>
-                  <span class="th-sub">estimated net</span>
-                </div>
-              </th>
-              <th scope="col">
-                <div class="th-content">
-                  <span class="th-main">Signal</span>
-                </div>
-              </th>
-              <th scope="col">
-                <div class="th-content"><span class="th-main">Action</span></div>
-              </th>
-            </tr>
-          </thead>
-          <tbody id="arb-tbody" aria-live="polite">
-            <!-- Populated by app.js -->
-          </tbody>
-        </table>
-      </div>
-    </div>
-
   </section>
 
   <!-- ─── TAB 4: PORTFOLIO ──────────────────────────────────────── -->
@@ -596,7 +529,7 @@
                 <th scope="col"><div class="th-content"><span class="th-main">Set</span></div></th>
                 <th scope="col"><div class="th-content"><span class="th-main">Qty</span></div></th>
                 <th scope="col"><div class="th-content"><span class="th-main">Buy Price</span><span class="th-sub">per unit</span></div></th>
-                <th scope="col" class="col-eu"><div class="th-content"><span class="th-main">Market Price</span><span class="th-sub">EU 7d Avg</span></div></th>
+                <th scope="col" class="col-eu"><div class="th-content"><span class="th-main">Marktpreis</span><span class="th-sub">EU 7d Ø</span></div></th>
                 <th scope="col"><div class="th-content"><span class="th-main">P&amp;L</span><span class="th-sub">profit / loss</span></div></th>
                 <th scope="col"><div class="th-content"><span class="th-main">ROI %</span></div></th>
                 <th scope="col"><div class="th-content"><span class="th-main">Actions</span></div></th>
@@ -638,17 +571,47 @@
   </section>
 
   <!-- ─── TAB 5: MARKET OVERVIEW ───────────────────────────────── -->
-  <!-- TAB: MARKET RADAR -->
+  <!-- TAB: RADAR — SOON -->
   <section id="panel-radar" class="tab-panel" role="tabpanel" aria-labelledby="tab-radar">
-    <div class="radar-header">
-      <div>
-        <h1 class="radar-title">Market Radar</h1>
-        <p class="radar-sub">Daily signals — price drops, fair-value deviations, portfolio P&amp;L. Refreshed nightly.</p>
+    <div class="top-pulls-hero">
+      <div class="top-pulls-card">
+        <div class="top-pulls-eyebrow">HOLYGRADE TERMINAL · NEXT FEATURE</div>
+        <h1 class="top-pulls-title">Radar</h1>
+        <p class="top-pulls-tagline">Markt-Signale für dein <em>Sealed-Portfolio</em> — automatisch, täglich, relevant.</p>
+
+        <div class="top-pulls-grid">
+          <div class="top-pulls-feature">
+            <div class="top-pulls-feature-num">01</div>
+            <div class="top-pulls-feature-title">Restock-Alerts (Holygrade)</div>
+            <div class="top-pulls-feature-desc">Benachrichtigung wenn ausverkaufte JP-Boxen wieder im Holygrade-Shop verfügbar sind — direkt per E-Mail oder im Terminal.</div>
+          </div>
+          <div class="top-pulls-feature">
+            <div class="top-pulls-feature-num">02</div>
+            <div class="top-pulls-feature-title">Sealed-Trends JP</div>
+            <div class="top-pulls-feature-desc">Tägliche Zusammenfassung der stärksten Preisbewegungen bei JP Booster Boxes und Cases — gefiltert, nicht raw.</div>
+          </div>
+          <div class="top-pulls-feature">
+            <div class="top-pulls-feature-num">03</div>
+            <div class="top-pulls-feature-title">Fair-Value-Abweichungen</div>
+            <div class="top-pulls-feature-desc">Wenn eine Box unter den 30-Tage-Durchschnitt fällt, siehst du es hier zuerst. Kaufsignale statt Rauschen.</div>
+          </div>
+        </div>
+
+        <div class="top-pulls-meta">
+          <span class="top-pulls-status">
+            <span class="top-pulls-dot"></span>
+            In Vorbereitung
+          </span>
+          <span class="top-pulls-dim">Pro & Elite · inklusive bei deinem Abo</span>
+        </div>
+
+        <div class="top-pulls-cta-row">
+          <button class="top-pulls-cta-primary" data-tab="sealed">
+            <span>Jetzt zum Sealed-Tracker</span>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2 6h7m-3-3l3 3-3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
       </div>
-      <div class="radar-meta" id="radar-meta" aria-live="polite"></div>
-    </div>
-    <div id="radar-content" aria-live="polite">
-      <div class="radar-loading">Loading…</div>
     </div>
   </section>
 
@@ -992,7 +955,7 @@
     </div>
 
     <div class="chart-disclaimer">
-      EU via Cardmarket 7d avg, EN via TCGPlayer market. Indicator history partially synthetic until 90d of real snapshots accumulate. Not financial advice.
+      EU-Markt 7d Ø, EN via TCGPlayer. Indikator-Verlauf teilweise synthetisch bis 90d reale Datenpunkte vorliegen. Keine Anlageberatung.
     </div>
   </div>
 </div>
