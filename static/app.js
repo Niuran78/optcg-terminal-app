@@ -2340,7 +2340,18 @@ function renderBriefingTop(radarData) {
     return;
   }
 
-  const signals = (radarData.signals || []).slice(0, 3);
+  // C2: Limit to max 1 signal per type to avoid 3x same anomaly
+  const allSignals = radarData.signals || [];
+  const seenTypes = new Set();
+  const signals = [];
+  for (const s of allSignals) {
+    const key = s.signal_type || 'unknown';
+    if (!seenTypes.has(key)) {
+      seenTypes.add(key);
+      signals.push(s);
+    }
+    if (signals.length >= 3) break;
+  }
   if (!signals.length) {
     el.innerHTML = `<div class="briefing-empty">The market is quiet today. No signals fired — a good day to hold.</div>`;
     return;
@@ -2430,79 +2441,93 @@ function renderOverview(data) {
           ? `<img class="ov-card-thumb" src="${escHtml(imgProxied)}" alt="${escHtml(c.name)}" loading="lazy" onerror="this.style.display='none'"/>`
           : `<div class="ov-card-thumb ov-card-thumb-placeholder">🃏</div>`;
         return `
-        <a class="ov-row" href="${escHtml(c.cm_live_url || '#')}" target="_blank" rel="noopener nofollow" title="Open on Cardmarket">
-          <div class="ov-rank">#${i+1}</div>
-          ${thumb}
-          <div class="ov-info">
-            <div class="ov-name">${escHtml(c.name || 'Unknown')} <span class="ov-variant">${escHtml(c.variant || '')}</span></div>
-            <div class="ov-meta">${escHtml(c.set_code || '')} · ${escHtml(c.language || 'EN')} · ${fmt.int(c.cm_live_available || 0)} available</div>
-          </div>
-          <div class="ov-price">${fmt.eurAuto(c.cm_live_trend)}</div>
-        </a>`;
-      }).join('');
-    } else {
-      valEl.innerHTML = `<div class="empty-state" style="padding:24px 0;">
-        <div style="color:var(--muted);font-size:13px;">No live-priced alt-arts yet — scraper is still backfilling.</div>
-      </div>`;
-    }
-  }
-
-  // ─── JP → EN Arbitrage movers (live spreads) ────────────────────────
-  const moversEl = $('overview-movers');
-  if (moversEl) {
-    const movers = data.arbitrage || [];
-    if (movers.length) {
-      moversEl.innerHTML = movers.map((m, i) => {
-        const imgProxied = m.image_url ? proxyImg(m.image_url) : '';
-        const thumb = imgProxied
-          ? `<img class="ov-card-thumb" src="${escHtml(imgProxied)}" alt="${escHtml(m.name)}" loading="lazy" onerror="this.style.display='none'"/>`
-          : `<div class="ov-card-thumb ov-card-thumb-placeholder">🃏</div>`;
-        const ratio = Number(m.ratio) || 0;
-        return `
         <div class="ov-row">
           <div class="ov-rank">#${i+1}</div>
           ${thumb}
           <div class="ov-info">
-            <div class="ov-name">${escHtml(m.name || 'Unknown')} <span class="ov-variant">${escHtml(m.variant || '')}</span></div>
-            <div class="ov-meta">${escHtml(m.set_code || '')} · JP ${fmt.eurAuto(m.jp_price)} → EN ${fmt.eurAuto(m.en_price)}</div>
+            <div class="ov-name">${escHtml(c.name || 'Unknown')} <span class="ov-variant">${escHtml(c.variant || '')}</span></div>
+            <div class="ov-meta">${escHtml(c.set_code || '')} · ${escHtml(c.language || 'EN')} · ${fmt.int(c.cm_live_available || 0)} Angebote</div>
           </div>
-          <div class="ov-price positive">+${fmt.eurAuto(m.spread_eur)}<div class="ov-meta" style="text-align:right;">${ratio.toFixed(1)}×</div></div>
+          <div class="ov-price">${fmt.eurAuto(c.cm_live_trend)}</div>
         </div>`;
       }).join('');
     } else {
-      moversEl.innerHTML = `<div class="empty-state" style="padding:24px 0;">
-        <div style="color:var(--muted);font-size:13px;">No qualifying arbitrage pairs yet — need live prices on both JP+EN of the same card.</div>
+      valEl.innerHTML = `<div class="empty-state" style="padding:24px 0;">
+        <div style="color:var(--muted);font-size:13px;">Noch keine Live-Daten für Alt-Arts verfügbar.</div>
       </div>`;
     }
   }
 
-  // Sets coverage
-  const setsEl = $('overview-sets');
-  if (setsEl) {
-    const sets = data.recent_sets || [];
-    if (sets.length) {
-      setsEl.innerHTML = sets.map(s => {
-        const live = Number(s.live_count) || 0;
-        const total = Number(s.card_count) || 0;
-        const pct = total > 0 ? Math.round((live / total) * 100) : 0;
-        const avg = s.avg_price ? `Ø ${fmt.eurAuto(Number(s.avg_price))}` : '';
-        return `
-        <div class="set-coverage-item">
-          <div class="set-coverage-code">${escHtml(s.set_code || '')}</div>
-          <div class="set-coverage-bar-wrap">
-            <div class="set-coverage-bar" style="width:${pct}%"></div>
-          </div>
-          <div class="set-coverage-stats">
-            <span class="set-coverage-live">${fmt.int(live)}</span>
-            <span class="set-coverage-sep">/</span>
-            <span class="set-coverage-total">${fmt.int(total)}</span>
-            <span class="set-coverage-avg">${avg}</span>
-          </div>
-        </div>`;
-      }).join('');
-    } else {
-      setsEl.innerHTML = `<div style="color:var(--muted);font-size:13px;padding:16px 0;">No sets data</div>`;
+  // ─── C2: Box des Tages — strongest 7d JP sealed trend ──────────────
+  loadBoxDesTages();
+}
+
+async function loadBoxDesTages() {
+  const container = $('overview-box-des-tages');
+  const contentEl = $('overview-box-content');
+  if (!container || !contentEl) return;
+
+  try {
+    // Fetch sealed data and shop stock
+    const [sealedRes, shopRes] = await Promise.all([
+      apiFetch('/api/cards/sealed?language=JP&sort=cm_live_trend&limit=50&live_only=true').catch(() => null),
+      fetch('/api/sealed/shop-stock').then(r => r.ok ? r.json() : { items: {} }).catch(() => ({ items: {} })),
+    ]);
+
+    if (!sealedRes || !sealedRes.products) return;
+    const stock = (shopRes && shopRes.items) || {};
+
+    // Find the JP product with the strongest trend that is in-stock
+    let best = null;
+    for (const p of sealedRes.products) {
+      if ((p.language || 'JP').toUpperCase() !== 'JP') continue;
+      const key = sealedShopKey(p.set_code, 'JP', p.product_type);
+      const entry = stock[key];
+      if (entry && entry.in_stock && entry.qty > 0) {
+        best = { product: p, stock: entry };
+        break; // Already sorted by trend from API
+      }
     }
+
+    if (!best) {
+      container.style.display = 'none';
+      return;
+    }
+
+    container.style.display = '';
+    const p = best.product;
+    const entry = best.stock;
+    const qtyLabel = entry.qty > 0 ? entry.qty + ' auf Lager' : 'auf Lager';
+    const priceLabel = entry.price_chf ? swissChf(entry.price_chf) : '';
+    const imgHtml = sealedImg(p.image_url, p.product_name);
+
+    contentEl.innerHTML = `
+      <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;">
+        <div style="width:80px;height:80px;flex-shrink:0;border-radius:8px;overflow:hidden;background:var(--surface);">
+          ${imgHtml}
+        </div>
+        <div style="flex:1;min-width:200px;">
+          <div style="font-weight:700;font-size:15px;margin-bottom:4px;">${escHtml(p.product_name || '')}</div>
+          <div style="font-family:var(--font-mono);font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">
+            ${escHtml(p.set_code || '')} · JP · Booster Box
+          </div>
+          <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:baseline;">
+            <span style="font-family:var(--font-mono);font-size:13px;font-weight:600;">
+              ${escHtml(qtyLabel)} · ${escHtml(priceLabel)}
+            </span>
+          </div>
+        </div>
+        <a href="${escHtml(entry.cart_url || '#')}" rel="noopener"
+           style="display:inline-flex;align-items:center;gap:6px;padding:12px 20px;border-radius:8px;
+                  background:var(--accent);color:#0a0a0b;font-family:var(--font-mono);font-size:11px;
+                  font-weight:700;letter-spacing:0.08em;text-transform:uppercase;text-decoration:none;
+                  white-space:nowrap;">
+          In Warenkorb
+        </a>
+      </div>
+    `;
+  } catch (e) {
+    container.style.display = 'none';
   }
 }
 
@@ -3541,22 +3566,30 @@ async function loadSealedPortfolio() {
   const section = $('sealed-holdings-section');
   const summary = $('sealed-holdings-summary');
   const list    = $('sealed-holdings-list');
+  const empty   = $('sealed-holdings-empty');
   if (!section || !summary || !list) return;
 
-  // Hide by default; only show if user has at least one item.
-  section.style.display = 'none';
+  // Section always visible; show empty state or data.
+  if (empty) empty.style.display = 'none';
 
-  if (!State.user || !State.token) return;
+  if (!State.user || !State.token) {
+    summary.innerHTML = '';
+    list.innerHTML = '';
+    if (empty) empty.style.display = '';
+    return;
+  }
 
   try {
     const res = await apiFetch('/api/portfolio/sealed');
     const items = (res && res.items) || [];
     if (!items.length) {
-      section.style.display = 'none';
+      summary.innerHTML = '';
+      list.innerHTML = '';
+      if (empty) empty.style.display = '';
       return;
     }
 
-    section.style.display = '';
+    if (empty) empty.style.display = 'none';
 
     const s = res.summary || {};
     const fmt = (v) => fmtEurSafe(v);
@@ -3586,7 +3619,9 @@ async function loadSealedPortfolio() {
   } catch (err) {
     // Silent failure — sealed portfolio is optional/free, don't break main view.
     console.warn('loadSealedPortfolio failed:', err);
-    section.style.display = 'none';
+    summary.innerHTML = '';
+    list.innerHTML = '';
+    if (empty) empty.style.display = '';
   }
 }
 

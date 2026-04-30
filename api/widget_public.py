@@ -200,7 +200,10 @@ async def widget_sealed_one(
     for one (set_code, language, product_type). 404 with a structured
     body if no live data exists.
     """
-    set_code = set_code.upper().strip()
+    # Normalize: strip dashes (OP-15 → OP15) for DB compatibility,
+    # but also try the original if the stripped version returns nothing.
+    set_code_raw = set_code.upper().strip()
+    set_code = set_code_raw.replace("-", "")
     pt_norm = _PRODUCT_TYPE_NORMALIZE.get(
         (type or "booster_box").lower().strip(),
         (type or "booster_box").lower().replace("_", " "),

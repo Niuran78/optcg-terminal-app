@@ -980,7 +980,40 @@
         // Actually default to 30 always — user will see "X von 30" feel right
         initialPeriod = 30;
 
+        // C1: Shop CTA above the fold — fetch stock info
+        var shopCtaHtml = '';
+        try {
+          var shopData = null;
+          var shopReq = new XMLHttpRequest();
+          shopReq.open('GET', '/api/sealed/shop-stock', false);
+          shopReq.send();
+          if (shopReq.status === 200) {
+            shopData = JSON.parse(shopReq.responseText);
+          }
+          if (shopData && shopData.items) {
+            var stockKey = setCode.replace(/-/g, '').toUpperCase() + ':' +
+              (data.language || language).toUpperCase() + ':' +
+              (data.product_type || 'booster box').toLowerCase();
+            var stockEntry = shopData.items[stockKey];
+            if (stockEntry && stockEntry.in_stock && stockEntry.cart_url) {
+              var qtyText = stockEntry.qty > 0 ? stockEntry.qty + ' auf Lager' : 'auf Lager';
+              var priceText = stockEntry.price_chf ? ('CHF ' + Number(stockEntry.price_chf).toFixed(2).replace('.', ',')) : '';
+              shopCtaHtml =
+                '<a class="pv-shop-cta" href="' + escHtml(stockEntry.cart_url) + '" rel="noopener" style="' +
+                  'display:flex;align-items:center;justify-content:center;gap:12px;' +
+                  'padding:14px 20px;margin-bottom:16px;border-radius:10px;' +
+                  'background:linear-gradient(135deg,rgba(0,229,192,0.12),rgba(0,229,192,0.04));' +
+                  'border:1px solid rgba(0,229,192,0.3);text-decoration:none;color:var(--accent);' +
+                  'font-family:var(--font-mono,monospace);font-size:12px;font-weight:700;' +
+                  'letter-spacing:0.08em;text-transform:uppercase;transition:all 150ms;">' +
+                  'Bei Holygrade kaufen · ' + escHtml(priceText) + ' · ' + escHtml(qtyText) +
+                '</a>';
+            }
+          }
+        } catch (e) { /* silent */ }
+
         var html =
+          shopCtaHtml +
           '<div class="pv-card">' +
             '<div class="pv-set-info">' +
               '<span class="pv-lang-badge">' + escHtml(data.language || language) + '</span>' +
@@ -1071,7 +1104,10 @@
           return r.json();
         })
         .then(function (data) { renderContent(data); })
-        .catch(function (e) { renderError(); });
+        .catch(function (e) {
+          // C1: If no data, redirect to /sealed instead of showing empty page
+          window.location.replace('/login.html?next=/sealed&utm_source=preview_redirect');
+        });
     })();
   </script>
 </body>
