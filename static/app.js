@@ -582,20 +582,54 @@ async function loadMarketSummary() {
 
   try {
     const data = await apiFetch('/api/cards/market-summary');
-    const updated = data.last_updated
-      ? new Date(data.last_updated).toLocaleString()
-      : 'N/A';
+
+    // B2: Relative German time + LIVE badge control
+    let timeLabel = '';
+    let isLive = false;
+    if (data.last_updated) {
+      const updMs = new Date(data.last_updated).getTime();
+      const deltaH = (Date.now() - updMs) / 3600000;
+      isLive = deltaH < 6;
+      timeLabel = _relativeTimeDE(data.last_updated);
+    }
+
+    const liveBadge = document.querySelector('.nav .live-badge');
+    if (liveBadge) {
+      if (isLive) {
+        liveBadge.innerHTML = '<span class="live-dot" aria-hidden="true"></span> LIVE';
+        liveBadge.style.opacity = '';
+      } else {
+        liveBadge.innerHTML = '<span class="live-dot" aria-hidden="true" style="background:#8a8780;box-shadow:none;animation:none;"></span> Letzte Aktualisierung';
+        liveBadge.style.opacity = '0.7';
+      }
+    }
+
     bar.innerHTML =
-      `<span>${fmt.int(data.total_cards)} Cards Tracked</span>` +
+      `<span>${fmt.int(data.total_cards)} Karten</span>` +
       `<span class="market-summary-sep"></span>` +
       `<span>${fmt.int(data.total_sets)} Sets</span>` +
       `<span class="market-summary-sep"></span>` +
-      `<span>${fmt.int(data.cards_with_eu_prices)} EU Priced</span>` +
+      `<span>${fmt.int(data.cards_with_eu_prices)} EU-Preise</span>` +
       `<span class="market-summary-sep"></span>` +
-      `<span>Last Updated: ${escHtml(updated)}</span>`;
+      `<span>Aktualisiert: ${escHtml(timeLabel)}</span>`;
   } catch (_) {
-    bar.innerHTML = '<span>Market data unavailable</span>';
+    bar.innerHTML = '<span>Marktdaten nicht verfügbar</span>';
   }
+}
+
+// German relative time for the market summary bar
+function _relativeTimeDE(iso) {
+  if (!iso) return '—';
+  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (diff < 60) return 'gerade eben';
+  if (diff < 3600) return 'vor ' + Math.round(diff / 60) + ' Min';
+  if (diff < 7200) return 'vor 1 Stunde';
+  if (diff < 86400) return 'vor ' + Math.round(diff / 3600) + ' Stunden';
+  if (diff < 172800) {
+    const d = new Date(iso);
+    return 'gestern, ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  }
+  return 'vor ' + Math.round(diff / 86400) + ' Tagen';
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -1445,11 +1479,18 @@ function renderSealedSections(data) {
     return a.origIdx - b.origIdx;
   });
 
-  const html = sectionsWithData.map(({ key, title, desc, items, inStock, outOfStock }) => {
+  // B3b: Split into JP sections (shown) and EN sections (behind expander)
+  // B3c: Auto-hide sections with 0 in-stock products
+  const jpSections = sectionsWithData.filter(s => !s.key.endsWith('-EN'));
+  const enSections = sectionsWithData.filter(s => s.key.endsWith('-EN'));
+
+  function renderSection({ key, title, desc, items, inStock, outOfStock }) {
+    // B3c: Auto-hide entire section if 0 in-stock items
+    if (inStock.length === 0) return '';
+
     const inStockCards = inStock.map(renderSealedCard).join('');
     const outOfStockCards = outOfStock.map(renderSealedCard).join('');
-    // Visuell markieren: Sections ohne Lager kollabieren leicht (gedimmt).
-    const sectionClass = inStock.length === 0 ? 'sealed-section sealed-section--empty' : 'sealed-section';
+    const sectionClass = 'sealed-section';
 
     let gridHtml = '';
     if (inStock.length && outOfStock.length) {
@@ -1465,7 +1506,6 @@ function renderSealedSections(data) {
       gridHtml = '<div class="product-grid sealed-section-grid sealed-section-grid--soldout">' + outOfStockCards + '</div>';
     }
 
-    // Count-Badge zeigt jetzt "verfügbar / gesamt" wenn relevant.
     const countLabel = inStock.length
       ? '<span class="sealed-section-count" title="' + inStock.length + ' verfügbar von ' + items.length + ' gesamt">' +
           inStock.length + ' / ' + items.length +
@@ -1483,9 +1523,41 @@ function renderSealedSections(data) {
         ${gridHtml}
       </div>
     `;
-  }).join('');
+  }
 
-  root.innerHTML = html;
+  const jpHtml = jpSections.map(renderSection).join('');
+
+  // B3b: EN sections behind expander (only if they have content)
+  const enHtml = enSections.map(renderSection).join('');
+  let enExpander = '';
+  if (enHtml.trim()) {
+    enExpander = `
+      <div class="sealed-en-expander">
+        <button class="sealed-en-toggle" id="sealed-en-toggle" aria-expanded="false">
+          <span class="sealed-en-toggle-text">EN-Marktreferenz anzeigen ↓</span>
+        </button>
+        <div class="sealed-en-content" id="sealed-en-content" style="display:none;">
+          ${enHtml}
+        </div>
+      </div>
+    `;
+  }
+
+  root.innerHTML = jpHtml + enExpander;
+
+  // B3b: Wire EN expander toggle
+  const enToggle = root.querySelector('#sealed-en-toggle');
+  if (enToggle) {
+    enToggle.addEventListener('click', () => {
+      const content = root.querySelector('#sealed-en-content');
+      const textSpan = enToggle.querySelector('.sealed-en-toggle-text');
+      if (!content) return;
+      const isHidden = content.style.display === 'none';
+      content.style.display = isHidden ? '' : 'none';
+      enToggle.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
+      if (textSpan) textSpan.textContent = isHidden ? 'EN-Marktreferenz ausblenden ↑' : 'EN-Marktreferenz anzeigen ↓';
+    });
+  }
 
   // Wire up card clicks for telemetry + EV modal
   root.querySelectorAll('[data-sealed-ev]').forEach(btn => {
@@ -1774,6 +1846,15 @@ function applyHistoryToCard(card, series) {
     sparkEl.innerHTML = '<div class="sealed-spark-empty">Daten werden gesammelt</div>';
     return;
   }
+
+  // B1: If fewer than 5 data days, hide % and sparkline — show neutral pill
+  if (series.length < 5) {
+    perfEl.innerHTML = '<div class="sealed-perf-value mono is-flat">Daten sammeln · ' + series.length + ' Tage</div>'
+      + '<div class="sealed-perf-label mono">Noch keine Trend-Daten</div>';
+    sparkEl.innerHTML = '<div class="sealed-spark-empty">—</div>';
+    return;
+  }
+
   const last = series[series.length - 1].value;
   const arrow = swissArrow(last);
   let cls = 'sealed-perf-value mono';

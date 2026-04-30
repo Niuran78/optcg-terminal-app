@@ -3564,6 +3564,35 @@ a.price-link:hover {
   .sealed-card-cta-buy .sealed-cta-qty { display: none; }
 }
 
+/* ─── EN Expander (collapsed EN sections) ─────────────────────────── */
+.sealed-en-expander {
+  margin-top: 24px;
+  border-top: 1px dashed var(--border-2, #1e2a28);
+  padding-top: 12px;
+}
+.sealed-en-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 10px 16px;
+  background: transparent;
+  border: 1px solid var(--border-2, #1e2a28);
+  border-radius: 8px;
+  color: var(--muted, #8a8780);
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 150ms, border-color 150ms;
+}
+.sealed-en-toggle:hover {
+  color: var(--text-2, #b0ada6);
+  border-color: var(--text-2, #b0ada6);
+}
+
 /* ─── Briefing Top (Daily Briefing component above Overview) ─────── */
 .briefing-top {
   margin-bottom: 24px;
