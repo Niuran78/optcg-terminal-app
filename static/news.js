@@ -44,6 +44,13 @@
     community: 'COMMUNITY',
   };
 
+  // Override badge label/color by source_key for new sources
+  var SOURCE_KEY_BADGES = {
+    reddit_optcg:       { label: 'REDDIT',     color: '#9B59B6' },
+    bandai_jp:          { label: 'BANDAI JP',   color: '#E74C3C' },
+    limitless_articles: { label: 'LIMITLESS',   color: '#3498DB' },
+  };
+
   const CAT_LABELS = {
     set_release: 'SET-RELEASE',
     market:      'MARKT',
@@ -52,9 +59,10 @@
     other:       'NEWS',
   };
 
-  function badgeHTML(source) {
-    const color = BADGE_COLORS[source] || '#888';
-    const label = BADGE_LABELS[source] || source.toUpperCase();
+  function badgeHTML(source, source_key) {
+    var override = source_key && SOURCE_KEY_BADGES[source_key];
+    var color = override ? override.color : (BADGE_COLORS[source] || '#888');
+    var label = override ? override.label : (BADGE_LABELS[source] || source.toUpperCase());
     return '<span class="news-badge" style="color:' + color + '">' + label + '</span>';
   }
 
@@ -103,7 +111,7 @@
     return '<a class="news-card featured' + visited + '" href="' + escapeHtml(link) + '"' + target +
       ' data-id="' + item.id + '" onclick="newsCardClick(' + item.id + ')">' +
       '<div class="news-card-top">' +
-        badgeHTML(item.source) +
+        badgeHTML(item.source, item.source_key) +
         '<span class="news-timestamp">' + escapeHtml(relativeTimeDE(item.published_at)) + '</span>' +
       '</div>' +
       '<div class="news-card-headline">' + escapeHtml(item.title_de) + '</div>' +
@@ -127,7 +135,7 @@
     return '<a class="news-card' + visited + '" href="' + escapeHtml(link) + '"' + target +
       ' data-id="' + item.id + '" onclick="newsCardClick(' + item.id + ')">' +
       '<div class="news-card-top">' +
-        badgeHTML(item.source) +
+        badgeHTML(item.source, item.source_key) +
         '<span class="news-card-dot">·</span>' +
         '<span class="news-timestamp">' + escapeHtml(relativeTimeDE(item.published_at)) + '</span>' +
         catChip(item.category) +

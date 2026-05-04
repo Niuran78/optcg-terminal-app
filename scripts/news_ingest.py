@@ -33,6 +33,11 @@ DATABASE_URL = os.getenv(
 )
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+SCRAPFLY_KEY = os.getenv(
+    "SCRAPFLY_API_KEY",
+    "scp-live-a2fc83ff48e244a7a72912b93a2c405b",
+)
 
 SET_CODE_RE = re.compile(r"\b(OP-?\d{2}|EB-?\d{2}|ST-?\d{2}|PRB-?\d{2})\b", re.IGNORECASE)
 UA = "Mozilla/5.0 (compatible; HolygradeTerminal/1.0; +https://terminal.holygrade.com)"
@@ -139,9 +144,70 @@ async def translate_to_de(title_en):
         return title_en
 
 
+async def translate_jp_to_de(text_jp: str) -> str:
+    """Translate a Japanese headline to German using available LLM."""
+    if not text_jp or not text_jp.strip():
+        return text_jp
+    sys_prompt = (
+        "Translate this Japanese One Piece TCG news headline to German. "
+        "Keep set codes (OP-XX, EB-XX) untouched. Be concise. "
+        "Return ONLY the translation, no explanation."
+    )
+    # Try OpenAI first (cheaper), then Anthropic
+    if OPENAI_API_KEY:
+        try:
+            async with httpx.AsyncClient(timeout=20) as client:
+                resp = await client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+                    json={
+                        "model": "gpt-4o-mini",
+                        "max_tokens": 150,
+                        "messages": [
+                            {"role": "system", "content": sys_prompt},
+                            {"role": "user", "content": text_jp},
+                        ],
+                    },
+                )
+                data = resp.json()
+                text = data["choices"][0]["message"]["content"].strip()
+                if text.startswith('"') and text.endswith('"'):
+                    text = text[1:-1]
+                return text[:120] if text else text_jp
+        except Exception as e:
+            logger.warning(f"OpenAI JP→DE translation failed: {e}")
+
+    if ANTHROPIC_API_KEY:
+        try:
+            async with httpx.AsyncClient(timeout=20) as client:
+                resp = await client.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers={
+                        "x-api-key": ANTHROPIC_API_KEY,
+                        "anthropic-version": "2023-06-01",
+                        "content-type": "application/json",
+                    },
+                    json={
+                        "model": "claude-haiku-4-5-20251001",
+                        "max_tokens": 150,
+                        "messages": [{"role": "user", "content": f"{sys_prompt}\n\n{text_jp}"}],
+                    },
+                )
+                data = resp.json()
+                text = data.get("content", [{}])[0].get("text", "").strip()
+                if text.startswith('"') and text.endswith('"'):
+                    text = text[1:-1]
+                return text[:120] if text else text_jp
+        except Exception as e:
+            logger.warning(f"Anthropic JP→DE translation failed: {e}")
+
+    logger.warning("No LLM key available for JP→DE translation")
+    return text_jp
+
+
 async def insert_news_item(conn, source, source_key, source_url, title_de,
                            title_en, teaser_de, category, language,
-                           related_set, published_at):
+                           related_set, published_at, override_score=None):
     """Insert a news item, skip if URL already exists."""
     # Check dedup first (cheap)
     exists = await conn.fetchval(
@@ -150,7 +216,7 @@ async def insert_news_item(conn, source, source_key, source_url, title_de,
     if exists:
         return False
 
-    score = compute_featured_score(source, category, published_at, related_set)
+    score = override_score if override_score is not None else compute_featured_score(source, category, published_at, related_set)
     try:
         await conn.execute(
             "INSERT INTO news_items "
@@ -563,6 +629,329 @@ async def ingest_market_signals(conn):
 
 
 # ═══════════════════════════════════════════════════════════════════
+# Source: Reddit r/OnePieceTCG (via Scrapfly)
+# ═══════════════════════════════════════════════════════════════════
+
+REDDIT_GOOD_FLAIRS = {"news", "spoiler", "discussion", "meta"}
+REDDIT_SKIP_FLAIRS = {"pulls", "helpme", "deckhelp", "trade", "pull",
+                       "help me", "deck help", "help", "meme", "humor"}
+
+def _reddit_flair_to_category(flair: str) -> str:
+    f = flair.lower().strip()
+    if f in ("spoiler", "leak"):
+        return "set_release"
+    if f == "meta":
+        return "tournament"
+    return "other"
+
+def _reddit_featured_score(score: int) -> int:
+    if score >= 1000:
+        return 70
+    if score >= 500:
+        return 60
+    if score >= 100:
+        return 40
+    return 30
+
+
+async def ingest_reddit(conn):
+    """Fetch top weekly posts from r/OnePieceTCG via Scrapfly."""
+    logger.info("Ingesting Reddit r/OnePieceTCG...")
+    count = 0
+    max_items = 5
+
+    if not SCRAPFLY_KEY:
+        logger.warning("SCRAPFLY_KEY not set, skipping Reddit ingest")
+        return 0
+
+    try:
+        url = "https://www.reddit.com/r/OnePieceTCG/top.json?t=week&limit=25"
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.get(
+                "https://api.scrapfly.io/scrape",
+                params={"key": SCRAPFLY_KEY, "url": url, "asp": "true"},
+            )
+            resp.raise_for_status()
+
+        content = resp.json()["result"]["content"]
+        data = __import__("json").loads(content)
+
+        posts = data.get("data", {}).get("children", [])
+        for post_wrap in posts:
+            if count >= max_items:
+                break
+
+            post = post_wrap.get("data", {})
+            title = post.get("title", "")
+            score = post.get("score", 0)
+            flair = (post.get("link_flair_text") or "").lower().strip()
+            permalink = post.get("permalink", "")
+
+            # Filter: score >= 100
+            if score < 100:
+                continue
+            # Filter: flair
+            if flair in REDDIT_SKIP_FLAIRS:
+                continue
+            # Only accept known good flairs (if flair exists)
+            if flair and flair not in REDDIT_GOOD_FLAIRS:
+                continue
+            # Title length
+            if len(title) < 20:
+                continue
+
+            source_url = f"https://www.reddit.com{permalink}"
+
+            # Category and score
+            category = _reddit_flair_to_category(flair) if flair else "other"
+            feat_score = _reddit_featured_score(score)
+            related_set = extract_set_code(title)
+
+            # Translate to German (usually English already)
+            title_de = await translate_to_de(title)
+            teaser_de = f"{score} Upvotes · r/OnePieceTCG"
+
+            # Parse time
+            created_utc = post.get("created_utc", 0)
+            pub_at = datetime.fromtimestamp(created_utc, tz=timezone.utc) if created_utc else datetime.now(timezone.utc)
+
+            inserted = await insert_news_item(
+                conn, "community", "reddit_optcg", source_url,
+                title_de, title[:120], teaser_de, category, "en",
+                related_set, pub_at, override_score=feat_score,
+            )
+            if inserted:
+                count += 1
+                logger.info(f"  + (Reddit) [{score}↑] {title_de[:60]}")
+
+    except Exception as e:
+        logger.error(f"Reddit ingest failed: {e}")
+        await conn.execute(
+            "UPDATE news_sources SET last_fetch_status='error', last_error_msg=$1 "
+            "WHERE source_key='reddit_optcg'",
+            str(e)[:500],
+        )
+        return 0
+
+    await conn.execute(
+        "UPDATE news_sources SET last_fetched_at=NOW(), last_fetch_count=$1, "
+        "last_fetch_status='ok', last_error_msg=NULL "
+        "WHERE source_key='reddit_optcg'",
+        count,
+    )
+    logger.info(f"Reddit: {count} new items ingested.")
+    return count
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Source: Bandai JP site (via Scrapfly + LLM translation)
+# ═══════════════════════════════════════════════════════════════════
+
+async def ingest_bandai_jp(conn):
+    """Fetch Bandai JP news page via Scrapfly, translate JP→DE."""
+    logger.info("Ingesting Bandai JP news...")
+    count = 0
+    max_items = 10
+
+    if not SCRAPFLY_KEY:
+        logger.warning("SCRAPFLY_KEY not set, skipping Bandai JP ingest")
+        return 0
+
+    jp_urls = [
+        "https://www.onepiece-cardgame.com/jp/news/",
+        "https://www.onepiece-cardgame.com/jp/products/",
+    ]
+
+    try:
+        async with httpx.AsyncClient(timeout=90) as client:
+            for jp_url in jp_urls:
+                if count >= max_items:
+                    break
+
+                resp = await client.get(
+                    "https://api.scrapfly.io/scrape",
+                    params={
+                        "key": SCRAPFLY_KEY,
+                        "url": jp_url,
+                        "render_js": "true",
+                    },
+                )
+                resp.raise_for_status()
+                html = resp.json()["result"]["content"]
+                soup = BeautifulSoup(html, "html.parser")
+
+                # Look for news/product links — common Bandai patterns
+                for link in soup.find_all("a", href=True):
+                    if count >= max_items:
+                        break
+
+                    href = link["href"]
+                    text = link.get_text(strip=True)
+
+                    if not text or len(text) < 5:
+                        continue
+
+                    # Only relevant paths
+                    if not any(p in href for p in ["/news/", "/products/", "/cardlist/"]):
+                        continue
+                    # Skip pure index links
+                    path_after = href.rstrip("/").split("/")[-1]
+                    if not path_after or path_after in ("news", "products", "cardlist", "jp"):
+                        continue
+
+                    # Build absolute URL
+                    if href.startswith("/"):
+                        source_url = "https://www.onepiece-cardgame.com" + href
+                    elif href.startswith("http"):
+                        source_url = href
+                    else:
+                        source_url = "https://www.onepiece-cardgame.com/jp/" + href
+
+                    # Detect category from URL
+                    if "/products/" in href:
+                        category = "set_release"
+                    else:
+                        category = "other"
+
+                    related_set = extract_set_code(text + " " + href)
+
+                    # Translate JP → DE
+                    title_de = await translate_jp_to_de(text)
+                    teaser_de = "Quelle: Bandai Japan (übersetzt)"
+
+                    # NO image_url (Bandai card art constraint)
+                    inserted = await insert_news_item(
+                        conn, "bandai", "bandai_jp", source_url,
+                        title_de, text[:120], teaser_de, category, "de",
+                        related_set, datetime.now(timezone.utc),
+                        override_score=80,
+                    )
+                    if inserted:
+                        count += 1
+                        logger.info(f"  + (Bandai JP) {title_de[:60]}")
+
+    except Exception as e:
+        logger.error(f"Bandai JP ingest failed: {e}")
+        await conn.execute(
+            "UPDATE news_sources SET last_fetch_status='error', last_error_msg=$1 "
+            "WHERE source_key='bandai_jp'",
+            str(e)[:500],
+        )
+        return 0
+
+    await conn.execute(
+        "UPDATE news_sources SET last_fetched_at=NOW(), last_fetch_count=$1, "
+        "last_fetch_status='ok', last_error_msg=NULL "
+        "WHERE source_key='bandai_jp'",
+        count,
+    )
+    logger.info(f"Bandai JP: {count} new items ingested.")
+    return count
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Source: Limitless TCG Articles (via Scrapfly, filtered)
+# ═══════════════════════════════════════════════════════════════════
+
+_LIMITLESS_KEYWORDS = {
+    "spoiler", "preview", "meta", "deck", "format", "tier list",
+    "ban", "errata", "tier", "metagame", "analysis", "guide",
+}
+
+
+async def ingest_limitless_articles(conn):
+    """Fetch Limitless TCG articles/blog via Scrapfly, filter for spoiler/meta."""
+    logger.info("Ingesting Limitless TCG articles...")
+    count = 0
+    max_items = 5
+
+    if not SCRAPFLY_KEY:
+        logger.warning("SCRAPFLY_KEY not set, skipping Limitless articles ingest")
+        return 0
+
+    urls_to_try = [
+        "https://onepiece.limitlesstcg.com/articles",
+        "https://onepiece.limitlesstcg.com/",
+    ]
+
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            for page_url in urls_to_try:
+                if count >= max_items:
+                    break
+
+                resp = await client.get(
+                    "https://api.scrapfly.io/scrape",
+                    params={
+                        "key": SCRAPFLY_KEY,
+                        "url": page_url,
+                        "render_js": "true",
+                    },
+                )
+                resp.raise_for_status()
+                html = resp.json()["result"]["content"]
+                soup = BeautifulSoup(html, "html.parser")
+
+                for link in soup.find_all("a", href=True):
+                    if count >= max_items:
+                        break
+
+                    href = link["href"]
+                    text = link.get_text(strip=True)
+
+                    if not text or len(text) < 10:
+                        continue
+
+                    # Must match article-like keywords
+                    text_lower = text.lower()
+                    if not any(kw in text_lower for kw in _LIMITLESS_KEYWORDS):
+                        continue
+
+                    # Skip pure tournament result pages
+                    if "/tournaments/" in href and not any(kw in text_lower for kw in ("meta", "format", "tier")):
+                        continue
+
+                    # Build URL
+                    if href.startswith("/"):
+                        source_url = "https://onepiece.limitlesstcg.com" + href
+                    elif href.startswith("http"):
+                        source_url = href
+                    else:
+                        continue
+
+                    related_set = extract_set_code(text)
+                    title_de = await translate_to_de(text)
+
+                    inserted = await insert_news_item(
+                        conn, "community", "limitless_articles", source_url,
+                        title_de, text[:120], "Quelle: Limitless TCG",
+                        "tournament", "en", related_set,
+                        datetime.now(timezone.utc), override_score=60,
+                    )
+                    if inserted:
+                        count += 1
+                        logger.info(f"  + (LT-Art) {title_de[:60]}")
+
+    except Exception as e:
+        logger.error(f"Limitless articles ingest failed: {e}")
+        await conn.execute(
+            "UPDATE news_sources SET last_fetch_status='error', last_error_msg=$1 "
+            "WHERE source_key='limitless_articles'",
+            str(e)[:500],
+        )
+        return 0
+
+    await conn.execute(
+        "UPDATE news_sources SET last_fetched_at=NOW(), last_fetch_count=$1, "
+        "last_fetch_status='ok', last_error_msg=NULL "
+        "WHERE source_key='limitless_articles'",
+        count,
+    )
+    logger.info(f"Limitless articles: {count} new items ingested.")
+    return count
+
+
+# ═══════════════════════════════════════════════════════════════════
 # Featured score recompute
 # ═══════════════════════════════════════════════════════════════════
 
@@ -599,6 +988,10 @@ async def run_full_ingest():
         results["youtube"] = await ingest_youtube_rss(conn)
         results["limitless"] = await ingest_limitless(conn)
         results["market"] = await ingest_market_signals(conn)
+        # New Scrapfly-based sources (Phase 5)
+        results["reddit"] = await ingest_reddit(conn)
+        results["bandai_jp"] = await ingest_bandai_jp(conn)
+        results["limitless_articles"] = await ingest_limitless_articles(conn)
         await recompute_featured_scores(conn)
 
         total = sum(results.values())
