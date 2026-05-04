@@ -162,40 +162,10 @@
 <!-- ═══ APP SHELL ════════════════════════════════════════════════ -->
 <main class="app-shell" role="main">
 
-  <!-- First-run welcome banner -->
-  <div id="welcome-banner" class="welcome-banner" style="display:none;" aria-live="polite">
-    <button class="welcome-close" id="welcome-close" aria-label="Dismiss welcome banner">&times;</button>
-    <div class="welcome-header">
-      <div class="welcome-eyebrow">Investment terminal for OP-TCG</div>
-      <h2 class="welcome-title">Tradable cards · live data · daily signals</h2>
-    </div>
-    <ol class="welcome-steps">
-      <li class="welcome-step">
-        <span class="welcome-step-num">1</span>
-        <div class="welcome-step-body">
-          <div class="welcome-step-title">Browse Markets</div>
-          <div class="welcome-step-desc">~760 Karten mit verifizierten Live-Marktdaten — gefiltert nach Liquidität.</div>
-          <button class="welcome-step-cta" data-tab="browser">Open Markets</button>
-        </div>
-      </li>
-      <li class="welcome-step">
-        <span class="welcome-step-num">2</span>
-        <div class="welcome-step-body">
-          <div class="welcome-step-title">Find arbitrage</div>
-          <div class="welcome-step-desc">Live JP↔EN spreads on actively-traded cards — sorted by profit %.</div>
-          <button class="welcome-step-cta" data-tab="arbitrage">View Scanner</button>
-        </div>
-      </li>
-      <li class="welcome-step">
-        <span class="welcome-step-num">3</span>
-        <div class="welcome-step-body">
-          <div class="welcome-step-title">Track your holdings</div>
-          <div class="welcome-step-desc">Lots, current value, daily P&amp;L — only on cards we can actually price.</div>
-          <button class="welcome-step-cta" data-tab="portfolio">Open Holdings</button>
-        </div>
-      </li>
-    </ol>
-  </div>
+  <!-- First-run welcome banner — deaktiviert, da Terminal jetzt Sealed-fokussiert ist.
+       Banner war ursprünglich auf Singles-Markets ausgerichtet und würde neue User
+       in die falsche Richtung lenken. Bei Bedarf später ein neues Sealed-First-Banner. -->
+  <div id="welcome-banner" class="welcome-banner" style="display:none;" aria-live="polite" hidden></div>
 
   <!-- Market Summary Bar -->
   <div class="market-summary-bar" id="market-summary-bar" aria-live="polite">
