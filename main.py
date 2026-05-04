@@ -427,6 +427,11 @@ if os.path.exists(static_dir):
         """
         return FileResponse(os.path.join(static_dir, "preview-sealed.html"))
 
+    @app.get("/admin/news", include_in_schema=False)
+    async def serve_admin_news():
+        """Admin page for manually adding/managing news items."""
+        return FileResponse(os.path.join(static_dir, "admin-news.html"))
+
     @app.get("/teaser", include_in_schema=False)
     async def serve_teaser():
         return FileResponse(os.path.join(static_dir, "teaser.html"))

@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Holygrade Terminal — News Admin</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    body { background: var(--bg); color: var(--text); font-family: var(--font-body); }
+    .admin-wrap {
+      max-width: 700px; margin: 40px auto; padding: 0 20px;
+    }
+    .admin-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 24px; padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .admin-title {
+      font-family: var(--font-mono); font-size: 20px; font-weight: 700;
+      color: var(--accent);
+    }
+    .admin-back {
+      font-family: var(--font-mono); font-size: 11px;
+      color: var(--accent); text-decoration: none;
+    }
+    .admin-back:hover { color: var(--text); }
+    .form-group { margin-bottom: 16px; }
+    .form-group label {
+      display: block; font-family: var(--font-mono);
+      font-size: 10px; font-weight: 700;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 6px;
+    }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%; box-sizing: border-box;
+      background: var(--surface); color: var(--text);
+      border: 1px solid var(--border); border-radius: var(--r-md);
+      padding: 10px 14px;
+      font-family: var(--font-body); font-size: 14px;
+    }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+      outline: none; border-color: var(--accent);
+    }
+    .form-group textarea { resize: vertical; min-height: 60px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .form-check {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 13px; color: var(--text-2);
+    }
+    .form-check input[type="checkbox"] {
+      width: 18px; height: 18px; accent-color: var(--accent);
+    }
+    .btn-submit {
+      width: 100%; padding: 12px;
+      font-family: var(--font-mono); font-size: 13px; font-weight: 700;
+      letter-spacing: 0.06em;
+      color: var(--bg); background: var(--accent);
+      border: none; border-radius: var(--r-md);
+      cursor: pointer; transition: opacity 0.15s;
+    }
+    .btn-submit:hover { opacity: 0.85; }
+    .btn-submit:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-ingest {
+      width: 100%; padding: 10px; margin-bottom: 20px;
+      font-family: var(--font-mono); font-size: 12px; font-weight: 600;
+      color: var(--accent); background: var(--surface);
+      border: 1px solid var(--border); border-radius: var(--r-md);
+      cursor: pointer; transition: border-color 0.15s;
+    }
+    .btn-ingest:hover { border-color: var(--accent); }
+    .toast {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      padding: 12px 24px; border-radius: var(--r-md);
+      font-family: var(--font-mono); font-size: 12px;
+      z-index: 999; animation: toast-in 0.3s ease;
+    }
+    .toast.success { background: rgba(0,229,192,0.15); color: var(--accent); border: 1px solid var(--accent); }
+    .toast.error { background: rgba(229,92,92,0.15); color: var(--negative); border: 1px solid var(--negative); }
+    @keyframes toast-in { from { opacity:0; transform:translateX(-50%) translateY(10px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
+
+    /* Recent items list */
+    .recent-list { margin-top: 32px; }
+    .recent-title {
+      font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+      letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 12px;
+    }
+    .recent-item {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 14px; margin-bottom: 6px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--r-md); font-size: 13px;
+    }
+    .recent-item-title { flex: 1; color: var(--text); margin-right: 12px; }
+    .recent-item-badge {
+      font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      padding: 2px 7px; border-radius: var(--r-sm);
+      background: var(--surface-2);
+    }
+    .btn-toggle {
+      font-family: var(--font-mono); font-size: 10px;
+      padding: 4px 10px; border-radius: var(--r-sm);
+      cursor: pointer; border: 1px solid var(--border);
+      background: none; color: var(--muted); margin-left: 8px;
+    }
+    .btn-toggle:hover { border-color: var(--accent); color: var(--accent); }
+  </style>
+</head>
+<body>
+
+<div class="admin-wrap">
+  <div class="admin-header">
+    <div class="admin-title">NEWS ADMIN</div>
+    <a class="admin-back" href="/">← Zurück zum Terminal</a>
+  </div>
+
+  <!-- Ingest trigger -->
+  <button class="btn-ingest" id="btn-ingest" onclick="triggerIngest()">
+    Alle Quellen jetzt aktualisieren
+  </button>
+
+  <!-- Entry form -->
+  <form id="news-form" onsubmit="submitNews(event)">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="source">Quelle</label>
+        <select id="source" required>
+          <option value="holygrade">Holygrade</option>
+          <option value="bandai">Bandai</option>
+          <option value="market">Markt</option>
+          <option value="community">Community</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="category">Kategorie</label>
+        <select id="category" required>
+          <option value="shop">Shop</option>
+          <option value="set_release">Set-Release</option>
+          <option value="market">Markt</option>
+          <option value="tournament">Tournament</option>
+          <option value="other">Sonstige</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label for="title_de">Titel (DE, max 120 Zeichen)</label>
+      <input type="text" id="title_de" maxlength="120" required placeholder="z.B. OP-15 Booster Box wieder auf Lager" />
+    </div>
+
+    <div class="form-group">
+      <label for="teaser_de">Teaser (optional, max 240 Zeichen)</label>
+      <textarea id="teaser_de" maxlength="240" placeholder="Kurze Beschreibung..."></textarea>
+    </div>
+
+    <div class="form-group">
+      <label for="source_url">Quell-URL (muss einzigartig sein)</label>
+      <input type="url" id="source_url" required placeholder="https://terminal.holygrade.com/internal/news/..." />
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="related_set">Set-Code (optional)</label>
+        <input type="text" id="related_set" placeholder="z.B. OP-15" />
+      </div>
+      <div class="form-group">
+        <label for="published_at">Datum/Uhrzeit</label>
+        <input type="datetime-local" id="published_at" />
+      </div>
+    </div>
+
+    <div class="form-group">
+      <div class="form-check">
+        <input type="checkbox" id="is_published" checked />
+        <label for="is_published" style="margin-bottom:0;letter-spacing:0;text-transform:none;font-size:13px;color:var(--text-2);">Sofort veröffentlichen</label>
+      </div>
+    </div>
+
+    <button type="submit" class="btn-submit" id="btn-submit">News veröffentlichen</button>
+  </form>
+
+  <!-- Recent items -->
+  <div class="recent-list">
+    <div class="recent-title">LETZTE 10 EINTRÄGE</div>
+    <div id="recent-items">Lade...</div>
+  </div>
+</div>
+
+<script>
+  var TOKEN = localStorage.getItem('optcg_token');
+  if (!TOKEN) {
+    alert('Nicht angemeldet. Bitte zuerst im Terminal einloggen.');
+    location.href = '/login.html';
+  }
+
+  // Set default datetime to now
+  var now = new Date();
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+  document.getElementById('published_at').value = now.toISOString().slice(0, 16);
+
+  function showToast(msg, type) {
+    var el = document.createElement('div');
+    el.className = 'toast ' + type;
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(function() { el.remove(); }, 4000);
+  }
+
+  async function apiFetch(url, opts) {
+    opts = opts || {};
+    opts.headers = Object.assign({ 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' }, opts.headers || {});
+    var res = await fetch(url, opts);
+    return { ok: res.ok, status: res.status, data: await res.json().catch(function() { return null; }) };
+  }
+
+  async function submitNews(e) {
+    e.preventDefault();
+    var btn = document.getElementById('btn-submit');
+    btn.disabled = true;
+    btn.textContent = 'Wird veröffentlicht...';
+
+    var pubAt = document.getElementById('published_at').value;
+    var body = {
+      source: document.getElementById('source').value,
+      source_url: document.getElementById('source_url').value,
+      title_de: document.getElementById('title_de').value,
+      teaser_de: document.getElementById('teaser_de').value || null,
+      category: document.getElementById('category').value,
+      related_set: document.getElementById('related_set').value || null,
+      published_at: pubAt ? new Date(pubAt).toISOString() : new Date().toISOString(),
+      is_published: document.getElementById('is_published').checked,
+    };
+
+    var res = await apiFetch('/api/news', { method: 'POST', body: JSON.stringify(body) });
+    btn.disabled = false;
+    btn.textContent = 'News veröffentlichen';
+
+    if (res.ok) {
+      showToast('News veröffentlicht!', 'success');
+      document.getElementById('news-form').reset();
+      // Reset datetime
+      var now2 = new Date();
+      now2.setMinutes(now2.getMinutes() - now2.getTimezoneOffset());
+      document.getElementById('published_at').value = now2.toISOString().slice(0, 16);
+      document.getElementById('is_published').checked = true;
+      loadRecent();
+    } else if (res.status === 409) {
+      showToast('Diese URL existiert bereits.', 'error');
+    } else if (res.status === 401 || res.status === 403) {
+      showToast('Keine Admin-Berechtigung.', 'error');
+    } else {
+      showToast('Fehler: ' + (res.data && res.data.detail || 'Unbekannt'), 'error');
+    }
+  }
+
+  async function triggerIngest() {
+    var btn = document.getElementById('btn-ingest');
+    btn.disabled = true;
+    btn.textContent = 'Aktualisiere...';
+
+    var res = await apiFetch('/api/news/ingest', { method: 'POST' });
+    btn.disabled = false;
+    btn.textContent = 'Alle Quellen jetzt aktualisieren';
+
+    if (res.ok) {
+      var r = res.data && res.data.results;
+      var total = r ? Object.values(r).reduce(function(a,b){return a+b;}, 0) : 0;
+      showToast(total + ' neue Einträge importiert.', 'success');
+      loadRecent();
+    } else {
+      showToast('Ingest fehlgeschlagen.', 'error');
+    }
+  }
+
+  async function togglePublish(id, currentState) {
+    var res = await apiFetch('/api/news/' + id, {
+      method: 'PATCH',
+      body: JSON.stringify({ is_published: !currentState }),
+    });
+    if (res.ok) {
+      showToast((!currentState ? 'Veröffentlicht' : 'Versteckt'), 'success');
+      loadRecent();
+    }
+  }
+
+  async function loadRecent() {
+    var res = await apiFetch('/api/news?limit=10');
+    var el = document.getElementById('recent-items');
+    if (!res.ok || !res.data || !res.data.items) {
+      el.innerHTML = '<div style="color:var(--muted);font-size:12px;">Keine Einträge gefunden.</div>';
+      return;
+    }
+    el.innerHTML = res.data.items.map(function(item) {
+      var badge = item.source.toUpperCase();
+      return '<div class="recent-item">' +
+        '<span class="recent-item-badge">' + badge + '</span>' +
+        '<span class="recent-item-title" style="margin-left:8px;">' + (item.title_de || '').substring(0, 60) + '</span>' +
+        '<button class="btn-toggle" onclick="togglePublish(' + item.id + ',' + item.is_published + ')">' +
+          (item.is_published ? 'Verstecken' : 'Zeigen') +
+        '</button>' +
+      '</div>';
+    }).join('');
+  }
+
+  loadRecent();
+</script>
+
+</body>
+</html>
