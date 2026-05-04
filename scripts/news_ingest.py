@@ -632,26 +632,35 @@ async def ingest_market_signals(conn):
 # Source: Reddit r/OnePieceTCG (via Scrapfly)
 # ═══════════════════════════════════════════════════════════════════
 
-REDDIT_GOOD_FLAIRS = {"news", "spoiler", "discussion", "meta"}
-REDDIT_SKIP_FLAIRS = {"pulls", "helpme", "deckhelp", "trade", "pull",
-                       "help me", "deck help", "help", "meme", "humor"}
+# Flair matching — Reddit flairs contain emojis, e.g. "📰 One Piece TCG News"
+# We match on substring to handle varying formatting
+_REDDIT_GOOD_FLAIR_KW = ["news", "spoiler", "discussion", "meta", "card reveal",
+                          "deck tech", "original content", "leak", "announcement"]
+_REDDIT_SKIP_FLAIR_KW = ["pull", "trade", "help", "meme", "humor",
+                          "collection flex", "question", "buying", "selling"]
+
+def _reddit_flair_matches(flair: str, keywords: list) -> bool:
+    f = flair.lower()
+    return any(kw in f for kw in keywords)
 
 def _reddit_flair_to_category(flair: str) -> str:
-    f = flair.lower().strip()
-    if f in ("spoiler", "leak"):
+    f = flair.lower()
+    if any(kw in f for kw in ("spoiler", "leak", "card reveal", "announcement")):
         return "set_release"
-    if f == "meta":
+    if any(kw in f for kw in ("meta", "deck tech")):
         return "tournament"
     return "other"
 
-def _reddit_featured_score(score: int) -> int:
-    if score >= 1000:
+def _reddit_featured_score(upvotes: int) -> int:
+    if upvotes >= 1000:
         return 70
-    if score >= 500:
+    if upvotes >= 500:
         return 60
-    if score >= 100:
+    if upvotes >= 200:
+        return 50
+    if upvotes >= 100:
         return 40
-    return 30
+    return 35
 
 
 async def ingest_reddit(conn):
@@ -687,14 +696,14 @@ async def ingest_reddit(conn):
             flair = (post.get("link_flair_text") or "").lower().strip()
             permalink = post.get("permalink", "")
 
-            # Filter: score >= 100
-            if score < 100:
+            # Filter: score >= 50 (lowered from 100 — good posts often 50-100)
+            if score < 50:
                 continue
-            # Filter: flair
-            if flair in REDDIT_SKIP_FLAIRS:
+            # Filter: skip flairs with skip keywords
+            if flair and _reddit_flair_matches(flair, _REDDIT_SKIP_FLAIR_KW):
                 continue
-            # Only accept known good flairs (if flair exists)
-            if flair and flair not in REDDIT_GOOD_FLAIRS:
+            # If flair is present, must match at least one good keyword
+            if flair and not _reddit_flair_matches(flair, _REDDIT_GOOD_FLAIR_KW):
                 continue
             # Title length
             if len(title) < 20:
@@ -763,20 +772,25 @@ async def ingest_bandai_jp(conn):
     ]
 
     try:
-        async with httpx.AsyncClient(timeout=90) as client:
+        async with httpx.AsyncClient(timeout=120) as client:
             for jp_url in jp_urls:
                 if count >= max_items:
                     break
 
-                resp = await client.get(
-                    "https://api.scrapfly.io/scrape",
-                    params={
-                        "key": SCRAPFLY_KEY,
-                        "url": jp_url,
-                        "render_js": "true",
-                    },
-                )
-                resp.raise_for_status()
+                try:
+                    resp = await client.get(
+                        "https://api.scrapfly.io/scrape",
+                        params={
+                            "key": SCRAPFLY_KEY,
+                            "url": jp_url,
+                            "render_js": "true",
+                        },
+                    )
+                    resp.raise_for_status()
+                except Exception as url_err:
+                    logger.warning(f"Bandai JP fetch failed for {jp_url}: {url_err}")
+                    continue
+
                 html = resp.json()["result"]["content"]
                 soup = BeautifulSoup(html, "html.parser")
 
@@ -854,8 +868,14 @@ async def ingest_bandai_jp(conn):
 # ═══════════════════════════════════════════════════════════════════
 
 _LIMITLESS_KEYWORDS = {
-    "spoiler", "preview", "meta", "deck", "format", "tier list",
-    "ban", "errata", "tier", "metagame", "analysis", "guide",
+    "spoiler", "preview", "meta", "format", "tier list",
+    "ban", "errata", "metagame", "analysis", "guide",
+    "featured decklist", "deck profile",
+}
+# Navigation/tool links that match keywords but aren't articles
+_LIMITLESS_NAV_SKIP = {
+    "deck builder", "metafy", "deck search", "meta hub",
+    "card database", "sign up", "log in", "pricing",
 }
 
 
@@ -905,6 +925,10 @@ async def ingest_limitless_articles(conn):
                     # Must match article-like keywords
                     text_lower = text.lower()
                     if not any(kw in text_lower for kw in _LIMITLESS_KEYWORDS):
+                        continue
+
+                    # Skip navigation / tool links
+                    if any(nav in text_lower for nav in _LIMITLESS_NAV_SKIP):
                         continue
 
                     # Skip pure tournament result pages
