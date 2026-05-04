@@ -244,44 +244,7 @@ async def ingest_bandai_en(conn):
                 count += 1
                 logger.info(f"  + {title_de[:60]}")
 
-        # Also parse events page
-        try:
-            resp2 = await httpx.AsyncClient(follow_redirects=True, timeout=30).get(
-                "https://en.onepiece-cardgame.com/events/",
-                headers={"User-Agent": UA},
-            )
-            soup2 = BeautifulSoup(resp2.text, "html.parser")
-            for link in soup2.find_all("a", href=True):
-                href = link["href"]
-                if "/events/" not in href or len(link.get_text(strip=True)) < 10:
-                    continue
-                if href.startswith("/"):
-                    source_url = "https://en.onepiece-cardgame.com" + href
-                elif href.startswith("http"):
-                    source_url = href
-                else:
-                    continue
-
-                raw_title = link.get_text(strip=True)[:120]
-                if len(raw_title) < 10:
-                    continue
-
-                related_set = extract_set_code(raw_title)
-                category = categorize(raw_title, "bandai", related_set)
-                if category == "other":
-                    category = "tournament"  # events are mostly tournaments
-
-                title_de = await translate_to_de(raw_title)
-                inserted = await insert_news_item(
-                    conn, "bandai", "bandai_op_official", source_url,
-                    title_de, raw_title[:120], None, category, "en",
-                    related_set, datetime.now(timezone.utc),
-                )
-                if inserted:
-                    count += 1
-                    logger.info(f"  + (event) {title_de[:60]}")
-        except Exception as e:
-            logger.warning(f"Events page parse failed: {e}")
+        # Skip events page — too noisy, main /news/ page is sufficient
 
     except Exception as e:
         logger.error(f"Bandai EN ingest failed: {e}")
