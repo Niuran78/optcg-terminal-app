@@ -4012,6 +4012,46 @@ a.price-link:hover {
   gap: 10px;
 }
 
+/* Quellen-Gruppen — jede Quelle bekommt einen eigenen Abschnitt mit Header.
+   Stil orientiert sich an .sealed-section (siehe ž3050). */
+#news-feed { display: flex; flex-direction: column; gap: 32px; }
+.news-group { display: flex; flex-direction: column; gap: 12px; }
+.news-group-header {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.news-group-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.02em;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.news-group-icon { font-size: 16px; line-height: 1; }
+.news-group-count {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: rgba(255,255,255,0.04);
+  padding: 2px 8px;
+  border-radius: 999px;
+  margin-left: 4px;
+}
+.news-group-subtitle {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-left: auto;
+}
+.news-group-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
 /* News card */
 .news-card {
   display: flex; flex-direction: column;
@@ -4188,10 +4228,11 @@ a.price-link:hover {
 
 /* Responsive */
 @media (max-width: 1199px) {
-  .news-featured-grid, .news-feed-grid { grid-template-columns: repeat(2, 1fr); }
+  .news-featured-grid, .news-feed-grid, .news-group-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 767px) {
-  .news-featured-grid, .news-feed-grid { grid-template-columns: 1fr; }
+  .news-featured-grid, .news-feed-grid, .news-group-grid { grid-template-columns: 1fr; }
+  .news-group-subtitle { margin-left: 0; }
   .news-kpi { grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
   .news-kpi-tile { padding: 10px 12px; }
   .news-kpi-value { font-size: 18px; }

@@ -9,9 +9,10 @@
   // ── State ───────────────────────────────────────────────────────
   let currentCat = 'all';
   let offset = 0;
-  const LIMIT = 18;
+  const LIMIT = 30;  // höher, weil Items nach Quelle gruppiert werden — mehr auf einmal sieht klarer aus
   let totalItems = 0;
   let _loaded = false;
+  let allItems = [];  // Akkumuliert alle bisher geladenen Items, damit Gruppierung beim "Mehr laden" konsistent bleibt
 
   // ── Helpers ─────────────────────────────────────────────────────
 
@@ -147,6 +148,65 @@
     '</a>';
   }
 
+  // Gruppiert News nach Quelle (source_key) und rendert Sektionen mit Header.
+  // Reihenfolge der Gruppen: Bandai JP > Bandai EN > Bandai YouTube > Markt > Limitless TCG > Reddit > Limitless Articles > Sonstige.
+  // Innerhalb jeder Gruppe sortiert das Backend bereits nach featured_score + Datum.
+  var GROUP_ORDER = [
+    'bandai_jp',
+    'bandai_op_official',
+    'youtube_bandai',
+    'market_signals',
+    'limitless_tcg',
+    'reddit_optcg',
+    'limitless_articles',
+  ];
+
+  var GROUP_META = {
+    bandai_jp:          { title: 'Bandai Japan', subtitle: 'Set-Releases & offizielle Ankündigungen aus Japan', icon: '🇯🇵' },
+    bandai_op_official: { title: 'Bandai EN',    subtitle: 'Offizielle One Piece TCG News (englisch)',         icon: '🌍' },
+    youtube_bandai:     { title: 'Bandai YouTube', subtitle: 'Tournament-Streams & offizielle Videos',           icon: '▶' },
+    market_signals:     { title: 'Markt-Signale', subtitle: 'Starke Bewegungen aus deinem Sealed-Tracker',       icon: '📈' },
+    limitless_tcg:      { title: 'Limitless TCG', subtitle: 'Tournament-Decklists & Meta',                       icon: '🏆' },
+    reddit_optcg:       { title: 'Community',    subtitle: 'Top-Posts aus r/OnePieceTCG',                       icon: '💬' },
+    limitless_articles: { title: 'Limitless Articles', subtitle: 'Spoiler & Meta-Reports',                      icon: '📝' },
+  };
+
+  function renderGroupedFeed(items) {
+    if (!items || items.length === 0) return '';
+
+    // Gruppierung
+    var groups = {};
+    items.forEach(function (it) {
+      var key = it.source_key || it.source || 'other';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(it);
+    });
+
+    // Reihenfolge: bekannte Gruppen zuerst, dann unbekannte
+    var orderedKeys = GROUP_ORDER.filter(function (k) { return groups[k]; });
+    Object.keys(groups).forEach(function (k) {
+      if (orderedKeys.indexOf(k) === -1) orderedKeys.push(k);
+    });
+
+    return orderedKeys.map(function (key) {
+      var meta = GROUP_META[key] || { title: key, subtitle: '', icon: '•' };
+      var cards = groups[key].map(renderFeedCard).join('');
+      return (
+        '<div class="news-group" data-group="' + key + '">' +
+          '<div class="news-group-header">' +
+            '<h3 class="news-group-title">' +
+              '<span class="news-group-icon">' + meta.icon + '</span> ' +
+              meta.title +
+              ' <span class="news-group-count">' + groups[key].length + '</span>' +
+            '</h3>' +
+            '<div class="news-group-subtitle">' + meta.subtitle + '</div>' +
+          '</div>' +
+          '<div class="news-group-grid">' + cards + '</div>' +
+        '</div>'
+      );
+    }).join('');
+  }
+
   function renderSkeletons(container, count) {
     var html = '';
     for (var i = 0; i < count; i++) html += '<div class="news-skeleton"></div>';
@@ -199,9 +259,14 @@
         if (kpiSources) kpiSources.textContent = data.kpi.active_sources || 0;
       }
 
-      if (reset) feedEl.innerHTML = '';
+      if (reset) {
+        feedEl.innerHTML = '';
+        allItems = [];
+      }
+      // Items akkumulieren — erlaubt sauberes Re-Rendering der Gruppen
+      allItems = allItems.concat(data.items);
 
-      if (data.items.length === 0 && offset === 0) {
+      if (allItems.length === 0 && offset === 0) {
         feedEl.innerHTML = '';
         if (emptyEl) emptyEl.style.display = 'block';
         if (loadMoreEl) loadMoreEl.style.display = 'none';
@@ -209,7 +274,7 @@
       }
 
       if (emptyEl) emptyEl.style.display = 'none';
-      feedEl.innerHTML += data.items.map(renderFeedCard).join('');
+      feedEl.innerHTML = renderGroupedFeed(allItems);
 
       // Load more button
       var shown = offset + data.items.length;
