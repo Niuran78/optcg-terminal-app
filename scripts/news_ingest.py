@@ -998,17 +998,26 @@ async def ingest_limitless_articles(conn):
 async def recompute_featured_scores(conn):
     """Recompute all featured scores (nightly decay)."""
     logger.info("Recomputing featured scores...")
+    # For community sources (reddit, limitless articles), keep the higher of
+    # the computed score and the original override score set at ingest time.
     result = await conn.execute("""
         UPDATE news_items SET featured_score = GREATEST(0, LEAST(100,
-            CASE WHEN source IN ('bandai','twitter') THEN 40 ELSE 0 END
-          + CASE WHEN published_at >= NOW() - INTERVAL '6h'  THEN 20
-                 WHEN published_at >= NOW() - INTERVAL '24h' THEN 10
-                 ELSE 0 END
-          + CASE WHEN category = 'set_release'  THEN 15
-                 WHEN category = 'tournament'   THEN 10
-                 ELSE 0 END
-          + CASE WHEN related_set IS NOT NULL THEN 5 ELSE 0 END
-          + CASE WHEN published_at < NOW() - INTERVAL '14d' THEN -100 ELSE 0 END
+            CASE
+              WHEN published_at < NOW() - INTERVAL '14d' THEN 0
+              ELSE GREATEST(
+                -- Standard formula
+                (CASE WHEN source IN ('bandai','twitter') THEN 40 ELSE 0 END)
+                + (CASE WHEN published_at >= NOW() - INTERVAL '6h'  THEN 20
+                        WHEN published_at >= NOW() - INTERVAL '24h' THEN 10
+                        ELSE 0 END)
+                + (CASE WHEN category = 'set_release'  THEN 15
+                        WHEN category = 'tournament'   THEN 10
+                        ELSE 0 END)
+                + (CASE WHEN related_set IS NOT NULL THEN 5 ELSE 0 END),
+                -- For community sources, preserve initial score (upvote-based)
+                CASE WHEN source = 'community' THEN featured_score ELSE 0 END
+              )
+            END
         ))
         WHERE is_published = TRUE
     """)
