@@ -481,9 +481,20 @@ async def ingest_market_signals(conn):
             title_de = f"{set_code} {direction}{pct}% in 7 Tagen — {name}"[:120]
 
             # Build teaser
-            teaser_parts = [f"Aktueller Trend: CHF {price:.2f}"]
-            if avail > 0:
-                teaser_parts.append(f"{avail} auf Lager bei Cardmarket")
+            # Hinweis: Wir nennen externe Marktplätze NIEMALS namentlich (legal/branding-Linie
+            # aus Phase 1+2). Stattdessen neutral "EU-Markt" und ggf. Holygrade-Lager.
+            teaser_parts = [f"EU-Markttrend: CHF {price:.2f}"]
+
+            # Holygrade-Shop-Status prüfen — falls im Lager, das prominent zeigen
+            shop_row = await conn.fetchrow("""
+                SELECT in_stock, qty FROM sealed_unified WHERE set_code=$1 AND language='JP'
+                  AND product_type IN ('booster box','case','set','carton')
+                ORDER BY (CASE WHEN in_stock THEN 0 ELSE 1 END), qty DESC NULLS LAST LIMIT 1
+            """, set_code)
+            if shop_row and shop_row["in_stock"] and (shop_row["qty"] or 0) > 0:
+                teaser_parts.append(f"{shop_row['qty']} bei Holygrade auf Lager")
+            elif avail > 0:
+                teaser_parts.append(f"{avail} Angebote verfügbar")
             teaser_de = " · ".join(teaser_parts)[:240]
 
             source_url = f"https://terminal.holygrade.com/preview/sealed/{set_code}"
