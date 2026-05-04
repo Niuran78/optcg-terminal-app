@@ -712,6 +712,7 @@ function switchTab(tab) {
   // Load data — arbitrage & radar are SOON pages, no data loading needed.
   if (tab === 'browser')   loadBrowserData();
   if (tab === 'sealed')    loadSealedData();
+  if (tab === 'news' && typeof initNewsPage === 'function') initNewsPage();
   // if (tab === 'arbitrage') — SOON page, no load
   if (tab === 'overview')  loadOverviewData();
   if (tab === 'portfolio') loadPortfolioData();

@@ -64,6 +64,14 @@
       <span>Sealed</span>
     </button>
 
+    <button class="nav-tab" data-tab="news" role="tab" aria-selected="false" aria-controls="panel-news">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+        <rect x="1" y="2" width="12" height="10" rx="1.5" stroke="currentColor" stroke-width="1.3"/>
+        <path d="M4 5h6M4 7.5h4M4 10h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+      </svg>
+      <span>News</span>
+    </button>
+
     <button class="nav-tab" data-tab="arbitrage" role="tab" aria-selected="false" aria-controls="panel-arbitrage">
       <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
         <path d="M2 10 L5 6 L8 8 L12 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
@@ -436,6 +444,77 @@
 
     <!-- Backwards-compatible flat grid kept hidden as fallback container -->
     <div class="product-grid" id="sealed-grid" style="display:none;" aria-hidden="true"></div>
+
+  </section>
+
+  <!-- ─── TAB: NEWS ──────────────────────────────────────────── -->
+  <section id="panel-news" class="tab-panel" role="tabpanel" aria-labelledby="tab-news">
+
+    <!-- Page header -->
+    <div class="news-header">
+      <div class="news-header-top">
+        <div>
+          <div class="news-eyebrow">NEWS</div>
+          <div class="news-updated" id="news-updated">Aktualisiert: —</div>
+        </div>
+      </div>
+
+      <!-- Filter tabs -->
+      <nav class="news-filters" id="news-filters" aria-label="News category filters">
+        <button class="news-filter active" data-cat="all">Alle</button>
+        <button class="news-filter" data-cat="set_release">Set-Releases</button>
+        <button class="news-filter" data-cat="market">Markt</button>
+        <button class="news-filter" data-cat="tournament">Tournament</button>
+        <button class="news-filter" data-cat="shop">Shop</button>
+      </nav>
+    </div>
+
+    <!-- KPI tiles -->
+    <div class="news-kpi" id="news-kpi">
+      <div class="news-kpi-tile">
+        <div class="news-kpi-label">HEUTE</div>
+        <div class="news-kpi-value" id="kpi-today">—</div>
+        <div class="news-kpi-sub">neue Einträge</div>
+      </div>
+      <div class="news-kpi-tile">
+        <div class="news-kpi-label">DIESE WOCHE</div>
+        <div class="news-kpi-value" id="kpi-week">—</div>
+        <div class="news-kpi-sub">Nachrichten</div>
+      </div>
+      <div class="news-kpi-tile">
+        <div class="news-kpi-label">QUELLEN</div>
+        <div class="news-kpi-value" id="kpi-sources">—</div>
+        <div class="news-kpi-sub">aktiv</div>
+      </div>
+    </div>
+
+    <!-- Featured block -->
+    <div class="news-section-label">FEATURED THIS WEEK</div>
+    <div class="news-featured-grid" id="news-featured">
+      <div class="news-skeleton"></div>
+      <div class="news-skeleton"></div>
+      <div class="news-skeleton"></div>
+    </div>
+
+    <!-- Feed grid -->
+    <div class="news-section-label">ALLE NEWS</div>
+    <div class="news-feed-grid" id="news-feed">
+      <div class="news-skeleton"></div>
+      <div class="news-skeleton"></div>
+      <div class="news-skeleton"></div>
+    </div>
+
+    <!-- Load more -->
+    <div class="news-load-more" id="news-load-more" style="display:none;">
+      <button class="news-load-btn" id="news-load-btn">Mehr laden</button>
+    </div>
+
+    <!-- Empty state -->
+    <div class="news-empty" id="news-empty" style="display:none;">
+      <div class="news-empty-title">KEINE NEWS</div>
+      <div class="news-empty-text">Für diese Kategorie gibt es heute noch keine Einträge.</div>
+      <button class="news-empty-cta" onclick="newsFilterAll()">Alle News anzeigen</button>
+    </div>
 
   </section>
 
@@ -928,6 +1007,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <script src="auth.js"></script>
 <script src="app.js"></script>
+<script src="news.js"></script>
 
 <script>
   // Close user dropdown only on clicks OUTSIDE the menu
