@@ -154,6 +154,15 @@ async def _daily_pricecharting_sync_loop():
         except Exception as e:
             logger.error(f"[daily sync] follow-up job failed: {e}")
 
+        # News ingest — fetch external sources + generate market signals
+        try:
+            from scripts.news_ingest import run_full_ingest
+            logger.info("[daily sync] running news ingest pipeline...")
+            news_result = await run_full_ingest()
+            logger.info(f"[daily sync] news ingest: {news_result}")
+        except Exception as e:
+            logger.error(f"[daily sync] news ingest failed: {e}")
+
         # Sleep 24h before next sync
         await asyncio.sleep(24 * 60 * 60)
 

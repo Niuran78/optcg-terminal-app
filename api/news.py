@@ -252,3 +252,17 @@ async def patch_news(item_id: int, body: NewsPatch, user: UserInfo = Depends(req
     if not row:
         raise HTTPException(404, "News item not found")
     return _row_to_dict(row)
+
+
+# ── Ingest trigger (admin only) ──────────────────────────────────
+
+@router.post("/ingest")
+async def trigger_ingest(user: UserInfo = Depends(require_admin)):
+    """Admin: manually trigger the news ingest pipeline."""
+    from scripts.news_ingest import run_full_ingest
+    try:
+        results = await run_full_ingest()
+        return {"status": "ok", "results": results}
+    except Exception as e:
+        logger.error(f"Ingest trigger failed: {e}")
+        raise HTTPException(500, f"Ingest failed: {e}")
