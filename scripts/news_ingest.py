@@ -363,6 +363,13 @@ async def ingest_limitless(conn):
 
         soup = BeautifulSoup(resp.text, "html.parser")
 
+        # Skip navigation / generic links
+        _SKIP_TITLES = {
+            "all upcoming tournaments", "tournament platform",
+            "all tournaments", "see all", "view all",
+            "home", "about", "contact", "login", "sign up",
+        }
+
         # Extract tournament links
         for link in soup.find_all("a", href=True):
             href = link["href"]
@@ -370,11 +377,24 @@ async def ingest_limitless(conn):
             if not text or len(text) < 5:
                 continue
 
+            # Filter out navigation links and junk
+            text_lower = text.lower().strip()
+            if text_lower in _SKIP_TITLES:
+                continue
+            if "event period:" in text_lower:
+                continue
+            # Skip pure navigation paths (no specific tournament/deck ID)
+            if href.rstrip("/") in ("/tournaments", "/decks", "/"):
+                continue
+
             source_url = None
             category = "tournament"
 
             if "/tournaments/" in href:
-                # Tournament result or event
+                # Tournament result or event — must have a specific ID after /tournaments/
+                path_after = href.split("/tournaments/")[-1].strip("/")
+                if not path_after:
+                    continue  # Skip index page link
                 if href.startswith("/"):
                     source_url = "https://onepiece.limitlesstcg.com" + href
                 elif href.startswith("http"):
