@@ -766,83 +766,99 @@ async def ingest_bandai_jp(conn):
         logger.warning("SCRAPFLY_KEY not set, skipping Bandai JP ingest")
         return 0
 
-    jp_urls = [
-        "https://www.onepiece-cardgame.com/jp/news/",
-        "https://www.onepiece-cardgame.com/jp/products/",
-    ]
+    # The JP site uses ?lang=ja on the main domain, NOT /jp/ prefix
+    jp_url = "https://www.onepiece-cardgame.com/news/?lang=ja"
 
     try:
         async with httpx.AsyncClient(timeout=120) as client:
-            for jp_url in jp_urls:
+            try:
+                resp = await client.get(
+                    "https://api.scrapfly.io/scrape",
+                    params={
+                        "key": SCRAPFLY_KEY,
+                        "url": jp_url,
+                        "render_js": "true",
+                        "rendering_wait": "3000",
+                    },
+                )
+                resp.raise_for_status()
+            except Exception as url_err:
+                logger.warning(f"Bandai JP fetch failed: {url_err}")
+                raise
+
+            html = resp.json()["result"]["content"]
+            soup = BeautifulSoup(html, "html.parser")
+
+            # Bandai JP uses .newsListLink class for news items
+            for link in soup.find_all("a", class_="newsListLink"):
                 if count >= max_items:
                     break
 
-                try:
-                    resp = await client.get(
-                        "https://api.scrapfly.io/scrape",
-                        params={
-                            "key": SCRAPFLY_KEY,
-                            "url": jp_url,
-                            "render_js": "true",
-                        },
-                    )
-                    resp.raise_for_status()
-                except Exception as url_err:
-                    logger.warning(f"Bandai JP fetch failed for {jp_url}: {url_err}")
+                href = link.get("href", "")
+                if not href:
                     continue
 
-                html = resp.json()["result"]["content"]
-                soup = BeautifulSoup(html, "html.parser")
-
-                # Look for news/product links — common Bandai patterns
-                for link in soup.find_all("a", href=True):
-                    if count >= max_items:
-                        break
-
-                    href = link["href"]
+                # Extract title from .newsTitle element
+                title_el = link.find(class_="newsTitle")
+                if title_el:
+                    text = title_el.get_text(strip=True)
+                else:
                     text = link.get_text(strip=True)
 
-                    if not text or len(text) < 5:
-                        continue
+                if not text or len(text) < 5:
+                    continue
 
-                    # Only relevant paths
-                    if not any(p in href for p in ["/news/", "/products/", "/cardlist/"]):
-                        continue
-                    # Skip pure index links
-                    path_after = href.rstrip("/").split("/")[-1]
-                    if not path_after or path_after in ("news", "products", "cardlist", "jp"):
-                        continue
+                # Parse date
+                date_el = link.find(class_="newsDate")
+                pub_at = datetime.now(timezone.utc)
+                if date_el:
+                    date_text = date_el.get_text(strip=True)
+                    for fmt in ["%Y.%m.%d", "%Y-%m-%d", "%Y/%m/%d"]:
+                        try:
+                            pub_at = datetime.strptime(date_text[:10], fmt).replace(tzinfo=timezone.utc)
+                            break
+                        except ValueError:
+                            continue
 
-                    # Build absolute URL
-                    if href.startswith("/"):
-                        source_url = "https://www.onepiece-cardgame.com" + href
-                    elif href.startswith("http"):
-                        source_url = href
-                    else:
-                        source_url = "https://www.onepiece-cardgame.com/jp/" + href
+                # Build absolute URL
+                if href.startswith("/"):
+                    source_url = "https://www.onepiece-cardgame.com" + href
+                elif href.startswith("http"):
+                    source_url = href
+                else:
+                    source_url = "https://www.onepiece-cardgame.com/" + href
 
-                    # Detect category from URL
-                    if "/products/" in href:
-                        category = "set_release"
-                    else:
-                        category = "other"
+                # Detect category from URL
+                if "/products/" in href:
+                    category = "set_release"
+                elif "/events/" in href:
+                    category = "tournament"
+                else:
+                    category = "other"
 
-                    related_set = extract_set_code(text + " " + href)
+                related_set = extract_set_code(text + " " + href)
 
-                    # Translate JP → DE
-                    title_de = await translate_jp_to_de(text)
+                # Translate JP → DE
+                title_de = await translate_jp_to_de(text)
+
+                # Extract teaser from .newsLead
+                teaser_el = link.find(class_="newsLead")
+                if teaser_el:
+                    teaser_jp = teaser_el.get_text(strip=True)[:200]
+                    teaser_de = await translate_jp_to_de(teaser_jp)
+                else:
                     teaser_de = "Quelle: Bandai Japan (übersetzt)"
 
-                    # NO image_url (Bandai card art constraint)
-                    inserted = await insert_news_item(
-                        conn, "bandai", "bandai_jp", source_url,
-                        title_de, text[:120], teaser_de, category, "de",
-                        related_set, datetime.now(timezone.utc),
-                        override_score=80,
-                    )
-                    if inserted:
-                        count += 1
-                        logger.info(f"  + (Bandai JP) {title_de[:60]}")
+                # NO image_url (Bandai card art constraint)
+                inserted = await insert_news_item(
+                    conn, "bandai", "bandai_jp", source_url,
+                    title_de, text[:120], teaser_de, category, "de",
+                    related_set, pub_at,
+                    override_score=80,
+                )
+                if inserted:
+                    count += 1
+                    logger.info(f"  + (Bandai JP) {title_de[:60]}")
 
     except Exception as e:
         logger.error(f"Bandai JP ingest failed: {e}")
