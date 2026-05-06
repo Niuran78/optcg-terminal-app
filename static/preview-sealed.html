@@ -1012,7 +1012,35 @@
           }
         } catch (e) { /* silent */ }
 
+        // Reprint-Status-Block (Phase 1) — nur wenn Bandai etwas angekündigt hat oder
+        // kürzlich reprinted hat. Sitzt PROMINENT vor dem Shop-CTA, weil ein angekündigter
+        // Reprint die wichtigste Information auf dieser Seite ist.
+        var reprintHtml = '';
+        if (data.reprint && data.reprint.status && data.reprint.status !== 'none') {
+          var rs = data.reprint.status;
+          var bgColor = rs === 'announced'
+            ? 'background:linear-gradient(135deg,rgba(255,177,78,0.15),rgba(255,177,78,0.05));border:1px solid rgba(255,177,78,0.4);color:#ffb14e;'
+            : 'background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:var(--text-2,#bdbdbd);';
+          var rTitle = rs === 'announced' ? '⚠ REPRINT ANGEKÜNDIGT' : '· KÜRZLICH REPRINTED';
+          var rDate = data.reprint.announced_at ? (' · ' + new Date(data.reprint.announced_at).toLocaleDateString('de-CH')) : '';
+          var rNote = data.reprint.note || (rs === 'announced'
+            ? 'Bandai hat einen Reprint dieses Sets offiziell angekündigt. Erfahrungsgemäss korrigiert sich der Sealed-Preis nach einer Reprint-Ankündigung kurzfristig nach unten.'
+            : 'Dieses Set wurde in den letzten 12 Monaten reprinted.');
+          reprintHtml =
+            '<div class="pv-reprint-block" style="' +
+              'padding:14px 18px;margin-bottom:16px;border-radius:10px;' +
+              'font-family:var(--font-mono,monospace);' + bgColor + '">' +
+              '<div style="font-size:11px;font-weight:700;letter-spacing:0.08em;margin-bottom:6px;">' +
+                escHtml(rTitle) + escHtml(rDate) +
+              '</div>' +
+              '<div style="font-size:13px;line-height:1.5;color:var(--text,#e8e8e8);font-family:var(--font-sans,system-ui);">' +
+                escHtml(rNote) +
+              '</div>' +
+            '</div>';
+        }
+
         var html =
+          reprintHtml +
           shopCtaHtml +
           '<div class="pv-card">' +
             '<div class="pv-set-info">' +

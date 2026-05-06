@@ -219,7 +219,8 @@ async def widget_sealed_one(
             SELECT id, product_name, set_code, set_name, product_type, language,
                    image_url, cm_live_trend, cm_live_30d_avg, cm_live_7d_avg,
                    cm_live_lowest, cm_live_available, cm_live_url, cm_live_status,
-                   cm_live_updated_at, expected_value_eur
+                   cm_live_updated_at, expected_value_eur,
+                   reprint_status, reprint_announced_at, reprint_source_url, reprint_note
             FROM sealed_unified
             WHERE set_code = $1
               AND product_type = $2
@@ -315,6 +316,13 @@ async def widget_sealed_one(
             "vs_box_pct":         ev_pct,
             "label":              "estimate",
         } if ev is not None else None,
+        # Reprint-Status (Phase 1) — Box & Case teilen denselben Status pro Set.
+        "reprint": {
+            "status":        r["reprint_status"] or "none",
+            "announced_at":  r["reprint_announced_at"].isoformat() if r["reprint_announced_at"] else None,
+            "source_url":    r["reprint_source_url"],
+            "note":          r["reprint_note"],
+        } if r["reprint_status"] and r["reprint_status"] != "none" else None,
         "powered_by": {
             "name":        "Holygrade Terminal",
             "url":         "https://terminal.holygrade.com",
