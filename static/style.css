@@ -3240,6 +3240,38 @@ a.price-link:hover {
 .sealed-ev-badge.ev-positive { color: var(--positive); border-color: rgba(0,229,192,0.35); background: rgba(0,229,192,0.06); }
 .sealed-ev-badge.ev-negative { color: var(--negative); border-color: rgba(229,92,92,0.35); background: rgba(229,92,92,0.06); }
 
+/* Reprint-Status-Badge — auf Booster-Box- und Case-Karten.
+   Sitzt unten am Bild, prominent aber nicht alarmistisch. */
+.sealed-card-reprint-row {
+  position: absolute;
+  left: 8px; right: 8px; bottom: 8px;
+  display: flex; justify-content: center;
+  pointer-events: none;
+}
+.sealed-reprint-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 4px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid;
+  backdrop-filter: blur(4px);
+  pointer-events: auto;
+  cursor: help;
+}
+.sealed-reprint-announced {
+  color: #ffb14e;
+  border-color: rgba(255, 177, 78, 0.5);
+  background: rgba(255, 177, 78, 0.18);
+  box-shadow: 0 0 0 1px rgba(255, 177, 78, 0.1);
+}
+.sealed-reprint-recent {
+  color: var(--text-2);
+  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(0, 0, 0, 0.55);
+}
+
 /* Actions */
 .sealed-card-actions {
   display: flex; gap: 8px;

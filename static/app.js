@@ -1735,6 +1735,26 @@ function renderSealedCard(p) {
     ? `<span class="sealed-spread-badge" title="Lowest is ${p.spread_pct}% below trend">↓ ${p.spread_pct}%</span>`
     : '';
 
+  // Reprint-Status-Badge — nur für Boxen und Cases (Owner-Wunsch).
+  // Datenquelle: sealed_unified.reprint_status, gepflegt aus News-Scraper +
+  // manuelle Bandai-Ankündigungen. 'none' = kein Badge anzeigen.
+  let reprintBadge = '';
+  const isBoxOrCase = p.product_type === 'booster box' || p.product_type === 'case';
+  if (isBoxOrCase && p.reprint_status && p.reprint_status !== 'none' && p.reprint_status !== 'unknown') {
+    const r = p.reprint_status;
+    let label = '', cls = '', tip = p.reprint_note || '';
+    if (r === 'announced') {
+      label = 'REPRINT ANGEKÜNDIGT';
+      cls = 'sealed-reprint-badge sealed-reprint-announced';
+      tip = tip || 'Bandai hat einen Reprint dieses Sets offiziell angekündigt.';
+    } else if (r === 'recent') {
+      label = 'KÜRZLICH REPRINTED';
+      cls = 'sealed-reprint-badge sealed-reprint-recent';
+      tip = tip || 'Dieses Set wurde in den letzten 12 Monaten reprinted.';
+    }
+    reprintBadge = '<span class="' + cls + '" title="' + escHtml(tip) + '">⚠ ' + label + '</span>';
+  }
+
   // EV badge: only on booster boxes/cases with persisted EV
   let evBadge = '';
   if (p.ev_eur != null && p.ev_pct != null) {
@@ -1778,6 +1798,7 @@ function renderSealedCard(p) {
     +     sealedImg(p.image_url, p.product_name)
     +     '<div class="sealed-card-badges-tl">' + langBadge + liveBadge + '</div>'
     +     '<div class="sealed-card-badges-tr">' + spreadBadge + evBadge + '</div>'
+    +     (reprintBadge ? '<div class="sealed-card-reprint-row">' + reprintBadge + '</div>' : '')
     +   '</div>'
     +   '<div class="sealed-card-body">'
     +     '<div class="sealed-card-title">' + escHtml(p.product_name || 'Sealed Product') + '</div>'

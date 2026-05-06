@@ -193,6 +193,13 @@ def _row_to_sealed(row: dict) -> dict:
         "rapidapi_product_id": row.get("rapidapi_product_id"),
         "language": row.get("language") or "JP",
         "en_price_usd": row.get("en_price_usd"),
+        # Reprint-Status (Phase 1: nur 'none' / 'recent' / 'announced' / 'unknown')
+        # 'announced' = Bandai hat offiziell Reprint angekündigt; 'recent' = Reprint
+        # in den letzten 12 Monaten erfolgt; 'none' = aktuell kein Hinweis.
+        "reprint_status":       row.get("reprint_status") or "none",
+        "reprint_announced_at": str(row.get("reprint_announced_at")) if row.get("reprint_announced_at") else None,
+        "reprint_source_url":   row.get("reprint_source_url"),
+        "reprint_note":         row.get("reprint_note"),
     }
 
 
